@@ -48,6 +48,8 @@ export interface CollectorContext {
   repDir: string;
   artifactsDir: string;
   logger: HarnessLogger;
+  /** Ad-hoc SQL against the provisioned server (XEvents control/reads). */
+  sqlExec?: (sql: string, label: string) => Promise<string>;
 }
 
 export interface Collector {
@@ -66,5 +68,7 @@ export interface Collector {
   preShutdown?(ctx: CollectorContext): Promise<void>;
   postExit?(ctx: CollectorContext): Promise<ArtifactRef[]>;
   normalize?(ctx: CollectorContext): Promise<Metric[]>;
+  /** Post-run honesty checks (e.g. correlation quality) surfaced on the rep. */
+  postRunValidations?(): CollectorValidation[];
   teardown?(ctx: CollectorContext): Promise<void>;
 }

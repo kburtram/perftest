@@ -4,15 +4,17 @@
  * extension host and STS). Measurement-approved as resource-only metrics —
  * never official scenario timing.
  *
- * Zero dependencies: samples come from PowerShell CIM on Windows and `ps`
- * elsewhere, at a gentle interval, entirely outside the product processes.
+ * Windows sampling uses ONE persistent PowerShell worker per rep (request/
+ * response over stdio) — spawning a process per sample would be far too heavy
+ * to measurement-approve honestly. POSIX uses `ps` per sample (a cheap fork).
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
+import { createInterface, type Interface } from "node:readline";
 import { dirname, join } from "node:path";
 import type { ArtifactRef, Metric } from "@mssqlperf/contracts";
-import type { Collector, CollectorContext, PerfProcess, ProcessRegistry } from "./types";
+import type { Collector, CollectorContext, ProcessRegistry } from "./types";
 
 const SAMPLE_INTERVAL_MS = 500;
 
@@ -24,11 +26,29 @@ interface ProcessSample {
   workingSetBytes: number;
 }
 
+const WINDOWS_WORKER_SCRIPT = [
+  "while ($true) {",
+  "  $line = [Console]::In.ReadLine();",
+  "  if ($null -eq $line -or $line -eq 'exit') { break };",
+  "  try {",
+  "    $ids = $line -split ',' | ForEach-Object { [int]$_ };",
+  "    $procs = Get-Process -Id $ids -ErrorAction SilentlyContinue |",
+  "      Select-Object Id, @{n='cpu';e={$_.TotalProcessorTime.TotalSeconds}}, @{n='ws';e={$_.WorkingSet64}};",
+  "    $out = ConvertTo-Json -Compress -InputObject @($procs);",
+  "  } catch { $out = '[]' };",
+  "  if (-not $out) { $out = '[]' };",
+  "  [Console]::Out.WriteLine($out);",
+  "}",
+].join(" ");
+
 export class ProcessSamplerCollector implements Collector {
   readonly name = "processSampler";
   readonly cost = "low" as const;
   readonly platforms = ["all"] as const as Array<"win32" | "linux" | "darwin" | "all">;
-  readonly allowedPassTypes = ["measurement", "diagnostic", "calibration"] as const as Array<
+  // §12.3: diagnostic-only until a clean calibration approves it for
+  // measurement. First A/B attempt (2026-07-01) was inconclusive — noisy
+  // interactive box, 3 reps, CV over threshold. Rerun on a quiet machine.
+  readonly allowedPassTypes = ["diagnostic", "calibration"] as const as Array<
     "measurement" | "diagnostic" | "calibration"
   >;
 
@@ -37,15 +57,65 @@ export class ProcessSamplerCollector implements Collector {
   private samplesPath: string | undefined;
   private readonly samples: ProcessSample[] = [];
   private sampling = false;
+  private worker: ChildProcess | undefined;
+  private workerLines: Interface | undefined;
+  private readonly pendingReads: Array<(line: string) => void> = [];
 
   async postLaunch(ctx: CollectorContext, processes: ProcessRegistry): Promise<void> {
     this.processes = processes;
     this.samplesPath = join(ctx.repDir, "process-samples.jsonl");
     mkdirSync(dirname(this.samplesPath), { recursive: true });
+    if (process.platform === "win32") {
+      this.startWindowsWorker(ctx);
+    }
     this.timer = setInterval(() => {
       void this.sampleOnce(ctx);
     }, SAMPLE_INTERVAL_MS);
     this.timer.unref?.();
+  }
+
+  private startWindowsWorker(ctx: CollectorContext): void {
+    try {
+      this.worker = spawn(
+        "powershell",
+        ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_WORKER_SCRIPT],
+        { stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
+      );
+      this.workerLines = createInterface({ input: this.worker.stdout! });
+      this.workerLines.on("line", (line) => {
+        const pending = this.pendingReads.shift();
+        pending?.(line);
+      });
+      this.worker.on("error", (error) => {
+        ctx.logger.warn("processSampler.workerError", String(error));
+        this.worker = undefined;
+      });
+      this.worker.on("exit", () => {
+        this.worker = undefined;
+      });
+    } catch (error) {
+      ctx.logger.warn("processSampler.workerSpawnFailed", String(error));
+      this.worker = undefined;
+    }
+  }
+
+  private queryWorker(pids: number[]): Promise<string | undefined> {
+    if (!this.worker || !this.worker.stdin?.writable) {
+      return Promise.resolve(undefined);
+    }
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        const index = this.pendingReads.indexOf(onLine);
+        if (index >= 0) this.pendingReads.splice(index, 1);
+        resolve(undefined);
+      }, 2000);
+      const onLine = (line: string): void => {
+        clearTimeout(timer);
+        resolve(line);
+      };
+      this.pendingReads.push(onLine);
+      this.worker!.stdin!.write(pids.join(",") + "\n");
+    });
   }
 
   private async sampleOnce(ctx: CollectorContext): Promise<void> {
@@ -58,7 +128,7 @@ export class ProcessSamplerCollector implements Collector {
       if (targets.length === 0) {
         return;
       }
-      const stats = await readProcessStats(targets.map((t) => t.pid));
+      const stats = await this.readProcessStats(targets.map((t) => t.pid));
       const now = (BigInt(Date.now()) * 1_000_000n).toString();
       for (const target of targets) {
         const stat = stats.get(target.pid);
@@ -80,6 +150,36 @@ export class ProcessSamplerCollector implements Collector {
     }
   }
 
+  private async readProcessStats(
+    pids: number[],
+  ): Promise<Map<number, { cpuSeconds: number; workingSetBytes: number }>> {
+    const map = new Map<number, { cpuSeconds: number; workingSetBytes: number }>();
+    if (pids.length === 0) {
+      return map;
+    }
+    if (process.platform === "win32") {
+      const line = await this.queryWorker(pids);
+      if (line) {
+        try {
+          const parsed: unknown = JSON.parse(line);
+          const rows = Array.isArray(parsed) ? parsed : [parsed];
+          for (const row of rows as Array<{ Id?: number; cpu?: number; ws?: number } | null>) {
+            if (row && typeof row.Id === "number") {
+              map.set(row.Id, {
+                cpuSeconds: Number(row.cpu ?? 0),
+                workingSetBytes: Number(row.ws ?? 0),
+              });
+            }
+          }
+        } catch {
+          // malformed worker output: skip this sample
+        }
+      }
+      return map;
+    }
+    return readStatsPosix(pids);
+  }
+
   async preShutdown(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
@@ -92,10 +192,11 @@ export class ProcessSamplerCollector implements Collector {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    this.stopWorker();
+    void ctx;
     if (this.samples.length === 0) {
       return [];
     }
-    void ctx;
     return [
       {
         kind: "processSamples",
@@ -103,6 +204,26 @@ export class ProcessSamplerCollector implements Collector {
         retention: "always",
       },
     ];
+  }
+
+  async teardown(): Promise<void> {
+    this.stopWorker();
+  }
+
+  private stopWorker(): void {
+    if (this.worker) {
+      try {
+        this.worker.stdin?.write("exit\n");
+        this.worker.stdin?.end();
+      } catch {
+        // already gone
+      }
+      const worker = this.worker;
+      setTimeout(() => worker.kill(), 1000).unref?.();
+      this.worker = undefined;
+    }
+    this.workerLines?.close();
+    this.workerLines = undefined;
   }
 
   async normalize(): Promise<Metric[]> {
@@ -145,53 +266,11 @@ export class ProcessSamplerCollector implements Collector {
     }
     return metrics;
   }
-}
 
-async function readProcessStats(
-  pids: number[],
-): Promise<Map<number, { cpuSeconds: number; workingSetBytes: number }>> {
-  if (pids.length === 0) {
-    return new Map();
+  /** The full sample series (soak analysis consumes this). */
+  allSamples(): ProcessSample[] {
+    return [...this.samples];
   }
-  if (process.platform === "win32") {
-    return readStatsWindows(pids);
-  }
-  return readStatsPosix(pids);
-}
-
-function readStatsWindows(
-  pids: number[],
-): Promise<Map<number, { cpuSeconds: number; workingSetBytes: number }>> {
-  const filter = pids.map((p) => `IdProcess=${p}`).join(" or ");
-  const script =
-    `Get-CimInstance Win32_PerfRawData_PerfProc_Process -Filter "${filter}" | ` +
-    `Select-Object IdProcess,PercentProcessorTime,WorkingSetPrivate | ConvertTo-Json -Compress`;
-  return new Promise((resolve) => {
-    execFile(
-      "powershell",
-      ["-NoProfile", "-NonInteractive", "-Command", script],
-      { timeout: 10_000, windowsHide: true },
-      (error, stdout) => {
-        const map = new Map<number, { cpuSeconds: number; workingSetBytes: number }>();
-        if (!error && stdout.trim()) {
-          try {
-            const parsed: unknown = JSON.parse(stdout);
-            const rows = Array.isArray(parsed) ? parsed : [parsed];
-            for (const row of rows as Array<Record<string, number>>) {
-              map.set(Number(row["IdProcess"]), {
-                // PercentProcessorTime raw value is 100ns units of CPU time.
-                cpuSeconds: Number(row["PercentProcessorTime"] ?? 0) / 1e7,
-                workingSetBytes: Number(row["WorkingSetPrivate"] ?? 0),
-              });
-            }
-          } catch {
-            // leave map empty; caller records a debug event
-          }
-        }
-        resolve(map);
-      },
-    );
-  });
 }
 
 function readStatsPosix(

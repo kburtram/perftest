@@ -252,12 +252,33 @@ export interface MeasureSpec {
   timeoutMs: number;
 }
 
+/**
+ * Soak/stress loop (Phase-2 M10.1): run `steps` repeatedly inside ONE
+ * measured window, emitting iteration.start/iteration.end markers with
+ * attrs.index. Per-iteration success criteria are freshness-scoped to the
+ * iteration. Reliability scenarios use onFailure: "continue" and capture
+ * every failure; nothing is retried or hidden.
+ */
+export interface ScenarioLoopSpec {
+  iterations: number;
+  /** Excluded from steady-state analysis (still recorded). Default 0. */
+  warmupIterations?: number;
+  steps: ScenarioStep[];
+  /** Evaluated after each iteration against markers fresh to that iteration. */
+  success?: SuccessCriterion[];
+  /** continue = record the failure and keep looping (default); abort = stop. */
+  onFailure?: "continue" | "abort";
+  /** Steps run between iterations (settle/cleanup), outside iteration timing. */
+  settleSteps?: ScenarioStep[];
+}
+
 export interface ScenarioSpec {
   scenarioId: string;
   displayName: string;
   tags?: string[];
   profileMode?: "fresh" | "warmed" | "reuse";
   workspace?: string;
+  loop?: ScenarioLoopSpec;
   sql?: {
     database?: string;
     snapshot?: string;

@@ -400,3 +400,62 @@ with real targets, additive contracts, SQL text diagnostic+synthetic only).
 Starting M7. Known design concern to fix first: processSampler currently spawns
 powershell.exe per sample (every 500ms) - too heavy to measurement-approve
 honestly; switching to a persistent sampling worker before calibration.
+
+---
+
+## 2026-07-01 - Entry 9: M7 (substrate) + M8 (XEvents VERIFIED) + M9 (renderer trace VERIFIED)
+
+### M7 resource/memory substrate
+- processSampler reworked: ONE persistent PowerShell worker per rep (stdin pid
+  list -> one JSON line; no per-sample process spawns). POSIX ps per sample.
+- Driver emits exthost.memory.rss/heapUsed counter markers (500ms, unref,
+  scenario window only); normalizer summarizes counters -> <name>.peak/.final
+  metrics (MB) official:false; full timeline stays in markers.jsonl.
+- CALIBRATION HONESTY: first A/B attempt inconclusive (I contaminated run A
+  with concurrent work; 3 reps; CV over threshold) -> per SS12.3 the sampler is
+  DIAGNOSTIC-ONLY until a clean calibration passes (allowedPassTypes changed).
+  Rerun on a quiet box is an open task (7.3).
+
+### M8 SQL activity capture (VERIFIED - the headline feature)
+- Driver sets per-rep Application Name mssql-perf/<runId>/<repId>/<scenarioId>
+  (ConnectionCredentials passes it through; STS appends suffixes like
+  -Query-languageService per connection purpose -> collector matches by PREFIX).
+- sql/xevents/*.sql: ring-buffer session (rpc/batch/statement/module completed,
+  app-name-filtered at session AND parse), FOR JSON shredding read. GOTCHAS
+  FIXED: ODBC sqlcmd -h -1 + -y 0 mutually exclusive (dropped -h); embedded
+  double quotes mangled through Windows argv (script rewritten quote-free with
+  doubled single quotes); QUOTED_IDENTIFIER required by XML methods (-I flag).
+- createSqlExecutor seam (external host sqlcmd / docker exec) on
+  CollectorContext.sqlExec; collector lifecycle: create+start on scenario.start,
+  read (3.5s dispatch-latency wait) + stop AWAITED after outcome.
+- VERIFIED run 2026-07-02T05-30-28Z_d7464214: 95/95 events correlated;
+  sql-activity.jsonl lists EVERY command w/ duration/cpu/reads/rows/text
+  (diagnostic+synthetic only); rollup byEvent/byObject; metrics
+  sqlserver.duration/cpu/logicalReads/commandCount conf=high. FINDING: 14
+  sp_executesql metadata RPCs w/ 296,595 logical reads surround one user query
+  (languageService connection chatter) - exactly the hidden work this system
+  exists to expose. LIMITATION (documented): server row_count=0 for the
+  streamed SELECT batch (DONE-count semantics) -> 10k proof stays with the two
+  client-side sources; server side corroborates via batch text + 605 logical
+  reads (full PerfRows scan). Derived sql.networkDriver.duration clamps to 0 /
+  conf=low here because the window sums ALL connections (incl. languageService)
+  - refinement candidate: per-connection-suffix breakdown.
+
+### M9 CDP renderer trace (VERIFIED)
+- Shared CdpClient; cdpRendererTrace: --remote-debugging-port, /json discovery
+  (workbench page target on vscode-file://), Tracing over the scenario window
+  (ReportEvents), 10.9MB renderer.trace.json artifact; derived renderer.paint/
+  layout/scripting/gc totals + longestTask (166ms), tagged rendererProcessWindow.
+- ARCHITECTURAL FIX both CDP+XEvents needed: onScenarioEnd hooks are now
+  dispatched AWAITED by the pipeline after the outcome, BEFORE shutdown (the
+  fire-and-forget marker-listener path let teardown kill VS Code mid-flush).
+
+### M10 groundwork
+- ScenarioLoopSpec contract added (iterations/warmup/steps/success/onFailure/
+  settleSteps); soakAnalysis.ts (linearFit w/ CI95+R2, leak verdicts
+  stable|growing|inconclusive w/ reasons, reliability taxonomy, latency drift,
+  marker plumbing) - 12 unit tests incl. the fabrication-risk cases (thin data
+  -> inconclusive; noise -> inconclusive; warmup excluded). 44 tests green.
+
+Next: driver loop engine + disconnect step + soak scenario E2E (10.3), then
+10k-table catalog (10.4), diff (M11).

@@ -139,6 +139,18 @@ export class ControlClient implements vscode.Disposable {
   ): Promise<void> {
     this.send("scenarioStarted", {});
     const errors: string[] = [];
+    // Extension-host memory timeline on the marker plane (counter markers,
+    // ~2 markers/second while a scenario runs; unref'd, best-effort).
+    const memoryTimer = setInterval(() => {
+      try {
+        const usage = process.memoryUsage();
+        this.emitMarker("exthost.memory.rss", "counter", { value: usage.rss });
+        this.emitMarker("exthost.memory.heapUsed", "counter", { value: usage.heapUsed });
+      } catch {
+        // never let telemetry break a scenario
+      }
+    }, 500);
+    (memoryTimer as { unref?: () => void }).unref?.();
     try {
       const result = await runScenario(spec, {
         emitMarker: (name, phase, attrs) => this.emitMarker(name, phase, attrs),
@@ -146,6 +158,7 @@ export class ControlClient implements vscode.Disposable {
         errors,
         log: (m) => this.log(m),
         ...(connectionProfiles ? { connectionProfiles } : {}),
+        applicationName: `mssql-perf/${this.options.runId}/${this.repId}/${this.scenarioId}`,
       });
       if (result.failure) {
         this.send("scenarioFailed", {
@@ -164,6 +177,8 @@ export class ControlClient implements vscode.Disposable {
         reason: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
+    } finally {
+      clearInterval(memoryTimer);
     }
   }
 

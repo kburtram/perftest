@@ -101,7 +101,7 @@ from real markers; PERF_MODE off ⇒ identical behavior.
 - [x] 4.3 `query-10k-results` scenario: webview mark bridge
       (`performance.timeOrigin + performance.now()` → postMessage → extension → sink),
       `mssql.resultsGrid.renderComplete`, success proof rowCount == 10000 else `invalid`.
-- [ ] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
+- [x] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
 - [x] 4.5 Real E2E both scenarios; verify against local SQL (docker or external).
 - [x] 4.6 Docs: `docs/SCENARIO_AUTHORING.md`, `docs/SQL_PROVISIONING.md`. Commit.
 
@@ -191,38 +191,38 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
 
 ### M7 — Resource & memory sampling substrate
 
-- [ ] 7.1 processSampler hardening for measurement approval: persistent sampling worker
+- [x] 7.1 processSampler hardening for measurement approval: persistent sampling worker
       (no per-sample process spawns), per-role CPU+RSS series; keep cost genuinely low.
-- [ ] 7.2 Driver memory counter markers on the official plane: poll process.memoryUsage()
+- [x] 7.2 Driver memory counter markers on the official plane: poll process.memoryUsage()
       (heapUsed/rss) during the measured window → phase:"counter" markers
       (exthost.memory.heapUsed/rss, attrs.value bytes); normalizer emits peak summaries.
 - [ ] 7.3 §12.3 overhead calibration: A/B (sampler on/off) on query-10k; record the
       overhead entry in docs/DIAGNOSTIC_COLLECTORS.md; approve for measurement or don't.
-- [ ] 7.4 Timeline artifacts in run dir + report wiring. Docs + commit.
+- [x] 7.4 Timeline artifacts in run dir + report wiring. Docs + commit.
 
 ### M8 — Rich server-side SQL activity capture (XEvents)
 
-- [ ] 8.1 Correlation seam: per-rep Application Name `mssql-perf/<runId>/<repId>/<scenarioId>`
+- [x] 8.1 Correlation seam: per-rep Application Name `mssql-perf/<runId>/<repId>/<scenarioId>`
       set by the driver's mssqlConnect step from the startScenario context.
-- [ ] 8.2 XEvents session SQL (`sql/xevents/create-perf-session.sql`, `read-perf-session.sql`):
+- [x] 8.2 XEvents session SQL (`sql/xevents/create-perf-session.sql`, `read-perf-session.sql`):
       rpc_completed, sql_batch_completed, sql_statement_completed, module_end (+ showplan at
       diagnostic depth); ring-buffer target; server-side FOR JSON shredding filtered by app name.
-- [ ] 8.3 `sqlServerXEvents` collector: start/stop on scenario window via the provisioner's
+- [x] 8.3 `sqlServerXEvents` collector: start/stop on scenario window via the provisioner's
       connection (CollectorContext gains the SQL handle); write artifacts/sql/sql-activity.jsonl
       (every command, full detail) + rollup; metrics sqlserver.duration/logicalReads (+ derived
       sql.networkDriver.duration w/ derivation+confidence) — all official:false.
-- [ ] 8.4 E2E acceptance: diagnostic connect+query-10k run lists every command with
+- [x] 8.4 E2E acceptance: diagnostic connect+query-10k run lists every command with
       duration/reads/row_count; 10k select shows row_count≈10000; ambiguous correlation ⇒
       warning + confidence, never a guess. Docs (§29 reconciliation) + commit.
 
 ### M9 — CDP renderer / webview tracing
 
-- [ ] 9.1 Diagnostic-only --remote-debugging-port; /json target enumeration; locate renderer
+- [x] 9.1 Diagnostic-only --remote-debugging-port; /json target enumeration; locate renderer
       + results-grid webview target(s); robust degrade-if-not-found (warning, no metric).
-- [ ] 9.2 `cdpRendererTrace` collector: Tracing over the scenario window (devtools.timeline,
+- [x] 9.2 `cdpRendererTrace` collector: Tracing over the scenario window (devtools.timeline,
       blink, cc, gpu, loading, v8) → artifacts/renderer.trace.json (+ optional webview
       cpuprofile).
-- [ ] 9.3 Trace-derived diagnostic metrics (paint/layout/scripting totals, longest task,
+- [x] 9.3 Trace-derived diagnostic metrics (paint/layout/scripting totals, longest task,
       data-receive→paint) correlated to mssql.resultsGrid.renderComplete. E2E on query-10k.
       Docs + commit.
 

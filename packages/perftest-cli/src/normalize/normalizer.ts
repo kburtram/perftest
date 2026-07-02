@@ -230,12 +230,85 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
     });
   }
 
+  // --- Counter-marker summaries (memory timelines etc., design M7) ---------
+  // Counter markers carry a numeric attrs.value; summarize peak + final per
+  // counter name. The full timeline stays in markers.jsonl.
+  const counters = new Map<string, Array<{ value: number; marker: Marker }>>();
+  for (const m of inputs.markers) {
+    if (m.phase === "counter" && typeof m.attrs?.["value"] === "number") {
+      const list = counters.get(m.name) ?? [];
+      list.push({ value: m.attrs["value"], marker: m });
+      counters.set(m.name, list);
+    }
+  }
+  for (const [name, series] of counters) {
+    const peak = Math.max(...series.map((s) => s.value));
+    const final = series[series.length - 1]!.value;
+    const isBytes = /memory|rss|heap/i.test(name);
+    const scale = isBytes ? 1 / (1024 * 1024) : 1;
+    const unit = isBytes ? "MB" : "count";
+    const role = series[0]!.marker.process.role;
+    metrics.push({
+      name: `${name}.peak`,
+      value: Number((peak * scale).toFixed(1)),
+      unit,
+      component: "process",
+      processRole: role,
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      tags: { samples: series.length },
+    });
+    metrics.push({
+      name: `${name}.final`,
+      value: Number((final * scale).toFixed(1)),
+      unit,
+      component: "process",
+      processRole: role,
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      tags: { samples: series.length },
+    });
+  }
+
   // Collector metrics: structurally incapable of being official (§12.2).
   for (const metric of inputs.extraMetrics ?? []) {
     metrics.push({ ...metric, official: false });
   }
   for (const validation of inputs.extraValidations ?? []) {
     validations.push(validation);
+  }
+
+  // --- Derived network/driver time (design §19.3) ---------------------------
+  // Requires BOTH a client-side query span (product markers) and the
+  // server-side XEvents total. Confidence is LOW until STS SqlClient timing
+  // exists: the client span includes RPC transit, STS handling, and driver
+  // work — the derivation says so instead of pretending precision.
+  const clientQuery = metrics.find((m) => m.name === "mssql.query.toComplete");
+  const serverDuration = metrics.find((m) => m.name === "sqlserver.duration");
+  if (clientQuery && serverDuration && serverDuration.value >= 0) {
+    metrics.push({
+      name: "sql.networkDriver.duration",
+      value: Number(Math.max(0, clientQuery.value - serverDuration.value).toFixed(3)),
+      unit: "ms",
+      component: "driver",
+      processRole: "boundary",
+      source: "derived",
+      official: false,
+      lowerIsBetter: true,
+      confidence: "low",
+      derivation: {
+        formula: "max(0, mssql.query.toComplete - sqlserver.duration)",
+        inputs: ["mssql.query.toComplete", "sqlserver.duration"],
+        confidence: "low",
+        limitations: [
+          "client span includes JSON-RPC transit, STS handling, and driver work (no STS SqlClient timing yet)",
+          "multiple statements in the window are summed on the server side",
+          "async row streaming can overlap server and client time",
+        ],
+      },
+    });
   }
 
   const result: PerfResult = {

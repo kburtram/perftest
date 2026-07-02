@@ -359,3 +359,68 @@ function execDocker(
 function redact(text: string): string {
   return text.replace(/(-P\s+\S+|password\s*=\s*[^;\s]+|pwd\s*=\s*[^;\s]+)/gi, "<redacted>");
 }
+
+// ---------------------------------------------------------------------------
+// Ad-hoc SQL execution seam (collectors: XEvents session control + reads).
+// ---------------------------------------------------------------------------
+
+export type SqlExecutor = (sql: string, label: string) => Promise<string>;
+
+/**
+ * Build a SQL executor for the configured provider, or undefined when SQL is
+ * not configured. Single-batch SQL only (no GO); passed as one argv element
+ * (execFile, no shell) so no quoting pitfalls; secrets never on argv (host
+ * path uses SQLCMDPASSWORD; container path stays inside the container).
+ */
+export function createSqlExecutor(
+  config: PerfConfig,
+  logger: HarnessLogger,
+): SqlExecutor | undefined {
+  if (config.sql.provider === "external") {
+    const envName = (config.sql["connectionStringEnv"] as string) ?? "STS2_SQLSERVER_CONNSTRING";
+    const connectionString = process.env[envName];
+    if (!connectionString) {
+      return undefined;
+    }
+    const parsed = parseSqlConnectionString(connectionString);
+    const { args, env } = buildHostSqlcmd(parsed);
+    return async (sql, label) =>
+      new Promise<string>((resolvePromise, reject) => {
+        execFile(
+          "sqlcmd",
+          // -y 0 (unlimited variable-width) is incompatible with -h -1 in ODBC
+          // sqlcmd; header lines are harmless to the JSON reader. -I turns on
+          // QUOTED_IDENTIFIER, required by the XML methods in XEvents reads.
+          [...args, "-I", "-y", "0", "-Q", sql],
+          { env: { ...process.env, ...env }, timeout: 120_000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new SqlProvisionError(`sqlcmd failed (${label}): ${redact(stderr || stdout || String(error))}`));
+            } else {
+              logger.trace("sql.exec", label);
+              resolvePromise(stdout);
+            }
+          },
+        );
+      });
+  }
+  if (config.sql.provider === "dockerCompose" && config.sql.composeFile) {
+    const composeFile = resolve(config.sql.composeFile);
+    const service = config.sql.service ?? "sqlserver";
+    const saPassword = process.env["PERF_SQL_SA_PASSWORD"] ?? "PerfH@rness2026!";
+    return async (sql, label) => {
+      logger.trace("sql.exec", label);
+      return execDocker(
+        [
+          "compose", "-f", composeFile, "exec", "-T", service,
+          "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", saPassword,
+          "-C", "-b", "-I", "-y", "0", "-Q", sql,
+        ],
+        { PERF_SQL_SA_PASSWORD: saPassword },
+        logger,
+        120_000,
+      );
+    };
+  }
+  return undefined;
+}

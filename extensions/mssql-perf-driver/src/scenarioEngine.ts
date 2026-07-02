@@ -81,6 +81,8 @@ export interface EngineContext {
   errors: string[];
   log(message: string): void;
   connectionProfiles?: Record<string, ConnectionProfileSpec>;
+  /** SQL Application Name for this rep — the XEvents correlation key (M8). */
+  applicationName?: string;
 }
 
 const DEFAULT_STEP_TIMEOUT_MS = 30000;
@@ -322,7 +324,9 @@ async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext):
     tenantId: undefined,
     connectTimeout: 30,
     commandTimeout: 30,
-    applicationName: "vscode-mssql-perf",
+    // Correlation key for server-side XEvents capture (M8): exact-matched by
+    // the harness, so it must be byte-identical to the orchestrator's format.
+    applicationName: ctx.applicationName ?? "vscode-mssql-perf",
   };
   ctx.log(`connecting ${uri.slice(0, 80)} to ${profile.server}`);
   const ok = await controller.connectionManager.connect(uri, credentials, {

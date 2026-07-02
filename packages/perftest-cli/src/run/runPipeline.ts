@@ -21,10 +21,12 @@ import {
   type PassType,
   type ScenarioSpec,
 } from "@mssqlperf/contracts";
-import { provisionSql } from "../sql/sqlProvisioner";
+import { provisionSql, createSqlExecutor, type SqlExecutor } from "../sql/sqlProvisioner";
+import { SqlServerXEventsCollector } from "../collectors/sqlServerXEvents";
 import { ProcessSamplerCollector } from "../collectors/processSampler";
 import { StsEnvelopeJournalCollector } from "../collectors/stsEnvelopeJournal";
 import { CdpExtHostProfileCollector } from "../collectors/cdpExtHostProfile";
+import { CdpRendererTraceCollector } from "../collectors/cdpRendererTrace";
 import { DotnetTraceCollector } from "../collectors/dotnetTrace";
 import { WprEtwCollector } from "../collectors/wprEtw";
 import type { Collector, CollectorContext, PerfProcess, ProcessRegistry } from "../collectors/types";
@@ -216,6 +218,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
       validation: provisioned.validation,
     });
   }
+  const sqlExec = needsSql ? createSqlExecutor(config, logger.child("sqlExec")) : undefined;
 
   // --- Execute ----------------------------------------------------------------
   const allResults: PerfResult[] = [];
@@ -243,6 +246,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
         git,
         config,
         ...(sqlProfiles ? { sqlProfiles } : {}),
+        ...(sqlExec ? { sqlExec } : {}),
         logger: logger.child("rep"),
       });
       allResults.push(repResult.result);
@@ -353,8 +357,18 @@ function createCollectors(
   if (config.diagnostics["stsEnvelopeJournal"] === true) {
     collectors.push(new StsEnvelopeJournalCollector());
   }
+  if (config.diagnostics.sqlServerXEvents === true) {
+    collectors.push(
+      new SqlServerXEventsCollector({
+        captureSqlText: config.diagnostics["captureSqlText"] === true,
+      }),
+    );
+  }
   if (config.diagnostics.cdp?.extHostProfile === true) {
     collectors.push(new CdpExtHostProfileCollector());
+  }
+  if (config.diagnostics.cdp?.rendererTrace === true) {
+    collectors.push(new CdpRendererTraceCollector());
   }
   if (config.diagnostics.dotnetTrace === true) {
     collectors.push(new DotnetTraceCollector());
@@ -400,6 +414,7 @@ interface RepExecutionInputs {
   git: GitRepoInfo[];
   config: LoadedConfig["config"];
   sqlProfiles?: Record<string, ConnectionProfileSpec>;
+  sqlExec?: SqlExecutor;
   logger: HarnessLogger;
 }
 
@@ -459,6 +474,7 @@ async function executeRep(
     repDir,
     artifactsDir,
     logger: logger.child("collectors"),
+    ...(inputs.sqlExec ? { sqlExec: inputs.sqlExec } : {}),
   };
   // STS self-reports its pid through the product marker; register on arrival.
   // Scenario-window collectors (CDP profiler, WPR) key off the scenario
@@ -484,13 +500,10 @@ async function executeRep(
           collector.onScenarioStart?.(collectorCtx, marker),
         );
       }
-    } else if (marker.name === "scenario.end") {
-      for (const collector of collectors) {
-        void collectorHook(collectorCtx.logger, collector, "onScenarioEnd", () =>
-          collector.onScenarioEnd?.(collectorCtx, marker),
-        );
-      }
     }
+    // scenario.end hooks are dispatched AWAITED by the pipeline after the
+    // outcome arrives (before shutdown) — slow stops (renderer trace flush,
+    // XEvents reads) must complete before VS Code is torn down.
   });
 
   // Collector validation + launch-spec amendment (§14.2 validate/preLaunch).
@@ -576,6 +589,18 @@ async function executeRep(
     server.startScenario(spec, traceId, rootTraceparent, artifactsDir, inputs.sqlProfiles);
     const outcomeTimeout = spec.measure.timeoutMs + 30_000;
     outcome = await Promise.race([server.waitForScenarioOutcome(outcomeTimeout), exitEarly]);
+
+    // Scenario-window collectors stop here, AWAITED, while VS Code and the
+    // SQL session are still alive (trace flush, ring-buffer read).
+    const endMarker =
+      sink.first("scenario.end") ?? sink.first("scenario.start") ?? undefined;
+    if (endMarker) {
+      for (const collector of collectors) {
+        await collectorHook(collectorCtx.logger, collector, "onScenarioEnd", () =>
+          collector.onScenarioEnd?.(collectorCtx, endMarker),
+        );
+      }
+    }
   } catch (error) {
     infrastructureError = error instanceof Error ? error.message : String(error);
     // A scenario timeout is a scenario problem; anything before the
@@ -614,6 +639,13 @@ async function executeRep(
       collector.normalize?.(collectorCtx),
     )) as import("@mssqlperf/contracts").Metric[] | undefined;
     if (metrics) collectorMetrics.push(...metrics.filter((m) => !m.official));
+    for (const check of collector.postRunValidations?.() ?? []) {
+      collectorValidations.push({
+        name: `collector:${collector.name}:${check.name}`,
+        status: check.status,
+        ...(check.message ? { message: check.message } : {}),
+      });
+    }
     await collectorHook(collectorCtx.logger, collector, "teardown", () =>
       collector.teardown?.(collectorCtx),
     );

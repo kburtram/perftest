@@ -13,7 +13,7 @@
   "passType": "diagnostic",
   "repetitions": 1,
   "warmupRepetitions": 0,
-  "scenarios": ["query-10k-results"],
+  "scenarios": ["connect-local-container", "query-10k-results"],
   "vscode": {
     "version": "stable",
     "quality": "stable",
@@ -51,7 +51,9 @@
     "markers": true,
     "processSampler": true,
     "stsEnvelopeJournal": true,
-    "cdp": { "extHostProfile": true, "rendererTrace": false, "rendererProfile": false },
+    "sqlServerXEvents": true,
+    "captureSqlText": true,
+    "cdp": { "extHostProfile": true, "rendererTrace": true, "rendererProfile": false },
     "dotnetTrace": true,
     "wprEtw": true,
     "otel": "off"
