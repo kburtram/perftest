@@ -370,3 +370,18 @@ Then: M3 (STS diag on sts2 seams), M4-rest (XEvents), M5 (diag collectors).
 
 - 3.5 dotnet-counters; 5.2-renderer CDP trace; M4-rest (XEvents server timing,
   expand-tables-node scenario); docker smoke result to record.
+
+---
+
+## 2026-07-01 - Entry 7: Docker provisioning VERIFIED + redaction fix
+
+- dockerCompose provider smoke test PASSED: digest-pinned SQL Server 2022 image
+  (sha256:e07b9699a2b7...) up with healthcheck in ~60s, seed applied via
+  in-container sqlcmd, COUNT(*)=10000 verified, connection profile emitted
+  (127.0.0.1,14333). Container torn down after test (harness default is reuse).
+- Redaction bug found via the smoke logs and FIXED: docker exec debug logging
+  filtered the -P flag but printed the following password value; now both the
+  flag and its value are redacted.
+- CORE LOCAL BOX + FULL DIAG: definition-of-done items all verified except the
+  deliberately-open items (XEvents/expand-tables-node = M4-rest, dotnet-counters,
+  renderer CDP trace). See IMPLEMENTATION_PLAN.md checkboxes.

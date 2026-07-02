@@ -336,7 +336,9 @@ function execDocker(
   logger: HarnessLogger,
   timeoutMs: number,
 ): Promise<string> {
-  logger.debug("sql.docker", args.filter((a) => !a.includes("-P")).join(" ").slice(0, 200));
+  // Redact the value FOLLOWING -P as well as the flag itself.
+  const redacted = args.map((a, i) => (a === "-P" || args[i - 1] === "-P" ? "<redacted>" : a));
+  logger.debug("sql.docker", redacted.join(" ").slice(0, 200));
   return new Promise((resolvePromise, reject) => {
     execFile(
       "docker",
