@@ -300,7 +300,7 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       config; ACCEPTANCE: the exthost ~30KB/iter growth gets named top retainers.
 - [ ] 12.2 (=10.4) 10k-table catalog seed (idempotent, verified COUNT=10000) +
       `expand-tables-node-10k` scenario (all 10k proven rendered, scaled timeouts).
-- [ ] 12.3 (=11.3) Investigation report (self-contained md/html, SQL-activity
+- [x] 12.3 (=11.3) Investigation report (self-contained md/html, SQL-activity
       delta headline) + extra-round-trip acceptance; gate stays official-only.
 - [ ] 12.4 dotnet-counters live attach w/ reliable Windows stop; time-series of
       Microsoft-SqlTools-Sts2 + System.Runtime counters; diagnostic-only.

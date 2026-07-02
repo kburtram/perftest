@@ -155,6 +155,14 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
       if (syntheticDelayMs > 0) {
         await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, syntheticDelayMs));
       }
+      // Gate-proof hook (12.3 acceptance): PERF_EXTRA_RUNQUERY=1 issues one
+      // additional real query in the measured window — a genuine extra SQL
+      // round-trip the investigation diff must surface. Recorded on markers.
+      if (process.env["PERF_EXTRA_RUNQUERY"] === "1") {
+        const extraStartNs = (BigInt(Date.now()) * 1000000n).toString();
+        await vscode.commands.executeCommand("mssql.runQuery");
+        await ctx.bus.wait("mssql.query.complete", undefined, 60000, extraStartNs);
+      }
       if (spec.measure.end.type === "waitForMarker" && spec.measure.end.name) {
         // Freshness guard: only a marker emitted at/after scenario.start can
         // end the measured interval — stale markers from startup can't.
@@ -168,6 +176,7 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
           scenarioId: spec.scenarioId,
           endBasis: spec.measure.end.name,
           ...(syntheticDelayMs > 0 ? { syntheticDelayMs } : {}),
+          ...(process.env["PERF_EXTRA_RUNQUERY"] === "1" ? { extraRunQuery: true } : {}),
         });
       } else {
         ctx.emitMarker("scenario.end", "instant", {

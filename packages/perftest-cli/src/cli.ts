@@ -471,6 +471,11 @@ program
             JSON.stringify({ gate: comparison ?? null, investigation }, null, 2),
             "utf8",
           );
+          const { renderInvestigationHtml } = require("./report/investigationReport") as
+            typeof import("./report/investigationReport");
+          const htmlPath = join(candidateRun.outputDir, "investigation.html");
+          writeFileSync(htmlPath, renderInvestigationHtml(comparison, investigation), "utf8");
+          process.stdout.write(`Investigation report: ${htmlPath}\n`);
         }
         exit(
           comparison?.status === "regressed" ? ExitCode.regression : ExitCode.ok,

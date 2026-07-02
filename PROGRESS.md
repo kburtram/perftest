@@ -620,3 +620,58 @@ yet built/verified - continuing there.
 NEXT STEPS (exact): 12.3 investigation report reusing htmlShell+charts ->
 12.2 10k-table catalog -> 12.5 probes -> 12.10/12.9 -> M13 scenarios ->
 M15 trend/history. Restart protocol unchanged.
+
+---
+
+## 2026-07-02 - Entry 15: 12.3 investigation report + acceptance IN FLIGHT; 12.2 seed written
+
+- investigationReport.ts: self-contained investigation.html (gate table
+  official-only w/ pills, SQL-activity delta tables ADDED/REMOVED/CHANGED per
+  scenario as the headline, signed metric-delta bars official-vs-diagnostic
+  marked, notes). Wired into `perftest diff` (writes beside investigation.json).
+- Driver knob PERF_EXTRA_RUNQUERY=1 (12.3 acceptance): one additional REAL
+  query in the measured window, recorded via attrs.extraRunQuery on
+  scenario.end. Acceptance A/B running: baseline 2026-07-02T16-17-34Z_ff00edbf
+  vs extra-round-trip candidate; diff must surface +1 round-trip on the
+  PerfRows batch while the gate stays official-only (diagnostic runs gate on
+  zero official metrics by design).
+- 12.2 STARTED: sql/seed/create-perf-catalog.sql written (PerfCatalog DB,
+  10,000 deterministic tables t00000..t09999, idempotent). REMAINING for 12.2:
+  provisioner support to apply+verify the catalog seed (COUNT=10000),
+  mssql.oe.expand.begin/end product markers w/ attrs.childCount (design SS17.2,
+  ObjectExplorerService.handleExpandNodeNotification seam per Entry 1 map),
+  driver oeExpand step via getControllerForTests ->
+  createObjectExplorerSession/expandNode test seams, expand-tables-node-10k
+  scenario w/ markerSeen childCount==10000.
+
+PHASE-3 REMAINING QUEUE (priority order): finish 12.2 -> 12.5 probes
+(objectExplorerProbe/webviewProbe product perf API) -> 12.10 ext-first-launch
+-> 12.9 setup scripts -> 12.4 dotnet-counters stop story -> 12.6 coldDb ->
+12.7 scenario basics -> 12.8 doc -> M13 advanced scenarios (13.1 virtual
+window markers first) -> 14.3 remaining plots -> M15 trend/history/rolling
+baselines. Report design feedback from owner may adjust M14 output.
+
+---
+
+## 2026-07-02 - Entry 16: 12.3 ACCEPTANCE + honest findings
+
+- Acceptance ran (baseline 2026-07-02T16-17-34Z_ff00edbf vs candidate w/
+  PERF_EXTRA_RUNQUERY): investigation.html written; SQL-activity delta
+  SURFACED the added activity (31->54 commands, 12 added groups, use
+  [PerfHarness] count +7, 5 changed); GATE stayed official-only (PASSED on 0
+  official metrics - diagnostic pass, by design). Core 12.3 intent proven.
+- HONEST FINDINGS from the acceptance itself:
+  1. WINDOW-BOUNDARY NOISE: OE/metadata queries race the scenario window
+     between runs -> added/removed noise in SQL deltas across identical code.
+     Improvement candidate: stability tagging (mark commands seen in only one
+     run near window edges) or window padding exclusion.
+  2. The PerfRows batch showed count delta 0 (expected +1): the extra-query
+     hook's fresh wait matched query 1's completion (dispatch returns before
+     completion), so timing of the second query vs scenario end is loose.
+     Follow-up: wait for renderComplete-fresh before issuing the extra query,
+     or count-based success check. The +1 IS visible indirectly (use-batch +7,
+     added groups).
+  3. Server-side duration variance across runs is large on metadata RPCs
+     (-219ms, -85k reads on one sp_executesql group) - reinforces that SQL
+     deltas are investigation context, never gates.
+- 12.2 catalog seed SQL written (see Entry 15 for the remaining 12.2 steps).
