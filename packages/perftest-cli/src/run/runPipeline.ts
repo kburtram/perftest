@@ -47,6 +47,7 @@ import { extractIterations } from "../regression/soakAnalysis";
 import { normalizeRep } from "../normalize/normalizer";
 import { renderMarkdownReport } from "../report/markdownReport";
 import { renderHtmlReport } from "../report/htmlReport";
+import { writeRunIndex } from "../report/runIndex";
 import { PerfStore } from "../store/sqliteStore";
 import { getScenario } from "../scenarios/registry";
 import { ExitCode, type ExitCodeValue } from "../exitCodes";
@@ -319,6 +320,8 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     }),
     "utf8",
   );
+
+  writeRunIndex(runDir, logger.child("report"));
 
   const exitCode: ExitCodeValue = infrastructureBroken
     ? ExitCode.infrastructureFailure

@@ -331,9 +331,9 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
 
 ### M14 — Analysis & viewer (waterfall + plots + standalone index.html)
 
-- [ ] 14.1 Reusable timeline/plot renderer module (inline SVG, deterministic,
+- [x] 14.1 Reusable timeline/plot renderer module (inline SVG, deterministic,
       self-contained; factored for Phase-4 in-product reuse).
-- [ ] 14.2 Cross-process waterfall per rep: markers + sts2 rpc spans + SQL
+- [x] 14.2 Cross-process waterfall per rep: markers + sts2 rpc spans + SQL
       commands + CDP phases on one epoch-aligned axis w/ per-process calibration
       offsets; official-monotonic vs epoch-aligned visually distinguished;
       jitter surfaced; hover detail.

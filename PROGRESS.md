@@ -587,3 +587,36 @@ yet built/verified - continuing there.
   w/ CI band+R2+n/horizontal bars/cross-process waterfall with
   monotonic-vs-epoch plane distinction + calibration jitter in the legend;
   benchmark.html design tokens). Not yet built/wired.
+
+---
+
+## 2026-07-02 - Entry 14: M14 core landed (charts module + waterfall + standalone index.html)
+
+- charts.ts (14.1 DONE): deterministic inline-SVG renderers, zero deps,
+  benchmark.html design tokens - histogram (n-labeled, small-sample flagged),
+  trendChart (scatter + OLS fit line + CI BAND + R2/n annotation + optional
+  baseline band + step-change markers), horizontalBars (top-N / signed A-B
+  deltas), waterfall (lanes per process, solid=official-monotonic vs
+  dashed=epoch-aligned, calibration jitter in legend, native <title> hover).
+  Factored for Phase-4 reuse.
+- htmlShell.ts: shared page shell + kpiRow/pill/section/chartCard/dataTable
+  components matching the owner design system (CSS vars, .panel/.kpi/pills/
+  collapsible sections).
+- runIndex.ts (14.2 core + 14.4 core): loads summary/environment/rep results/
+  markers/sql-activity/soak-iterations/comparison; builds the cross-process
+  waterfall per scenario (generic begin/end pairing + irregular pairs +
+  iteration bars capped at 30 + webview renderComplete ticks + SQL commands on
+  a "SQL Server (server clock)" lane - server clock domain LABELED);
+  per-scenario wallclock histogram, soak latency + RSS trends w/ fit + verdict
+  caption, SQL top-N bars; rep table + validation notes + environment +
+  artifact index. Wired into run pipeline + `perftest report`.
+- VERIFIED: index.html regenerated for the attribution-soak run (51.7KB,
+  3 SVGs, 4 sections) and the fulldiag run (waterfall + SQL top-N). Sample
+  sent to owner for design feedback.
+- REMAINING in M14: 14.3 A/B delta bars into the diff/investigation report
+  (12.3 shares this), waterfall hover-detail JS enrichment if owner wants
+  more than native tooltips, wallclock histogram needs >=3 reps (by design).
+
+NEXT STEPS (exact): 12.3 investigation report reusing htmlShell+charts ->
+12.2 10k-table catalog -> 12.5 probes -> 12.10/12.9 -> M13 scenarios ->
+M15 trend/history. Restart protocol unchanged.

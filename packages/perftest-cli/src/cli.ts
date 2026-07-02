@@ -356,10 +356,12 @@ program
     );
     const htmlPath = join(run.outputDir, "report.html");
     writeFileSync(htmlPath, renderHtmlReport(common), "utf8");
-    process.stdout.write(`Report rendered: ${htmlPath}\n`);
+    const { writeRunIndex } = await import("./report/runIndex");
+    const indexPath = writeRunIndex(run.outputDir, logger.child("report"));
+    process.stdout.write(`Report rendered: ${indexPath ?? htmlPath}\n`);
     if (opts.open) {
       const { exec } = await import("node:child_process");
-      exec(`start "" "${htmlPath}"`, { windowsHide: true });
+      exec(`start "" "${indexPath ?? htmlPath}"`, { windowsHide: true });
     }
     exit(ExitCode.ok);
   });
