@@ -537,3 +537,28 @@ catalog + expand-tables-node-10k), 10.5 (heap-snapshot/gcdump leak
 root-cause - NEXT: attribute the 30KB/cycle finding), 11.3 (investigation
 report md/html + extra-round-trip acceptance), 3.5 dotnet-counters, scenario
 variety V.1/V.2. Restart protocol unchanged.
+
+---
+
+## 2026-07-02 - Entry 12: PHASE 3 BEGINS (finish & sharpen) + M12.0 gap audit
+
+Phase 3 prompt merged as M12-M15. Owner set the REPORT QUALITY BAR: match
+cloud-deploy-agent benchmark.html (self-contained HTML, CSS-var design system,
+.kpi tiles, ok/warn/fail pills, collapsible sections, ~29 inline-SVG charts,
+no external fetches; see memory perftest-phase3-4-vision). Phase 4 (in-product
+analysis UI, "completions debug to the moon", PDF example in repo root) comes
+AFTER phase 3; owner will supply mockups then. M14 renderers must be factored
+for Phase-4 reuse.
+
+M12.0 GAP AUDIT vs design SS32/SS34 complete:
+- Genuinely missing from original scope: SS28 setup scripts (-> 12.9),
+  ext-first-launch scenario (-> 12.10).
+- Blocked-with-reason: SS34.7 trace-context ext->STS (sts2 has no W3C
+  traceparent by design; legacy path journals lifecycle only; documented).
+- Stale boxes consolidated: 4.7 was DELIVERED by M8; 4.8->12.2; 4.9->12.8;
+  3.5->12.4; V.1/V.2->12.7/13.6.
+- Everything else in SS34 verified during Phases 1-2 (see prior entries).
+
+In-flight from the interrupted M10.5 start (now 12.1): cdpHeapSnapshot.ts +
+gcDump.ts + config.soakdiag.local.jsonc + pipeline wiring are WRITTEN but not
+yet built/verified - continuing there.

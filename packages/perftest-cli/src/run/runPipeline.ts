@@ -27,6 +27,8 @@ import { ProcessSamplerCollector } from "../collectors/processSampler";
 import { StsEnvelopeJournalCollector } from "../collectors/stsEnvelopeJournal";
 import { CdpExtHostProfileCollector } from "../collectors/cdpExtHostProfile";
 import { CdpRendererTraceCollector } from "../collectors/cdpRendererTrace";
+import { CdpHeapSnapshotCollector } from "../collectors/cdpHeapSnapshot";
+import { GcDumpCollector } from "../collectors/gcDump";
 import { DotnetTraceCollector } from "../collectors/dotnetTrace";
 import { WprEtwCollector } from "../collectors/wprEtw";
 import type { Collector, CollectorContext, PerfProcess, ProcessRegistry } from "../collectors/types";
@@ -376,6 +378,12 @@ function createCollectors(
   }
   if (config.diagnostics.wprEtw === true) {
     collectors.push(new WprEtwCollector());
+  }
+  if (config.diagnostics["heapSnapshots"] === true) {
+    collectors.push(new CdpHeapSnapshotCollector());
+  }
+  if (config.diagnostics["gcDump"] === true) {
+    collectors.push(new GcDumpCollector());
   }
   return collectors.filter(
     (c) =>
