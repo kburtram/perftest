@@ -23,6 +23,8 @@ the milestone that ships the feature it covers.
 | REPORTS.md | Console/Markdown/HTML reports | M6′ |
 | STS_INSTRUMENTATION.md | STS diagnostics built on the sts2 envelope/journal seams | M3 |
 | DIAGNOSTIC_COLLECTORS.md | CDP, dotnet-counters/trace, WPR/ETW, XEvents collectors | M5 |
+| [SOAK_AND_STRESS.md](SOAK_AND_STRESS.md) | Loop scenarios, leak/reliability analysis, verdict honesty | M10 |
+| [INVESTIGATION_DIFF.md](INVESTIGATION_DIFF.md) | A/B what-changed diffs (SQL activity, cross-signal metrics) | M11 |
 
 ## System in one paragraph
 
