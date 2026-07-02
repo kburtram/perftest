@@ -7,18 +7,21 @@
  */
 
 import { Command } from "commander";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-import { validateContract, type ContractName } from "@mssqlperf/contracts";
+import { validateContract, type ContractName, type PassType } from "@mssqlperf/contracts";
 import { ExitCode } from "./exitCodes";
-import { createRootLogger } from "./telemetry/logger";
+import { createRootLogger, JsonlFileSink } from "./telemetry/logger";
 import { loadConfig, ConfigError, parseJsoncStrict } from "./config/loadConfig";
 import { runDoctor, formatDoctorReport } from "./doctor/doctor";
 import { PerfStore } from "./store/sqliteStore";
 import { listScenarios } from "./scenarios/registry";
 import { listCollectors, PLANNED_COLLECTORS } from "./collectors/registry";
+import { executeRun, RunConfigError } from "./run/runPipeline";
 
-const { logger } = createRootLogger();
+const { logger, sink } = createRootLogger();
+const HARNESS_ROOT = resolve(__dirname, "..", "..", "..");
 
 function exit(code: number): never {
   process.exit(code);
@@ -201,18 +204,18 @@ program
 // ---------------------------------------------------------------------------
 program
   .command("run")
-  .description("Execute a perf run (Milestone 1+)")
+  .description("Execute a perf run")
   .requiredOption("--config <path>", "perf config file (jsonc)")
   .option("--scenario <id>", "run a single scenario")
-  .option("--pass <type>", "override pass type: measurement | diagnostic")
-  .action((opts: { config: string }) => {
-    // Config validation is real already; the execution pipeline is not.
+  .option("--pass <type>", "override pass type: measurement | diagnostic | calibration")
+  .action(async (opts: { config: string; scenario?: string; pass?: string }) => {
+    if (opts.pass && !["measurement", "diagnostic", "calibration"].includes(opts.pass)) {
+      process.stderr.write(`Invalid --pass '${opts.pass}'\n`);
+      exit(ExitCode.configInvalid);
+    }
+    let loaded;
     try {
-      const loaded = loadConfig(opts.config);
-      logger.info("run.configValidated", undefined, {
-        runId: loaded.runId,
-        configHash: loaded.configHash,
-      });
+      loaded = loadConfig(opts.config);
     } catch (error) {
       if (error instanceof ConfigError) {
         process.stderr.write(`${error.message}\n`);
@@ -221,7 +224,46 @@ program
       }
       throw error;
     }
-    notImplemented("run", "Milestone 1");
+
+    // From here on, every harness event also lands in the run's JSONL log.
+    const runDir = resolve(loaded.config.output.dir, loaded.runId);
+    mkdirSync(runDir, { recursive: true });
+    sink.add(new JsonlFileSink(join(runDir, "harness-log.jsonl")));
+    logger.info("run.starting", undefined, {
+      runId: loaded.runId,
+      configHash: loaded.configHash,
+      configPath: loaded.configPath,
+    });
+
+    try {
+      const summary = await executeRun({
+        loaded,
+        ...(opts.scenario !== undefined ? { scenarioFilter: opts.scenario } : {}),
+        ...(opts.pass !== undefined ? { passOverride: opts.pass as PassType } : {}),
+        logger: logger.child("run"),
+        harnessRoot: HARNESS_ROOT,
+      });
+      process.stdout.write(`\nRun: ${summary.runId}\n`);
+      for (const result of summary.results) {
+        const wallclock = result.metrics.find((m) => m.name === "scenario.wallclock");
+        process.stdout.write(
+          `  ${result.scenarioId} rep ${result.repId}: ${result.status}` +
+            (wallclock
+              ? ` scenario.wallclock=${wallclock.value.toFixed(1)}ms (official=${wallclock.official})`
+              : " (no wallclock)") +
+            "\n",
+        );
+      }
+      process.stdout.write(`Report: ${join(summary.runDir, "report.md")}\n`);
+      exit(summary.exitCode);
+    } catch (error) {
+      if (error instanceof RunConfigError) {
+        process.stderr.write(`${error.message}\n`);
+        exit(ExitCode.configInvalid);
+      }
+      logger.error("run.failed", error instanceof Error ? (error.stack ?? error.message) : String(error));
+      exit(ExitCode.infrastructureFailure);
+    }
   });
 
 program

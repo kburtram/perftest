@@ -24,7 +24,7 @@ function register(scenario: RegisteredScenario): void {
 // loop: control round-trip + marker plumbing, no product interaction.
 // ---------------------------------------------------------------------------
 register({
-  implemented: false, // flipped in Milestone 1 when the driver exists
+  implemented: true, // M1: driver + noop scenario landed
   plannedMilestone: "M1",
   spec: {
     scenarioId: "noop",

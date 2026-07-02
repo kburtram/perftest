@@ -55,22 +55,22 @@
 
 ## Milestone 1 — Smallest end-to-end loop (seed crystal)
 
-- [ ] 1.1 Control server: `ws` on 127.0.0.1, random token auth, §9.1 message types,
+- [x] 1.1 Control server: `ws` on 127.0.0.1, random token auth, §9.1 message types,
       lifecycle state machine, clock calibration ping/pong (§11.3), marker ingestion.
-- [ ] 1.2 Marker sink: append-only `markers.jsonl` writer + schema validation + required
+- [x] 1.2 Marker sink: append-only `markers.jsonl` writer + schema validation + required
       marker bookkeeping (`scenario.start`/`scenario.end`).
-- [ ] 1.3 VS Code launcher: `@vscode/test-electron` acquire pinned build; direct spawn with
+- [x] 1.3 VS Code launcher: `@vscode/test-electron` acquire pinned build; direct spawn with
       fresh `--user-data-dir`/`--extensions-dir`, §13.1 base args, env from §9; graceful
       shutdown + kill escalation; stdout/stderr capture.
-- [ ] 1.4 `mssql-perf-driver` extension: activates only when `PERF_MODE=1`, connects to
+- [x] 1.4 `mssql-perf-driver` extension: activates only when `PERF_MODE=1`, connects to
       control URL, `hello`→calibration→`ready`, scenario step engine (command, openDocument,
       waitForMarker, waitForCommandCompletion), `noop` scenario emitting
       `scenario.start`/`scenario.end`.
-- [ ] 1.5 Rep pipeline: run dir layout (§22), normalizer (markers → official
+- [x] 1.5 Rep pipeline: run dir layout (§22), normalizer (markers → official
       `scenario.wallclock` + result.json §20), SQLite insertion (§23), minimal Markdown report.
-- [ ] 1.6 Real E2E verification: `perftest run --scenario noop` on this machine, VS Code
+- [x] 1.6 Real E2E verification: `perftest run --scenario noop` on this machine, VS Code
       launched unforked and shut down cleanly; inspect real markers.jsonl/result.json.
-- [ ] 1.7 Docs: `docs/ARCHITECTURE.md` (control plane + lifecycle diagrams),
+- [x] 1.7 Docs: `docs/ARCHITECTURE.md` (control plane + lifecycle diagrams),
       `docs/RUNNING_TESTS.md`. Commit.
 
 **Acceptance:** schema-valid `result.json` with official `scenario.wallclock` from real

@@ -141,3 +141,48 @@ Built and verified:
 
 Next: Milestone 1 (smallest E2E loop) - control server, marker sink, VS Code launcher,
 mssql-perf-driver extension, noop scenario, normalizer, SQLite insert, minimal report.
+
+---
+
+## 2026-07-01 - Entry 3: Milestone 1 COMPLETE (smallest E2E loop works)
+
+The seed crystal is alive. `perftest run --config examples/config.noop.local.jsonc`:
+VS Code 1.127.0 downloaded via @vscode/test-electron (cached in .vscode-test/),
+spawned UNFORKED with fresh dirs + PERF_* env; mssql-perf-driver (zero-dep, global
+WebSocket) connected + authenticated; clock calibration (offset ~-0.5ms, RTT ~1ms,
+min-of-5); noop scenario executed; scenario.start/end markers -> official
+scenario.wallclock ~0.45ms from SAME-PROCESS MONOTONIC diff; clean quit exit 0
+(no force-kill); result.json schema-valid; SQLite rows (official_metric_samples
+returns exactly the 2 official samples); report.md rendered. Exit code 0.
+Second run (warm cache): whole 2-rep run in 9s.
+
+Components built:
+- controlServer.ts: ws /control + http POST /v1/markers (Bearer token), SS9.1
+  message types, calibration, marker relay to driver for non-driver senders.
+- markerSink.ts: validated append-only markers.jsonl + waitForMarker + required
+  marker bookkeeping.
+- resolveVscode/spawnVscode: SS13.1 args, --extensionDevelopmentPath loading,
+  stdout/stderr capture, graceful shutdown + taskkill /T escalation.
+  FIX: 1.127 win32 archive nests app under <commit>/resources/app - product.json
+  reader scans one subdir level.
+- extensions/mssql-perf-driver: activation gate (PERF_MODE!=1 -> return, zero
+  behavior), controlClient (hello/ready/calibration/startScenario/shutdown via
+  workbench.action.quit), markerBus, scenarioEngine (command/openDocument/
+  waitForMarker/waitForCommandCompletion steps; probes fail honestly until
+  implemented; NO sleep step exists).
+- normalizer.ts: honesty rules enforced (no markers -> no metric -> invalid;
+  official only measurement+passed; timePlane tag records monotonic vs epoch).
+- runPipeline.ts: full SS9.2 lifecycle per rep, SS22 output layout,
+  run-config.snapshot + environment.json + summary.json + report.md, store writes.
+- examples/config.noop.local.jsonc; run command wired with exit codes.
+- Docs: ARCHITECTURE.md, RUNNING_TESTS.md.
+
+Notes:
+- Driver PERF_MODE-off runtime negative test deferred to M2 flag-off verification
+  (gate is structurally the first line of activate()).
+- Claude permission allowlist moved to .claude/settings.json (project) because
+  approval prompts kept rewriting settings.local.json.
+
+Next: Milestone 2 - vscode-mssql instrumentation behind PERF_MODE (activation +
+command markers, perf API w/ STS pid), ext-normal-activation scenario, flag-off
+verification. Product repo branch dev/karlb/perftest.

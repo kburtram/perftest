@@ -1,0 +1,193 @@
+/**
+ * Rep normalizer (design §20): turns the raw signals of one repetition —
+ * markers, scenario outcome, calibration, environment — into a schema-valid
+ * result.json.
+ *
+ * Honesty rules enforced here (§A3, §12.2):
+ *  - scenario.wallclock exists ONLY if both required markers were observed.
+ *  - A missing required marker ⇒ status `invalid`, no official metrics, ever.
+ *  - `official: true` only in a measurement pass on a passed rep.
+ *  - Durations come from one process's monotonic clock when possible; the
+ *    fallback (epoch diff) is recorded via the `aggregation`-independent
+ *    `tags.timePlane` so a reader can always tell how a number was derived.
+ */
+
+import type {
+  Marker,
+  Metric,
+  PerfResult,
+  PassType,
+  RepStatus,
+  ValidationRecord,
+  ErrorRecord,
+  GitRepoInfo,
+  EnvironmentInfo,
+  ArtifactRef,
+} from "@mssqlperf/contracts";
+import { validateResult } from "@mssqlperf/contracts";
+import type { CalibrationResult, ScenarioOutcome } from "../control/controlServer";
+
+export interface NormalizeInputs {
+  runId: string;
+  repId: number;
+  attemptId: number;
+  scenarioId: string;
+  passType: PassType;
+  traceId: string;
+  rootTraceparent: string;
+  markers: Marker[];
+  markersRejected: number;
+  outcome: ScenarioOutcome | undefined;
+  /** Set when the rep infrastructure broke (timeout, no connect, crash). */
+  infrastructureError?: string;
+  calibration?: CalibrationResult;
+  environment: EnvironmentInfo;
+  git: GitRepoInfo[];
+  artifacts: ArtifactRef[];
+}
+
+export function normalizeRep(inputs: NormalizeInputs): PerfResult {
+  const validations: ValidationRecord[] = [];
+  const errors: ErrorRecord[] = [];
+  const metrics: Metric[] = [];
+
+  const start = inputs.markers.find((m) => m.name === "scenario.start");
+  const end = inputs.markers.find((m) => m.name === "scenario.end");
+  const requiredPresent = Boolean(start && end);
+
+  validations.push({
+    name: "requiredMarkersPresent",
+    status: requiredPresent ? "passed" : "failed",
+    ...(requiredPresent
+      ? {}
+      : { message: `missing ${!start ? "scenario.start " : ""}${!end ? "scenario.end" : ""}`.trim() }),
+  });
+
+  if (inputs.calibration) {
+    const rttMs = Number(BigInt(inputs.calibration.roundTripNs)) / 1e6;
+    validations.push({
+      name: "clockCalibration",
+      status: rttMs <= 50 ? "passed" : "warning",
+      message: `offset=${inputs.calibration.offsetNs}ns roundTrip=${rttMs.toFixed(2)}ms over ${inputs.calibration.samples} samples`,
+      details: { ...inputs.calibration },
+    });
+  } else {
+    validations.push({
+      name: "clockCalibration",
+      status: "skipped",
+      message: "no calibration performed",
+    });
+  }
+
+  validations.push({
+    name: "markerSinkClean",
+    status: inputs.markersRejected === 0 ? "passed" : "warning",
+    ...(inputs.markersRejected > 0
+      ? { message: `${inputs.markersRejected} marker(s) rejected by schema validation` }
+      : {}),
+  });
+
+  // --- Status determination (design §9.3 failure policy) -------------------
+  let status: RepStatus;
+  if (inputs.infrastructureError) {
+    status = "invalid";
+    errors.push({ kind: "infrastructure", message: inputs.infrastructureError, source: "harness" });
+  } else if (!inputs.outcome) {
+    status = "invalid";
+    errors.push({ kind: "control", message: "no scenario outcome received", source: "harness" });
+  } else if (!requiredPresent) {
+    // Even a "completed" scenario without its required markers is untrusted.
+    status = "invalid";
+  } else if (inputs.outcome.kind === "failed") {
+    status = "failed";
+    const failed = inputs.outcome.failed;
+    errors.push({
+      kind: "scenario",
+      message: failed?.payload.reason ?? "scenario failed",
+      ...(failed?.payload.stack ? { stack: failed.payload.stack } : {}),
+      source: "automationExtension",
+    });
+  } else {
+    const checks = inputs.outcome.completed?.payload.successChecks ?? [];
+    const failedCheck = checks.find((c) => c.status === "failed");
+    if (failedCheck) {
+      status = "failed";
+      errors.push({
+        kind: "successCriterion",
+        message: failedCheck.message ?? `success check failed: ${failedCheck.step}`,
+        source: "automationExtension",
+      });
+    } else {
+      status = "passed";
+    }
+    for (const check of checks) {
+      validations.push({
+        name: `success:${check.step}`,
+        status: check.status === "passed" ? "passed" : "failed",
+        ...(check.message ? { message: check.message } : {}),
+      });
+    }
+  }
+
+  // --- Official wall-clock (only from real markers) -------------------------
+  if (start && end) {
+    const samePlane =
+      start.process.pid === end.process.pid && start.monotonicNs && end.monotonicNs;
+    const wallclockMs = samePlane
+      ? Number(BigInt(end.monotonicNs as string) - BigInt(start.monotonicNs as string)) / 1e6
+      : Number(BigInt(end.timestampUnixNs) - BigInt(start.timestampUnixNs)) / 1e6;
+    metrics.push({
+      name: "scenario.wallclock",
+      value: wallclockMs,
+      unit: "ms",
+      component: "scenario",
+      processRole: "boundary",
+      source: "marker",
+      official: inputs.passType === "measurement" && status === "passed",
+      lowerIsBetter: true,
+      traceId: inputs.traceId,
+      startUnixNs: start.timestampUnixNs,
+      endUnixNs: end.timestampUnixNs,
+      tags: { timePlane: samePlane ? "monotonic" : "epoch" },
+    });
+  }
+
+  const result: PerfResult = {
+    schemaVersion: 2,
+    runId: inputs.runId,
+    repId: inputs.repId,
+    scenarioId: inputs.scenarioId,
+    attemptId: inputs.attemptId,
+    passType: inputs.passType,
+    status,
+    trace: { traceId: inputs.traceId, rootTraceparent: inputs.rootTraceparent },
+    git: inputs.git,
+    environment: inputs.environment,
+    metrics,
+    artifacts: inputs.artifacts,
+    validations,
+    errors,
+  };
+
+  // A result that fails its own schema is a harness bug — fail loudly. The
+  // schema requires metrics to be non-empty; a rep with no markers gets a
+  // metric-less placeholder that documents the absence explicitly.
+  if (metrics.length === 0) {
+    metrics.push({
+      name: "harness.noOfficialSignal",
+      value: 0,
+      unit: "count",
+      component: "harness",
+      processRole: "orchestrator",
+      source: "manual",
+      official: false,
+      lowerIsBetter: false,
+      tags: { reason: "required markers missing; no timing can be derived" },
+    });
+  }
+  const outcome = validateResult(result);
+  if (!outcome.valid) {
+    throw new Error(`Normalizer produced an invalid result.json: ${outcome.errors.join("; ")}`);
+  }
+  return result;
+}
