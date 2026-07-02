@@ -31,23 +31,24 @@
 
 ## Milestone 0 — Contracts and CLI skeleton
 
-- [ ] 0.1 Monorepo scaffold: root `package.json` (npm workspaces), `tsconfig.base.json`
-      (strict), `.gitignore`, `.editorconfig`, workspace layout per design §5
+- [x] 0.1 Monorepo scaffold: root `package.json` (npm workspaces), `tsconfig.base.json`
+      (strict), `.gitignore`, workspace layout per design §5
       (`packages/perf-contracts`, `packages/perftest-cli`, `extensions/mssql-perf-driver`,
       `sql/`, `scripts/`, `examples/`, `docs/`, `perf-runs/`).
-- [ ] 0.2 `perf-contracts`: copy 3 JSON schemas + SQLite schema verbatim from perftest-docs;
+- [x] 0.2 `perf-contracts`: copy 3 JSON schemas + SQLite schema verbatim from perftest-docs;
       TS types mirroring marker/result/config/control messages; runtime validators (ajv);
       example config/result/marker as test fixtures that must validate.
-- [ ] 0.3 Harness telemetry core: `HarnessLogger` (structured JSONL + pretty console),
+- [x] 0.3 Harness telemetry core: `HarnessLogger` (structured JSONL + pretty console),
       harness span helper, used by all later components.
-- [ ] 0.4 CLI skeleton (`perftest`): commander wiring for `doctor`, `run`, `report`,
+- [x] 0.4 CLI skeleton (`perftest`): commander wiring for `doctor`, `run`, `report`,
       `compare`, `baseline set`, `scenarios list`, `collectors list`, `schema validate`,
       `cleanup`; §26 exit-code contract as a single ExitCode enum; config loader (jsonc +
       schema validation + defaults).
-- [ ] 0.5 SQLite store init from schema; `perftest doctor` first version (env probe: node,
-      docker, dotnet, VS Code resolvable, disk space); unit tests (contracts + store init).
-- [ ] 0.6 Docs: `docs/README.md` (system overview), `docs/CONTRACTS.md`, `docs/CLI.md`.
-      Git commit at milestone end.
+- [x] 0.5 SQLite store init from schema; `perftest doctor` first version (env probe: node,
+      docker, dotnet, disk, memory; unimplemented checks reported as skipped); unit tests
+      (contracts + store + logger).
+- [x] 0.6 Docs: `docs/README.md` (system overview), `docs/CONTRACTS.md`, `docs/CLI.md`,
+      `docs/HARNESS_TELEMETRY.md`. Git commit at milestone end.
 
 **Acceptance:** example config/result/marker validate via `perftest schema validate`;
 `tsc --strict` clean; SQLite DB initializes; unit tests pass.

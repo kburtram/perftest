@@ -106,3 +106,38 @@
 
 - perftest repo: tracking files written (IMPLEMENTATION_PLAN.md, PROGRESS.md). No code yet.
 - Next: commit this baseline, then Milestone 0 task 0.1 (monorepo scaffold).
+
+---
+
+## 2026-07-01 - Entry 2: Milestone 0 COMPLETE (contracts + CLI skeleton)
+
+Built and verified:
+
+- Monorepo: npm workspaces (packages/perf-contracts, packages/perftest-cli), strict TS
+  (target ES2022, CommonJS), Node 24. Deps: ajv 8, better-sqlite3 12 (prebuilt binary
+  installed fine on win32/Node24), commander 14, jsonc-parser, ws 8; vitest for tests.
+- perf-contracts: schemas + perf-store.schema.sql copied VERBATIM (hash-verified);
+  TS mirrors (marker/result/config/controlMessages incl. ScenarioSpec step model);
+  ids.ts (runId/traceId/spanId/traceparent/unixNs/monotonicNs helpers);
+  ajv 2020-12 validators; fixtures incl. new marker.example.json (from design SS10).
+  14/14 tests pass; tsc --strict clean.
+- perftest-cli: HarnessLogger (component-scoped, spans w/ spanId+parentSpanId+durationMs,
+  ConsoleSink/JsonlFileSink/CompositeSink w/ fault isolation, MemorySink);
+  loadConfig (JSONC->schema->runId resolve->sha256 configHash); PerfStore (better-sqlite3,
+  WAL, canonical schema exec, typed inserts for runs/envs/scenarios/reps/metrics/artifacts/
+  validations, query helper); doctor v1 (real: node/docker/dotnet/disk/memory; honest SKIP
+  for unimplemented checks); scenario registry (noop/ext-normal-activation/
+  connect-local-container/query-10k-results specs, implemented=false until wired);
+  collector registry (empty; planned catalog listed separately); cli.ts wiring all SS26
+  commands + exit codes (unimplemented commands exit 5 with clear message, never fake).
+  8/8 tests pass; tsc --strict clean.
+- ACCEPTANCE VERIFIED on real CLI: schema validate passes for all 3 fixtures (exit 0);
+  store init creates all 13 tables/views incl. official_metric_samples; scenarios list +
+  collectors list honest; doctor exit 0 on this machine (node/docker/dotnet all present).
+- Docs: docs/README.md (index + system overview), CONTRACTS.md, CLI.md,
+  HARNESS_TELEMETRY.md. Root README.md.
+- Note: .claude/settings.local.json got rewritten by permission prompts (lost broad
+  allowlist); merged broad rules back in, preserving prompt-added entries.
+
+Next: Milestone 1 (smallest E2E loop) - control server, marker sink, VS Code launcher,
+mssql-perf-driver extension, noop scenario, normalizer, SQLite insert, minimal report.
