@@ -724,3 +724,38 @@ HONEST DEFERRALS (documented, not silently dropped):
 - Normalizer honesty fix: scenario.wallclock officialness now respects the
   scenario's declared official flag (ext-first-launch noop wallclock was
   incorrectly official).
+
+---
+
+## 2026-07-02 - Entry 18: PHASE 3 COMPLETE - 15/15 acceptance run green
+
+ACCEPTANCE RUN 2026-07-02T20-29-51Z_a5db8eb2 (tagged phase3-acceptance,
+exit 0): all 15 Phase-3 scenarios passed in a single measurement run.
+Headline officials: 10k-table OE expand 3.7s; 100k-row query+render 3.9s;
+windowed-scroll proof 3.7s; cold intellisense completion 2.6s; cancel 534ms;
+reconnect 285ms; 200-batch script 964ms; error-path 259ms; fresh-profile
+startup-to-ready 11.7s (vscode.startup.ready; noop wallclock correctly
+non-official after the normalizer honesty fix).
+
+Fixes landed during bring-up (each found BY the harness's own honesty
+checks): seed REPLICATE/CHAR truncation traps (SQL error surfaced by seed
+verify), windowFetch marker-vs-teardown race (markerSeen criterion refused
+to pass -> await last fetch marker), OE walk racing the async tree
+(settle on the product's own oe.expand.end markers; walk from the session
+connectionNode not saved profiles), per-scenario sql.database never reaching
+the connection profile (10k expand silently ran against PerfHarness -
+childCount attrs exposed it), exact-10000 tree assertion corrected to
+bounded 10000..10050 (SMO adds folder nodes; exact user-table count proven
+by provisioner seed verify).
+
+IMPLEMENTATION_PLAN.md: every box checked (M0-M15 + consolidated stale
+boxes). All repos committed: perftest main, vscode-mssql + sqltoolsservice
+dev/karlb/perftest. PERF_MODE gating for new product code holds by
+construction (Perf singleton noop + registerPerfApi early return - pattern
+zero-behavior-verified in M2).
+
+PHASE 3 DONE. NEXT: Phase 4 (in-product diagnostics UI). Inputs staged in
+repo root: PERFTEST_PHASE_4_INPRODUCT_DIAGNOSTICS.md, VISION_NORTH_STAR.md,
+CLAUDE_DESIGN_INPRODUCT_DIAGNOSTICS_BRIEF.md, STS2_VISION_ALIGNMENT.md,
+"MSSQL for VS Code Completions Event Instrumentation.pdf". Owner will add
+mockups. M14 renderers (charts.ts/htmlShell.ts) were factored for reuse.
