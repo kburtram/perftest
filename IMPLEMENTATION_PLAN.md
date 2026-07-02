@@ -181,6 +181,87 @@ behavior change when flags are off.
       cpuprofile + sts2 journal + process samples in the rep dir; all metrics official:false.
 - [x] 5.6 Docs: `docs/DIAGNOSTIC_COLLECTORS.md`. Commit.
 
+## PHASE 2 (from PERFTEST_PHASE_2_PROMPT.md, 2026-07-01): richer diagnostics + stress/soak + change tracking
+
+Owner priority: SQL activity capture → CDP webview rendering → stress/load/soak →
+richer change tracking → scenario variety. New honesty rules: leak/reliability verdicts
+carry slope+CI+R²+samples and resolve to stable|growing|inconclusive; XEvents correlation
+warns instead of guessing; CDP metrics only when the target was really found; contract
+changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
+
+### M7 — Resource & memory sampling substrate
+
+- [ ] 7.1 processSampler hardening for measurement approval: persistent sampling worker
+      (no per-sample process spawns), per-role CPU+RSS series; keep cost genuinely low.
+- [ ] 7.2 Driver memory counter markers on the official plane: poll process.memoryUsage()
+      (heapUsed/rss) during the measured window → phase:"counter" markers
+      (exthost.memory.heapUsed/rss, attrs.value bytes); normalizer emits peak summaries.
+- [ ] 7.3 §12.3 overhead calibration: A/B (sampler on/off) on query-10k; record the
+      overhead entry in docs/DIAGNOSTIC_COLLECTORS.md; approve for measurement or don't.
+- [ ] 7.4 Timeline artifacts in run dir + report wiring. Docs + commit.
+
+### M8 — Rich server-side SQL activity capture (XEvents)
+
+- [ ] 8.1 Correlation seam: per-rep Application Name `mssql-perf/<runId>/<repId>/<scenarioId>`
+      set by the driver's mssqlConnect step from the startScenario context.
+- [ ] 8.2 XEvents session SQL (`sql/xevents/create-perf-session.sql`, `read-perf-session.sql`):
+      rpc_completed, sql_batch_completed, sql_statement_completed, module_end (+ showplan at
+      diagnostic depth); ring-buffer target; server-side FOR JSON shredding filtered by app name.
+- [ ] 8.3 `sqlServerXEvents` collector: start/stop on scenario window via the provisioner's
+      connection (CollectorContext gains the SQL handle); write artifacts/sql/sql-activity.jsonl
+      (every command, full detail) + rollup; metrics sqlserver.duration/logicalReads (+ derived
+      sql.networkDriver.duration w/ derivation+confidence) — all official:false.
+- [ ] 8.4 E2E acceptance: diagnostic connect+query-10k run lists every command with
+      duration/reads/row_count; 10k select shows row_count≈10000; ambiguous correlation ⇒
+      warning + confidence, never a guess. Docs (§29 reconciliation) + commit.
+
+### M9 — CDP renderer / webview tracing
+
+- [ ] 9.1 Diagnostic-only --remote-debugging-port; /json target enumeration; locate renderer
+      + results-grid webview target(s); robust degrade-if-not-found (warning, no metric).
+- [ ] 9.2 `cdpRendererTrace` collector: Tracing over the scenario window (devtools.timeline,
+      blink, cc, gpu, loading, v8) → artifacts/renderer.trace.json (+ optional webview
+      cpuprofile).
+- [ ] 9.3 Trace-derived diagnostic metrics (paint/layout/scripting totals, longest task,
+      data-receive→paint) correlated to mssql.resultsGrid.renderComplete. E2E on query-10k.
+      Docs + commit.
+
+### M10 — Stress / load / soak
+
+- [ ] 10.1 ScenarioSpec `loop` block (iterations, warmupIterations, steps, per-iteration
+      success, onFailure continue|abort, settle step); iteration.start/end markers with
+      attrs.index; soak-iterations.jsonl artifact; result.json summary-only (additive;
+      document in CONTRACTS.md).
+- [ ] 10.2 Soak analysis module (pure, unit-tested): latency p50/p95+trend slope; reliability
+      failure count/rate/first-failure/taxonomy + correctness drift check; memory leak fit
+      (steady-state RSS slope + CI + R², retained growth after settle, plateau-vs-monotonic)
+      → verdict stable|growing|inconclusive; soak.* metrics (latency/reliability/RSS-slope
+      official-eligible; heap-derived diagnostic).
+- [ ] 10.3 connect→query→disconnect soak scenario (1000 iters default): `disconnect` step via
+      product test seam + markers; per-iteration success = connected + 10k rows + clean
+      disconnect. Acceptance incl. PERF_SYNTHETIC_LEAK detection as `growing` and honest
+      stable/inconclusive on clean runs.
+- [ ] 10.4 Large-catalog fixture (10,000 deterministic tables, verified) +
+      `expand-tables-node-10k` scenario (all 10k render, exact count) with scaled timeouts.
+- [ ] 10.5 (diagnostic) leak root-cause: CDP HeapProfiler snapshots (start/mid/end + forced
+      GC) diffed; STS gcdump start/end diffed; "top growth" summary; graceful degrade.
+
+### M11 — Rich A/B change tracking (investigation diff)
+
+- [ ] 11.1 `perftest diff --baseline --candidate`: official gate section (existing engine) +
+      non-gating investigation section; comparison.json gains additive `investigation` block.
+- [ ] 11.2 SQL-activity delta (commands added/removed, round-trips, per-command
+      duration/reads/rows deltas) as the headline; waterfall/memory/render deltas; git
+      context from run_repositories surfaced.
+- [ ] 11.3 A/B investigation report (md+html); acceptance: candidate with an extra SQL
+      round-trip shows the added activity as investigation context while gating stays
+      official-only. Docs + commit.
+
+### Scenario variety (data-only, fold in opportunistically)
+
+- [ ] V.1 `disconnect`, `cancel-running-query`, `query-error-path` (graceful failure proof)
+- [ ] V.2 `large-result-100k`, `reconnect-after-drop`, `multi-connection`
+
 ## Cross-cutting (every milestone)
 
 - Harness self-telemetry on every new component (logger + spans).

@@ -385,3 +385,18 @@ Then: M3 (STS diag on sts2 seams), M4-rest (XEvents), M5 (diag collectors).
 - CORE LOCAL BOX + FULL DIAG: definition-of-done items all verified except the
   deliberately-open items (XEvents/expand-tables-node = M4-rest, dotnet-counters,
   renderer CDP trace). See IMPLEMENTATION_PLAN.md checkboxes.
+
+---
+
+## 2026-07-01 - Entry 8: PHASE 2 BEGINS (richer diagnostics + stress/soak + change tracking)
+
+Phase 2 prompt (C:\repos\test\PERFTEST_PHASE_2_PROMPT.md) merged into
+IMPLEMENTATION_PLAN.md as M7-M11 + scenario-variety checkboxes. Owner priority:
+SQL activity capture -> CDP webview rendering -> stress/soak -> change tracking ->
+scenario variety. All Phase 1 guardrails carry over plus new honesty rules
+(leak verdicts w/ slope+CI+R^2, XEvents correlation warns not guesses, CDP only
+with real targets, additive contracts, SQL text diagnostic+synthetic only).
+
+Starting M7. Known design concern to fix first: processSampler currently spawns
+powershell.exe per sample (every 500ms) - too heavy to measurement-approve
+honestly; switching to a persistent sampling worker before calibration.
