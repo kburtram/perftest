@@ -308,3 +308,65 @@ Product markers added (vscode-mssql, PERF_MODE-gated):
 
 Remaining core-box item: SQL rerun verifying webview enable-race fix (in flight).
 Then: M3 (STS diag on sts2 seams), M4-rest (XEvents), M5 (diag collectors).
+
+---
+
+## 2026-07-01 - Entry 6: Milestones 3 and 5 COMPLETE (STS diag on sts2 + full diagnostic collectors)
+
+### M3 (sts2-aligned STS diagnostics)
+
+- sqltoolsservice (branch dev/karlb/perftest, commit 1db0315a):
+  NEW Utility/PerfSelfReport.cs + one Program.cs call - PERF_MODE-gated
+  sts.process.ready marker (pid/version/runtime/arch/sts2Enabled) POSTed
+  fire-and-forget to PERF_MARKER_URL. VERIFIED E2E: marker arrives with correct
+  run identity (env inheritance VS Code -> ext host -> LanguageClient child).
+- Local STS build recipe: dotnet build ServiceLayer + ResourceProvider, copy
+  SqlToolsResourceProviderService.exe (+missing deps) into ServiceLayer bin;
+  MSSQL_SQLTOOLSSERVICE points there. GOTCHA FIXED: the env-override path always
+  uses Runtime.Portable (dll) and acquires dotnet via the ms-dotnettools runtime
+  extension (absent in fresh perf profiles) -> added PERF_MODE-gated
+  PERF_DOTNET_PATH fallback in dotnetRuntimeProvider (vscode-mssql 1c6e464b1).
+- stsEnvelopeJournal collector: harvests sts2 journal dirs (searched under rep +
+  warmed-profile user-data), copies to artifacts/sts2/, parses envelopes
+  (schema sts2.envelope/1, ISO ts - parser verified against real journal),
+  normalizes rpc.in.request->rpc.out.result|error by corr into
+  sts.rpc.<method>.duration medians (official:false).
+- KEY FINDING: sts2 multiplexer routes LEGACY traffic untouched - only v2/*
+  messages journal. The mssql extension speaks legacy, so today's journals hold
+  lifecycle envelopes only; RPC latencies light up when product traffic moves to
+  v2. Documented in docs/STS_INSTRUMENTATION.md. dotnet-counters live attach
+  (3.5) still open (Windows graceful-stop story).
+
+### M5 (diagnostic collector framework, full-diag pass VERIFIED)
+
+- Collector lifecycle fully wired into executeRep: validate (-> rep validations)
+  -> preLaunch (MutableLaunchSpec arg/env amendment) -> postLaunch (process
+  registry: vscodeMain/extensionHost/sts self-report) -> onProcessDiscovered ->
+  onScenarioStart/End (scenario markers) -> preShutdown -> postExit (artifacts)
+  -> normalize (metrics FORCED official:false) -> teardown. All hooks
+  fault-isolated.
+- processSampler (measurement-approved): PowerShell CIM/ps sampling ->
+  process-samples.jsonl + process.peakWorkingSet/process.cpuTime per role.
+  VERIFIED: vscodeMain/extensionHost/sts metrics in real runs.
+- cdpExtHostProfile: --inspect-extensions + Node inspector protocol,
+  Profiler.start/stop on scenario window -> exthost.cpuprofile. VERIFIED (287KB).
+- dotnetTrace: attach on STS pid discovery, finalizes when STS exits; tool output
+  captured to dotnet-trace.log. FIXED: dotnet-trace 9 rejects --profile
+  cpu-sampling (it is the default); param shadowing bug. VERIFIED: 1.88MB
+  sts.nettrace.
+- wprEtw: start/stop on scenario window, wpr -cancel teardown guard. This Cloud
+  PC blocks profiling policy (0xc5585011) -> collector degrades to a validation
+  warning exactly as designed.
+- Full-diag run (config.fulldiag.local.jsonc): PASSED with exthost.cpuprofile +
+  sts.nettrace + sts2 journal + process samples in one rep dir; scenario
+  wallclock official:false (diagnostic pass). WEBVIEW RACE FULLY FIXED:
+  perf/enable now on an unconditional retry schedule (whenWebviewReady can time
+  out on cold loads); cold first-webview reps pass.
+- cleanup command implemented (retention by age, --keep-regressions via
+  comparisons table, --dry-run). report <runId> re-renders md+html.
+- Docker compose provisioning smoke test IN FLIGHT (digest-pinned image pull).
+
+### Still open (tracked in IMPLEMENTATION_PLAN)
+
+- 3.5 dotnet-counters; 5.2-renderer CDP trace; M4-rest (XEvents server timing,
+  expand-tables-node scenario); docker smoke result to record.

@@ -439,10 +439,75 @@ baseline
 
 program
   .command("cleanup")
-  .description("Apply artifact retention policy (Milestone 6')")
-  .option("--older-than <duration>", "e.g. 30d")
-  .option("--keep-regressions", "never delete artifacts of regressed runs")
-  .action(() => notImplemented("cleanup", "Milestone 6'"));
+  .description("Apply artifact retention: delete run directories older than a cutoff")
+  .option("--older-than <duration>", "age cutoff like 30d, 12h", "30d")
+  .option("--runs <dir>", "runs directory", "./perf-runs")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--keep-regressions", "never delete runs that were part of a regressed comparison")
+  .option("--dry-run", "list what would be deleted without deleting")
+  .action(
+    async (opts: {
+      olderThan: string;
+      runs: string;
+      db: string;
+      keepRegressions?: boolean;
+      dryRun?: boolean;
+    }) => {
+      const match = /^(\d+)([dh])$/.exec(opts.olderThan);
+      if (!match) {
+        process.stderr.write(`Invalid --older-than '${opts.olderThan}' (use e.g. 30d or 12h)\n`);
+        exit(ExitCode.configInvalid);
+      }
+      const cutoffMs =
+        Date.now() - Number(match[1]) * (match[2] === "d" ? 86_400_000 : 3_600_000);
+      const runsDir = resolve(opts.runs);
+      if (!existsSync(runsDir)) {
+        process.stdout.write(`No runs directory at ${runsDir}\n`);
+        exit(ExitCode.ok);
+      }
+      // Runs referenced by regressed comparisons are protected when asked.
+      const protectedRuns = new Set<string>();
+      if (opts.keepRegressions && existsSync(opts.db)) {
+        const store = PerfStore.open(opts.db, logger.child("store"));
+        for (const row of store.query<{ current_run_id: string; baseline_run_id: string }>(
+          "SELECT current_run_id, baseline_run_id FROM comparisons WHERE status = 'regressed'",
+        )) {
+          protectedRuns.add(row.current_run_id);
+          protectedRuns.add(row.baseline_run_id);
+        }
+        store.close();
+      }
+      const { readdirSync, statSync, rmSync } = await import("node:fs");
+      let deleted = 0;
+      let kept = 0;
+      for (const entry of readdirSync(runsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const full = join(runsDir, entry.name);
+        const age = statSync(full).mtimeMs;
+        if (age >= cutoffMs) {
+          kept++;
+          continue;
+        }
+        if (protectedRuns.has(entry.name)) {
+          process.stdout.write(`keep (regression): ${entry.name}\n`);
+          kept++;
+          continue;
+        }
+        if (opts.dryRun) {
+          process.stdout.write(`would delete: ${entry.name}\n`);
+        } else {
+          rmSync(full, { recursive: true, force: true });
+          logger.info("cleanup.deleted", entry.name);
+          process.stdout.write(`deleted: ${entry.name}\n`);
+        }
+        deleted++;
+      }
+      process.stdout.write(
+        `${opts.dryRun ? "Would delete" : "Deleted"} ${deleted} run dir(s), kept ${kept}.\n`,
+      );
+      exit(ExitCode.ok);
+    },
+  );
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   logger.error("cli.unhandled", error instanceof Error ? error.stack : String(error));

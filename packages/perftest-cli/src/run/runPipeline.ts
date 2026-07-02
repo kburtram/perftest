@@ -22,6 +22,12 @@ import {
   type ScenarioSpec,
 } from "@mssqlperf/contracts";
 import { provisionSql } from "../sql/sqlProvisioner";
+import { ProcessSamplerCollector } from "../collectors/processSampler";
+import { StsEnvelopeJournalCollector } from "../collectors/stsEnvelopeJournal";
+import { CdpExtHostProfileCollector } from "../collectors/cdpExtHostProfile";
+import { DotnetTraceCollector } from "../collectors/dotnetTrace";
+import { WprEtwCollector } from "../collectors/wprEtw";
+import type { Collector, CollectorContext, PerfProcess, ProcessRegistry } from "../collectors/types";
 import type { LoadedConfig } from "../config/loadConfig";
 import { ControlServer } from "../control/controlServer";
 import { MarkerSink } from "../markers/markerSink";
@@ -321,6 +327,64 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
 
 export class RunConfigError extends Error {}
 
+/** Minimal §15 process registry: self-reports beat tree heuristics. */
+class SimpleProcessRegistry implements ProcessRegistry {
+  private readonly processes = new Map<number, PerfProcess>();
+  all(): PerfProcess[] {
+    return [...this.processes.values()];
+  }
+  byRole(role: string): PerfProcess[] {
+    return this.all().filter((p) => p.role === role);
+  }
+  register(process: PerfProcess): void {
+    this.processes.set(process.pid, process);
+  }
+}
+
+/** Instantiate the collectors enabled by config for this pass (design §14). */
+function createCollectors(
+  config: LoadedConfig["config"],
+  passType: PassType,
+): Collector[] {
+  const collectors: Collector[] = [];
+  if (config.diagnostics.processSampler) {
+    collectors.push(new ProcessSamplerCollector());
+  }
+  if (config.diagnostics["stsEnvelopeJournal"] === true) {
+    collectors.push(new StsEnvelopeJournalCollector());
+  }
+  if (config.diagnostics.cdp?.extHostProfile === true) {
+    collectors.push(new CdpExtHostProfileCollector());
+  }
+  if (config.diagnostics.dotnetTrace === true) {
+    collectors.push(new DotnetTraceCollector());
+  }
+  if (config.diagnostics.wprEtw === true) {
+    collectors.push(new WprEtwCollector());
+  }
+  return collectors.filter(
+    (c) =>
+      c.allowedPassTypes.includes(passType) &&
+      (c.platforms.includes("all") ||
+        c.platforms.includes(process.platform as "win32" | "linux" | "darwin")),
+  );
+}
+
+/** Run one collector hook with fault isolation (§A3.6). */
+async function collectorHook(
+  logger: HarnessLogger,
+  collector: Collector,
+  hook: string,
+  fn: () => Promise<unknown> | undefined,
+): Promise<unknown> {
+  try {
+    return await fn();
+  } catch (error) {
+    logger.warn("collector.hookFailed", String(error), { collector: collector.name, hook });
+    return undefined;
+  }
+}
+
 // -----------------------------------------------------------------------------
 
 interface RepExecutionInputs {
@@ -383,6 +447,73 @@ async function executeRep(
   let launched;
   let infrastructureBroken = false;
 
+  // Collector framework (design §14): per-rep instances, fault-isolated.
+  const collectors = createCollectors(inputs.config, inputs.passType);
+  const processRegistry = new SimpleProcessRegistry();
+  const collectorCtx: CollectorContext = {
+    runId,
+    repId,
+    attemptId: 0,
+    scenarioId: spec.scenarioId,
+    passType: inputs.passType,
+    repDir,
+    artifactsDir,
+    logger: logger.child("collectors"),
+  };
+  // STS self-reports its pid through the product marker; register on arrival.
+  // Scenario-window collectors (CDP profiler, WPR) key off the scenario
+  // boundary markers.
+  sink.on("marker", (marker) => {
+    if (marker.name === "mssql.sts.ready" && typeof marker.attrs?.["pid"] === "number") {
+      const stsProcess: PerfProcess = {
+        role: "sts",
+        pid: marker.attrs["pid"],
+        name: "MicrosoftSqlToolsServiceLayer",
+        reportedBy: "vscode-mssql",
+        discoveryMethods: ["marker"],
+      };
+      processRegistry.register(stsProcess);
+      for (const collector of collectors) {
+        void collectorHook(collectorCtx.logger, collector, "onProcessDiscovered", () =>
+          collector.onProcessDiscovered?.(collectorCtx, stsProcess),
+        );
+      }
+    } else if (marker.name === "scenario.start") {
+      for (const collector of collectors) {
+        void collectorHook(collectorCtx.logger, collector, "onScenarioStart", () =>
+          collector.onScenarioStart?.(collectorCtx, marker),
+        );
+      }
+    } else if (marker.name === "scenario.end") {
+      for (const collector of collectors) {
+        void collectorHook(collectorCtx.logger, collector, "onScenarioEnd", () =>
+          collector.onScenarioEnd?.(collectorCtx, marker),
+        );
+      }
+    }
+  });
+
+  // Collector validation + launch-spec amendment (§14.2 validate/preLaunch).
+  const collectorValidations: import("@mssqlperf/contracts").ValidationRecord[] = [];
+  for (const collector of collectors) {
+    const checks = (await collectorHook(collectorCtx.logger, collector, "validate", () =>
+      collector.validate?.(collectorCtx),
+    )) as import("../collectors/types").CollectorValidation[] | undefined;
+    for (const check of checks ?? []) {
+      collectorValidations.push({
+        name: `collector:${collector.name}:${check.name}`,
+        status: check.status,
+        ...(check.message ? { message: check.message } : {}),
+      });
+    }
+  }
+  const launchSpec = { args: [...(inputs.config.vscode.extraArgs ?? [])], env: {} as Record<string, string> };
+  for (const collector of collectors) {
+    await collectorHook(collectorCtx.logger, collector, "preLaunch", () =>
+      collector.preLaunch?.(collectorCtx, launchSpec),
+    );
+  }
+
   try {
     launched = spawnVscode(
       {
@@ -394,9 +525,10 @@ async function executeRep(
         ...(inputs.config.vscode.workspaceRoot
           ? { workspacePath: resolve(inputs.config.vscode.workspaceRoot) }
           : {}),
-        ...(inputs.config.vscode.extraArgs ? { extraArgs: inputs.config.vscode.extraArgs } : {}),
+        ...(launchSpec.args.length > 0 ? { extraArgs: launchSpec.args } : {}),
         env: {
           ...inputs.config.vscode.env,
+          ...launchSpec.env,
           [PerfEnv.mode]: "1",
           [PerfEnv.runId]: runId,
           [PerfEnv.repId]: String(repId),
@@ -413,11 +545,31 @@ async function executeRep(
       logger.child("launcher"),
     );
 
+    processRegistry.register({
+      role: "vscodeMain",
+      pid: launched.pid,
+      name: "Code",
+      reportedBy: "orchestrator",
+      discoveryMethods: ["spawn"],
+    });
+    for (const collector of collectors) {
+      await collectorHook(collectorCtx.logger, collector, "postLaunch", () =>
+        collector.postLaunch?.(collectorCtx, processRegistry),
+      );
+    }
+
     // Handshake: hello → calibration → ready (design §9.2, §11.3).
     const exitEarly = launched.exited.then((code) => {
       throw new Error(`VS Code exited early with code ${code}`);
     });
-    await Promise.race([server.waitForHello(HELLO_TIMEOUT_MS), exitEarly]);
+    const hello = await Promise.race([server.waitForHello(HELLO_TIMEOUT_MS), exitEarly]);
+    processRegistry.register({
+      role: "extensionHost",
+      pid: hello.payload.extensionHostPid,
+      name: "extensionHost",
+      reportedBy: "mssql-perf-driver",
+      discoveryMethods: ["hello"],
+    });
     calibration = await server.calibrate();
     await Promise.race([server.waitForReady(READY_TIMEOUT_MS), exitEarly]);
 
@@ -431,6 +583,11 @@ async function executeRep(
     infrastructureBroken = !server.hello;
     logger.error("rep.brokenLoop", infrastructureError, { scenarioId: spec.scenarioId, repId });
   } finally {
+    for (const collector of collectors) {
+      await collectorHook(collectorCtx.logger, collector, "preShutdown", () =>
+        collector.preShutdown?.(collectorCtx),
+      );
+    }
     try {
       server.sendShutdown("rep complete");
       const exitCode = await launched?.waitForExit(SHUTDOWN_GRACE_MS);
@@ -445,7 +602,25 @@ async function executeRep(
     await sink.close();
   }
 
+  // Collector artifacts + resource metrics (always official:false / resource-only).
+  const collectorArtifacts: ArtifactRef[] = [];
+  const collectorMetrics: import("@mssqlperf/contracts").Metric[] = [];
+  for (const collector of collectors) {
+    const artifacts = (await collectorHook(collectorCtx.logger, collector, "postExit", () =>
+      collector.postExit?.(collectorCtx),
+    )) as ArtifactRef[] | undefined;
+    if (artifacts) collectorArtifacts.push(...artifacts);
+    const metrics = (await collectorHook(collectorCtx.logger, collector, "normalize", () =>
+      collector.normalize?.(collectorCtx),
+    )) as import("@mssqlperf/contracts").Metric[] | undefined;
+    if (metrics) collectorMetrics.push(...metrics.filter((m) => !m.official));
+    await collectorHook(collectorCtx.logger, collector, "teardown", () =>
+      collector.teardown?.(collectorCtx),
+    );
+  }
+
   const artifacts: ArtifactRef[] = [
+    ...collectorArtifacts,
     { kind: "markers", path: "markers.jsonl", retention: "always", ...sizeOf(join(repDir, "markers.jsonl")) },
     {
       kind: "vscodeStdout",
@@ -478,6 +653,8 @@ async function executeRep(
     git: inputs.git,
     artifacts,
     spec,
+    extraMetrics: collectorMetrics,
+    extraValidations: collectorValidations,
   });
   writeFileSync(join(repDir, "result.json"), JSON.stringify(result, null, 2), "utf8");
   repSpan.end({ status: result.status });

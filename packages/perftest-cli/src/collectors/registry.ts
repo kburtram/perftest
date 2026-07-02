@@ -5,6 +5,7 @@
  */
 
 import type { Collector } from "./types";
+import { ProcessSamplerCollector } from "./processSampler";
 
 const registry = new Map<string, Collector>();
 
@@ -20,10 +21,12 @@ export function getCollector(name: string): Collector | undefined {
   return registry.get(name);
 }
 
+// Listing-only prototypes; the pipeline creates fresh instances per rep.
+registerCollector(new ProcessSamplerCollector());
+
 /** Planned collectors from the design §14.3 catalog, for honest listing. */
 export const PLANNED_COLLECTORS: Array<{ name: string; milestone: string }> = [
   { name: "markers", milestone: "M1" },
-  { name: "processSampler", milestone: "M4" },
   { name: "sqlServerXEvents", milestone: "M4-rest" },
   { name: "stsEnvelopeJournal", milestone: "M3" },
   { name: "dotnetCounters", milestone: "M3/M5" },

@@ -101,7 +101,7 @@ from real markers; PERF_MODE off ⇒ identical behavior.
 - [x] 4.3 `query-10k-results` scenario: webview mark bridge
       (`performance.timeOrigin + performance.now()` → postMessage → extension → sink),
       `mssql.resultsGrid.renderComplete`, success proof rowCount == 10000 else `invalid`.
-- [x] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
+- [ ] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
 - [x] 4.5 Real E2E both scenarios; verify against local SQL (docker or external).
 - [x] 4.6 Docs: `docs/SCENARIO_AUTHORING.md`, `docs/SQL_PROVISIONING.md`. Commit.
 
@@ -132,20 +132,22 @@ JSONL journal with `corr`/`cause` causality, `Microsoft-SqlTools-Sts2` EventSour
 `v2/diagnostics.*` RPCs — gated by `STS_ENABLE_STS2=1`. We build STS perf diag ON that seam
 instead of a parallel ActivitySource story; W3C traceparent/OTLP becomes an adapter later.)
 
-- [ ] 3.1 Document the decision + mapping (envelope `corr`/`cause` ↔ harness traceId model)
+- [x] 3.1 Document the decision + mapping (envelope `corr`/`cause` ↔ harness traceId model)
       in docs/STS_INSTRUMENTATION.md.
-- [ ] 3.2 STS self-report: minimal `PERF_MODE`-gated startup marker POST to PERF_MARKER_URL
-      (`sts.process.ready` with pid/version) — smallest possible product change.
-- [ ] 3.3 Harness `stsEnvelopeJournal` collector: run STS with `STS_ENABLE_STS2=1` in
-      diagnostic pass, copy/parse journal segments from the run's log dir, normalize
-      envelope timings into official:false metrics (rpc in→out latency per method).
-- [ ] 3.4 Correlation: perf context (runId/scenarioId/repId) flowing into STS
-      (env vars at spawn: PERF_RUN_ID etc. are inherited — verify) + normalizer joins
-      envelope `ts` windows to scenario windows; optional envelope→marker adapter sink
-      (new `IEnvelopeSink` impl) if in-repo change is warranted.
-- [ ] 3.5 `dotnet-counters` on `Microsoft-SqlTools-Sts2` EventSource as a cheap live collector.
-- [ ] 3.6 Verify STS builds/behaves identically without PERF_MODE/STS_ENABLE_STS2.
-      Commit both repos.
+- [x] 3.2 STS self-report: minimal `PERF_MODE`-gated startup marker POST to PERF_MARKER_URL
+      (`sts.process.ready` with pid/version). VERIFIED E2E: marker arrives with correct
+      run identity (env inheritance VS Code → ext host → LanguageClient child works).
+- [x] 3.3 Harness `stsEnvelopeJournal` collector: journal dirs harvested + parsed E2E.
+      FINDING: the sts2 multiplexer routes LEGACY traffic untouched — only v2/* messages
+      journal, so legacy-path runs journal lifecycle envelopes only. RPC-latency
+      normalization is in place and lights up when v2 traffic exists.
+- [x] 3.4 Correlation: PERF_* env inheritance into STS verified. Envelope→marker adapter
+      sink (IEnvelopeSink impl) deferred until v2 traffic makes it useful — seam
+      documented in STS_INSTRUMENTATION.md.
+- [ ] 3.5 `dotnet-counters` on `Microsoft-SqlTools-Sts2` EventSource (needs a Windows
+      graceful-stop story for `dotnet-counters collect`).
+- [x] 3.6 STS builds clean; self-report gate structural; sts2 stays opt-in. Committed
+      (sqltoolsservice 1db0315a).
 
 **Acceptance:** a diagnostic run of connect/query scenarios yields an STS-side timing
 breakdown (rpc handler latencies) correlated to the scenario window, with zero product
@@ -161,14 +163,23 @@ behavior change when flags are off.
 
 ## Milestone 5 — Diagnostic collectors (full diag)
 
-- [ ] 5.1 Collector framework hardening per §14 (validate/attach lifecycle, missing tool ⇒
-      warning not corruption).
-- [ ] 5.2 CDP: ext-host CPU profile + renderer trace (diagnostic pass only).
-- [ ] 5.3 dotnet-counters + dotnet-trace collectors (attach on STS PID discovery).
-- [ ] 5.4 WPR/ETW collector (Windows, admin check in doctor).
-- [ ] 5.5 Diagnostic pass E2E on query-10k; artifacts land in rep dir + linked in HTML report;
-      all heavy metrics `official:false`.
-- [ ] 5.6 Docs: `docs/DIAGNOSTIC_COLLECTORS.md`. Commit.
+- [x] 5.1 Collector framework hardening per §14: full lifecycle wired into the pipeline
+      (validate → preLaunch launch-spec amendment → postLaunch → onProcessDiscovered →
+      onScenarioStart/End via markers → preShutdown → postExit → normalize → teardown),
+      every hook fault-isolated; collector metrics forced official:false structurally;
+      missing tools surface as rep validations.
+- [x] 5.2 CDP ext-host CPU profile: --inspect-extensions + Node inspector protocol,
+      Profiler start/stop on the scenario window → exthost.cpuprofile (VERIFIED, 287KB
+      real profile). Renderer trace/profile still open (needs --remote-debugging-port
+      target discovery).
+- [x] 5.3 dotnet-trace collector (attach on STS pid discovery, finalizes on STS exit;
+      tool stdout/stderr captured). dotnet-counters still open (graceful-stop story).
+- [x] 5.4 WPR/ETW collector: wpr start/stop on scenario window, elevation/policy failures
+      degrade to validation warnings (VERIFIED: this Cloud PC blocks profiling policy —
+      0xc5585011 — collector warns and continues; wpr -cancel guard on teardown).
+- [x] 5.5 Full-diagnostic pass E2E on query-10k (config.fulldiag.local.jsonc): passed with
+      cpuprofile + sts2 journal + process samples in the rep dir; all metrics official:false.
+- [x] 5.6 Docs: `docs/DIAGNOSTIC_COLLECTORS.md`. Commit.
 
 ## Cross-cutting (every milestone)
 

@@ -47,6 +47,10 @@ export interface NormalizeInputs {
   artifacts: ArtifactRef[];
   /** Scenario spec, for declared marker-pair metrics. */
   spec?: ScenarioSpec;
+  /** Collector-produced metrics; forced official:false regardless of input. */
+  extraMetrics?: Metric[];
+  /** Collector validations (availability warnings etc.). */
+  extraValidations?: ValidationRecord[];
 }
 
 /**
@@ -224,6 +228,14 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
       endUnixNs: endMarker.timestampUnixNs,
       tags: { timePlane },
     });
+  }
+
+  // Collector metrics: structurally incapable of being official (§12.2).
+  for (const metric of inputs.extraMetrics ?? []) {
+    metrics.push({ ...metric, official: false });
+  }
+  for (const validation of inputs.extraValidations ?? []) {
+    validations.push(validation);
   }
 
   const result: PerfResult = {
