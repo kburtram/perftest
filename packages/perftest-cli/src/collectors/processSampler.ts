@@ -45,10 +45,11 @@ export class ProcessSamplerCollector implements Collector {
   readonly name = "processSampler";
   readonly cost = "low" as const;
   readonly platforms = ["all"] as const as Array<"win32" | "linux" | "darwin" | "all">;
-  // §12.3: diagnostic-only until a clean calibration approves it for
-  // measurement. First A/B attempt (2026-07-01) was inconclusive — noisy
-  // interactive box, 3 reps, CV over threshold. Rerun on a quiet machine.
-  readonly allowedPassTypes = ["diagnostic", "calibration"] as const as Array<
+  // §12.3 calibration (2026-07-01, quiet box, query-10k, 5 reps/side,
+  // warmups dropped): median wallclock +1.96% with the sampler on
+  // (1061.6ms vs 1041.2ms) — within run-order noise at n=5. Approved for
+  // measurement as cost "low"; overhead entry in DIAGNOSTIC_COLLECTORS.md.
+  readonly allowedPassTypes = ["measurement", "diagnostic", "calibration"] as const as Array<
     "measurement" | "diagnostic" | "calibration"
   >;
 

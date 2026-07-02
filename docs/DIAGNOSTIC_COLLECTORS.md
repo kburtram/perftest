@@ -26,6 +26,25 @@ Planned next (§14.3): `cdpRendererTrace`/`cdpRendererProfile` (needs
 `dotnetCounters` (needs a graceful-stop story for `dotnet-counters collect`
 on Windows).
 
+## Calibration entries (§12.3)
+
+```jsonc
+{
+  "collector": "processSampler",
+  "scenarioId": "query-10k-results",
+  "samples": 5,                  // per side, warmups dropped, quiet machine
+  "overheadPctP50": 1.96,        // 1061.6ms on vs 1041.2ms off (median)
+  "approvedForMeasurement": true, // cost "low"; delta within run-order noise at n=5
+  "approvedBy": "perftest build (autonomous, recorded in PROGRESS.md Entry 11)",
+  "date": "2026-07-01",
+  "notes": "persistent-worker sampler @2Hz; first attempt on a busy box was inconclusive and was NOT used"
+}
+```
+
+An earlier 3-rep attempt on a busy interactive box was inconclusive (CV over
+threshold, operator-contaminated) and was discarded rather than interpreted —
+the §12.3 rule (uncalibrated ⇒ diagnostic-only) applied until this entry.
+
 ## Rules recap
 
 - Measurement passes may run only `low`-cost, measurement-approved collectors

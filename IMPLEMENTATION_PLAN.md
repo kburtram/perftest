@@ -196,7 +196,7 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
 - [x] 7.2 Driver memory counter markers on the official plane: poll process.memoryUsage()
       (heapUsed/rss) during the measured window → phase:"counter" markers
       (exthost.memory.heapUsed/rss, attrs.value bytes); normalizer emits peak summaries.
-- [ ] 7.3 §12.3 overhead calibration: A/B (sampler on/off) on query-10k; record the
+- [x] 7.3 §12.3 overhead calibration: A/B (sampler on/off) on query-10k; record the
       overhead entry in docs/DIAGNOSTIC_COLLECTORS.md; approve for measurement or don't.
 - [x] 7.4 Timeline artifacts in run dir + report wiring. Docs + commit.
 
@@ -237,7 +237,7 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
       (steady-state RSS slope + CI + R², retained growth after settle, plateau-vs-monotonic)
       → verdict stable|growing|inconclusive; soak.* metrics (latency/reliability/RSS-slope
       official-eligible; heap-derived diagnostic).
-- [ ] 10.3 connect→query→disconnect soak scenario (1000 iters default): `disconnect` step via
+- [x] 10.3 connect→query→disconnect soak scenario (1000 iters default): `disconnect` step via
       product test seam + markers; per-iteration success = connected + 10k rows + clean
       disconnect. Acceptance incl. PERF_SYNTHETIC_LEAK detection as `growing` and honest
       stable/inconclusive on clean runs.

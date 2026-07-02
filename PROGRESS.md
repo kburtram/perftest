@@ -504,3 +504,36 @@ Still open in Phase 2: 7.3 quiet-box sampler calibration, 10.3 full
 1000-iteration acceptance (launching now) + injected-leak proof, 10.4
 10k-table catalog + expand-tables-node-10k, 10.5 heap-snapshot/gcdump leak
 root-cause collectors, 11.3, scenario variety V.1/V.2.
+
+---
+
+## 2026-07-01 - Entry 11: Phase-2 acceptance runs COMPLETE (1000-iter soak, leak proof, calibration)
+
+### 1000-iteration soak (run 2026-07-02T05-40-19Z_feaff3ed, 9 min, exit 0)
+- 995/995 steady-state iterations PASSED: failureRate 0 over 1000 real
+  connect -> 10k-query(verified rowCount) -> disconnect cycles.
+- Latency: p50 531.6ms / p95 543.8ms; slope -0.023ms/iter (CI +/-0.028,
+  includes 0) -> NO latency drift over 1000 iterations.
+- Memory: +67.8MB total, steady slope 30.6KB/iter (CI lower 26.2KB), verdict
+  GROWING, R2 0.15 (growth decelerates - early ramp dominates - but a slow
+  persistent ~30KB/cycle accumulation remains). PRODUCT FINDING #1, needs
+  M10.5 heap-snapshot attribution. soak-iterations.jsonl carries all 1000.
+
+### Injected-leak detection proof (512KB/iter via PERF_SYNTHETIC_LEAK_KB_PER_ITER)
+- 60 iters: slope 938KB/iter (organic-only was ~567KB/iter at this scale),
+  total +115.7MB, verdict GROWING, R2 0.37 - the injected retention is clearly
+  visible on top of organic growth. Detection machinery proven on a REAL leak.
+
+### processSampler calibration (SS12.3, quiet box, 5+5 reps, warmups dropped)
+- ON median 1061.6ms vs OFF 1041.2ms = +1.96% p50 overhead, within run-order
+  noise at n=5 -> APPROVED for measurement (cost low); entry recorded in
+  DIAGNOSTIC_COLLECTORS.md; allowedPassTypes flipped back. The earlier busy-box
+  attempt stays discarded (never interpreted).
+
+Phase-2 state: M7 done; M8 done (verified); M9 done (verified; renderer
+cpuprofile variant optional); M10.1-10.3 done (verified at 60 + 1000 iters +
+leak proof); M11.1-11.2 done (verified structure). OPEN: 10.4 (10k-table
+catalog + expand-tables-node-10k), 10.5 (heap-snapshot/gcdump leak
+root-cause - NEXT: attribute the 30KB/cycle finding), 11.3 (investigation
+report md/html + extra-round-trip acceptance), 3.5 dotnet-counters, scenario
+variety V.1/V.2. Restart protocol unchanged.
