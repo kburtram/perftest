@@ -459,3 +459,48 @@ honestly; switching to a persistent sampling worker before calibration.
 
 Next: driver loop engine + disconnect step + soak scenario E2E (10.3), then
 10k-table catalog (10.4), diff (M11).
+
+---
+
+## 2026-07-01 - Entry 10: M10 soak WORKING (real growth found!) + M11 diff command
+
+### M10.1-10.3 soak (60-iteration E2E VERIFIED)
+- ScenarioLoopSpec contract + driver loop engine: iteration.start/end markers
+  (attrs index/warmup/status/errorKind), per-iteration success criteria
+  freshness-scoped to the iteration, onFailure continue|abort, settle steps,
+  failure taxonomy (connect/query/disconnect/timeout/verification/other).
+  PERF_SOAK_ITERATIONS env override (config-snapshotted);
+  PERF_SYNTHETIC_LEAK_KB_PER_ITER gate-proof hook (recorded on markers).
+- mssqlDisconnect step via product test seam (connectionManager.disconnect).
+- soak-connect-query-disconnect scenario (1000 iters default, 5 warmup,
+  onFailure continue, per-iteration proof rowCount==10000).
+- Pipeline writes soak-iterations.jsonl; normalizer runs analyzeSoak ->
+  soak.latency.p50/p95/slope + reliability.failureRate + memory.rssSlope
+  (official-eligible on the marker plane) + totalGrowth (diagnostic) +
+  verdict validations.
+- VERIFIED run 2026-07-02T05-36-59Z_09ed4020 (60 iters, 37s): 55/55 steady
+  passed, failureRate 0, p50 534ms / p95 543ms, latency slope -7.8ms/iter
+  (CI +/-9.5 - includes 0, no drift claim). *** REAL FINDING: exthost RSS grew
+  95.7MB over 60 connect->query->disconnect cycles, slope ~567KB/iter, verdict
+  GROWING (CI lower 276KB/iter, R2=0.20 noted in the reason). Candidates:
+  query result/history retention in exthost, or lazy V8 GC - needs M10.5 heap
+  snapshots + a longer run to attribute. This is the first product perf issue
+  surfaced by the system. ***
+
+### M11.1-11.2 investigation diff (VERIFIED structure)
+- store.metricMedians (official+diagnostic medians over passed non-warmup
+  reps) + gitContext; investigate.ts: SQL-activity delta (top-level commands
+  grouped by object/normalized text; added/removed/changed w/ round-trip,
+  duration, reads deltas; one-sided captures produce an honest note),
+  cross-signal metric deltas sorted by |delta%|; console renderer.
+- CLI `perftest diff --baseline --candidate [--json]`: official gate first
+  (exit 1 on regression), investigation explicitly non-gating,
+  investigation.json persisted beside the candidate run.
+- VERIFIED on the gate-proof pair: REGRESSED +47170% wallclock, git SHAs+dirty
+  shown, honest no-sql-activity note. PENDING (11.3): extra-SQL-round-trip
+  acceptance + md/html investigation report.
+
+Still open in Phase 2: 7.3 quiet-box sampler calibration, 10.3 full
+1000-iteration acceptance (launching now) + injected-leak proof, 10.4
+10k-table catalog + expand-tables-node-10k, 10.5 heap-snapshot/gcdump leak
+root-cause collectors, 11.3, scenario variety V.1/V.2.

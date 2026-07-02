@@ -20,6 +20,7 @@ import { listScenarios } from "./scenarios/registry";
 import { listCollectors, PLANNED_COLLECTORS } from "./collectors/registry";
 import { executeRun, RunConfigError } from "./run/runPipeline";
 import { compareRuns, renderComparisonConsole, CompareError } from "./regression/compareRuns";
+import { investigate, renderInvestigationConsole } from "./regression/investigate";
 
 const { logger, sink } = createRootLogger();
 const HARNESS_ROOT = resolve(__dirname, "..", "..", "..");
@@ -404,6 +405,74 @@ program
           exit(ExitCode.configInvalid);
         }
         throw error;
+      } finally {
+        store.close();
+      }
+    },
+  );
+
+program
+  .command("diff")
+  .description(
+    "A/B investigation diff: official gate + non-gating what-changed analysis (SQL activity, all metrics, git context)",
+  )
+  .requiredOption("--baseline <runId>")
+  .requiredOption("--candidate <runId>")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--json", "emit the full investigation as JSON")
+  .option("--allow-cross-environment", "compare despite differing environment hashes")
+  .action(
+    (opts: {
+      baseline: string;
+      candidate: string;
+      db: string;
+      json?: boolean;
+      allowCrossEnvironment?: boolean;
+    }) => {
+      const store = PerfStore.open(opts.db, logger.child("store"));
+      try {
+        // Official gate first (verdicts only from official metrics).
+        let comparison;
+        try {
+          comparison = compareRuns(store, opts.candidate, opts.baseline, logger.child("compare"), {
+            persist: false,
+            ...(opts.allowCrossEnvironment !== undefined
+              ? { allowCrossEnvironment: opts.allowCrossEnvironment }
+              : {}),
+          });
+        } catch (error) {
+          if (!(error instanceof CompareError)) throw error;
+          process.stderr.write(`Official gate skipped: ${error.message}\n`);
+        }
+        const investigation = investigate(
+          store,
+          opts.baseline,
+          opts.candidate,
+          logger.child("investigate"),
+        );
+        if (opts.json) {
+          process.stdout.write(
+            JSON.stringify({ gate: comparison ?? null, investigation }, null, 2) + "\n",
+          );
+        } else {
+          if (comparison) {
+            process.stdout.write(renderComparisonConsole(comparison) + "\n");
+          }
+          process.stdout.write(renderInvestigationConsole(investigation) + "\n");
+        }
+        // Persist the investigation beside the candidate run (additive).
+        const candidateRun = store.getRun(opts.candidate);
+        if (candidateRun) {
+          const { writeFileSync } = require("node:fs") as typeof import("node:fs");
+          writeFileSync(
+            join(candidateRun.outputDir, "investigation.json"),
+            JSON.stringify({ gate: comparison ?? null, investigation }, null, 2),
+            "utf8",
+          );
+        }
+        exit(
+          comparison?.status === "regressed" ? ExitCode.regression : ExitCode.ok,
+        );
       } finally {
         store.close();
       }

@@ -49,10 +49,20 @@ export interface MeasureSpec {
   timeoutMs: number;
 }
 
+export interface ScenarioLoopSpec {
+  iterations: number;
+  warmupIterations?: number;
+  steps: ScenarioStep[];
+  success?: SuccessCriterion[];
+  onFailure?: "continue" | "abort";
+  settleSteps?: ScenarioStep[];
+}
+
 export interface ScenarioSpec {
   scenarioId: string;
   displayName: string;
   setup?: ScenarioStep[];
+  loop?: ScenarioLoopSpec;
   measure: MeasureSpec;
   success?: SuccessCriterion[];
   cleanup?: ScenarioStep[];
@@ -138,6 +148,9 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
     // against an actual slowdown. Recorded on scenario.end for auditability.
     const syntheticDelayMs = Number(process.env["PERF_SYNTHETIC_DELAY_MS"] ?? "0");
     try {
+      if (spec.loop) {
+        await runLoop(spec.loop, ctx, steps);
+      }
       await runSteps(spec.measure.action, "action");
       if (syntheticDelayMs > 0) {
         await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, syntheticDelayMs));
@@ -201,6 +214,130 @@ class ScenarioStepError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Soak/stress loop (Phase-2 M10). Every iteration is recorded honestly:
+// failures are captured (never retried or hidden) and the loop continues or
+// aborts per policy. waitForMarker steps and markerSeen criteria inside an
+// iteration only accept markers fresh to THAT iteration.
+// ---------------------------------------------------------------------------
+
+// PERF_SYNTHETIC_LEAK_KB_PER_ITER: gate-proof hook — deliberately retains
+// memory each iteration so leak detection can be proven against a real leak.
+// Recorded transparently on iteration markers.
+const syntheticLeakRetained: Buffer[] = [];
+
+async function runLoop(
+  loop: ScenarioLoopSpec,
+  ctx: EngineContext,
+  stepsLog: StepOutcome[],
+): Promise<void> {
+  const warmupCount = loop.warmupIterations ?? 0;
+  const onFailure = loop.onFailure ?? "continue";
+  const leakKbPerIter = Number(process.env["PERF_SYNTHETIC_LEAK_KB_PER_ITER"] ?? "0");
+  // Config-driven override (config.vscode.env, snapshotted with the run) so
+  // quick verifications don't need a separate scenario definition.
+  const overrideIterations = Number(process.env["PERF_SOAK_ITERATIONS"] ?? "0");
+  const totalIterations = overrideIterations > 0 ? overrideIterations : loop.iterations;
+  let failures = 0;
+
+  for (let index = 0; index < totalIterations; index++) {
+    const warmup = index < warmupCount;
+    const iterStartUnixNs = (BigInt(Date.now()) * 1000000n).toString();
+    ctx.emitMarker("iteration.start", "instant", {
+      index,
+      warmup,
+      ...(leakKbPerIter > 0 ? { syntheticLeakKb: leakKbPerIter } : {}),
+    });
+
+    let status: "passed" | "failed" = "passed";
+    let errorKind: string | undefined;
+    try {
+      for (const step of loop.steps) {
+        try {
+          await executeStep(step, ctx, iterStartUnixNs);
+        } catch (error) {
+          status = "failed";
+          errorKind = classifyIterationError(step, error);
+          throw error;
+        }
+      }
+      for (const criterion of loop.success ?? []) {
+        const outcome = evaluateCriterion(criterion, ctx, iterStartUnixNs);
+        if (outcome.status === "failed") {
+          status = "failed";
+          errorKind = errorKind ?? classifyCriterion(criterion, outcome.message);
+          break;
+        }
+      }
+    } catch {
+      // recorded below; loop policy decides whether to continue
+    }
+
+    if (leakKbPerIter > 0) {
+      syntheticLeakRetained.push(Buffer.alloc(leakKbPerIter * 1024, index % 256));
+    }
+
+    ctx.emitMarker("iteration.end", "instant", {
+      index,
+      warmup,
+      status,
+      ...(errorKind ? { errorKind } : {}),
+    });
+
+    if (status === "failed") {
+      failures++;
+      if (onFailure === "abort") {
+        stepsLog.push({
+          step: `loop:aborted@${index}`,
+          status: "failed",
+          message: `iteration ${index} failed (${errorKind ?? "unknown"}); onFailure=abort`,
+        });
+        throw new ScenarioStepError(
+          `loop:iteration:${index}`,
+          `loop aborted at iteration ${index}: ${errorKind ?? "unknown"}`,
+        );
+      }
+    }
+
+    if (loop.settleSteps) {
+      for (const step of loop.settleSteps) {
+        try {
+          await executeStep(step, ctx, iterStartUnixNs);
+        } catch (error) {
+          ctx.log(`settle step failed after iteration ${index}: ${String(error)}`);
+        }
+      }
+    }
+  }
+  stepsLog.push({
+    step: `loop:${totalIterations}x`,
+    status: "passed",
+    message: `${failures} iteration failure(s) recorded`,
+  });
+}
+
+function classifyIterationError(step: ScenarioStep, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timed out/i.test(message)) return "timeout";
+  switch (step.type) {
+    case "mssqlConnect":
+      return "connect";
+    case "mssqlDisconnect":
+      return "disconnect";
+    case "command":
+    case "waitForMarker":
+      return "query";
+    default:
+      return "other";
+  }
+}
+
+function classifyCriterion(criterion: SuccessCriterion, message?: string): string {
+  if (message && /timed out/i.test(message)) return "timeout";
+  if (criterion.type === "markerSeen" && /connect/i.test(criterion.name ?? "")) return "connect";
+  return "verification";
+}
+
 function describeStep(step: ScenarioStep): string {
   switch (step.type) {
     case "command":
@@ -215,7 +352,11 @@ function describeStep(step: ScenarioStep): string {
   }
 }
 
-async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void> {
+async function executeStep(
+  step: ScenarioStep,
+  ctx: EngineContext,
+  afterUnixNs?: string,
+): Promise<void> {
   const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
   switch (step.type) {
     case "noop":
@@ -259,7 +400,7 @@ async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void
       if (!step.name) {
         throw new Error("waitForMarker step missing marker name");
       }
-      await ctx.bus.wait(step.name, step.attrs, timeoutMs);
+      await ctx.bus.wait(step.name, step.attrs, timeoutMs, afterUnixNs);
       return;
     }
     case "mssqlConnect": {
@@ -269,6 +410,10 @@ async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void
         throw new Error(`No connection profile '${profileName}' was provided by the orchestrator`);
       }
       await withTimeout(mssqlConnect(profile, ctx), timeoutMs, `mssqlConnect(${profileName})`);
+      return;
+    }
+    case "mssqlDisconnect": {
+      await withTimeout(mssqlDisconnect(ctx), timeoutMs, "mssqlDisconnect");
       return;
     }
     case "webviewProbe":
@@ -286,6 +431,26 @@ async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void
  * emits mssql.connection.begin/ready markers around the real connection flow,
  * so timing comes from the product, not from this call.
  */
+/** Disconnect the active editor's connection via the product's test seam. */
+async function mssqlDisconnect(ctx: EngineContext): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    throw new Error("mssqlDisconnect requires an open document");
+  }
+  const uri = editor.document.uri.toString();
+  const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
+    | { connectionManager?: { disconnect(fileUri: string): Promise<boolean> } }
+    | undefined;
+  if (!controller?.connectionManager) {
+    throw new Error("mssql.getControllerForTests returned no controller");
+  }
+  ctx.log(`disconnecting ${uri.slice(0, 80)}`);
+  const ok = await controller.connectionManager.disconnect(uri);
+  if (!ok) {
+    throw new Error("connectionManager.disconnect returned false");
+  }
+}
+
 async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -338,10 +503,16 @@ async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext):
   }
 }
 
-function evaluateCriterion(criterion: SuccessCriterion, ctx: EngineContext): StepOutcome {
+function evaluateCriterion(
+  criterion: SuccessCriterion,
+  ctx: EngineContext,
+  afterUnixNs?: string,
+): StepOutcome {
   switch (criterion.type) {
     case "markerSeen": {
-      const seen = criterion.name ? ctx.bus.has(criterion.name, criterion.attrs) : false;
+      const seen = criterion.name
+        ? ctx.bus.find(criterion.name, criterion.attrs, afterUnixNs) !== undefined
+        : false;
       const result: StepOutcome = {
         step: `markerSeen(${criterion.name ?? "?"})`,
         status: seen ? "passed" : "failed",

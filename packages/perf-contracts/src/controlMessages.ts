@@ -224,6 +224,8 @@ export type ScenarioStep =
    * (mssql.getControllerForTests → connectionManager.connect).
    */
   | { type: "mssqlConnect"; profile: string; timeoutMs?: number }
+  /** Disconnect the active editor's connection via the product test seam. */
+  | { type: "mssqlDisconnect"; timeoutMs?: number }
   /**
    * Deliberate busy-delay INSIDE a measured window. Exists solely so the
    * regression gate can be proven against a real slowdown (design §32 M6

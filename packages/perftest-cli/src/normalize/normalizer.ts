@@ -27,6 +27,12 @@ import type {
 } from "@mssqlperf/contracts";
 import { validateResult } from "@mssqlperf/contracts";
 import type { CalibrationResult, ScenarioOutcome } from "../control/controlServer";
+import {
+  analyzeSoak,
+  extractIterations,
+  memorySeriesFromMarkers,
+  soakMetrics,
+} from "../regression/soakAnalysis";
 
 export interface NormalizeInputs {
   runId: string;
@@ -228,6 +234,40 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
       endUnixNs: endMarker.timestampUnixNs,
       tags: { timePlane },
     });
+  }
+
+  // --- Soak analysis (Phase-2 M10): iteration markers → latency/reliability/
+  // leak metrics. Latency/reliability/RSS-slope are official-eligible on the
+  // marker plane; verdicts carry slope+CI+R²+samples in tags (never a bare
+  // "no leak"). The full per-iteration record set is the soak-iterations.jsonl
+  // artifact written by the pipeline.
+  if (inputs.spec?.loop) {
+    const iterations = extractIterations(inputs.markers);
+    if (iterations.length > 0) {
+      const memorySeries = memorySeriesFromMarkers(inputs.markers, iterations);
+      const analysis = analyzeSoak(iterations, memorySeries);
+      metrics.push(...soakMetrics(analysis, officialEligible));
+      if (analysis.memory) {
+        validations.push({
+          name: "soakMemoryVerdict",
+          status: analysis.memory.verdict === "growing" ? "warning" : "passed",
+          message: `${analysis.memory.verdict}: ${analysis.memory.reason}`,
+        });
+      }
+      if (analysis.reliability.failures > 0) {
+        validations.push({
+          name: "soakReliability",
+          status: "warning",
+          message: `${analysis.reliability.failures}/${analysis.reliability.steadyStateIterations} iterations failed (first at #${analysis.reliability.firstFailureIndex}); taxonomy: ${JSON.stringify(analysis.reliability.errorTaxonomy)}`,
+        });
+      }
+    } else {
+      validations.push({
+        name: "soakIterations",
+        status: "warning",
+        message: "loop scenario produced no iteration markers",
+      });
+    }
   }
 
   // --- Counter-marker summaries (memory timelines etc., design M7) ---------

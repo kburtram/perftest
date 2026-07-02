@@ -253,6 +253,51 @@ register({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Soak / stress scenarios (Phase-2 M10)
+// ---------------------------------------------------------------------------
+register({
+  implemented: true,
+  plannedMilestone: "M10",
+  spec: {
+    scenarioId: "soak-connect-query-disconnect",
+    displayName: "Soak: connect → 10k query → disconnect loop (default 1000 iterations)",
+    tags: ["soak", "reliability", "memory", "sql"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: [
+      { type: "command", command: "objectExplorer.focus", timeoutMs: 300000 },
+      { type: "waitForMarker", name: "mssql.activate.end", timeoutMs: 300000 },
+      { type: "openDocument", path: "queries/select-10000.sql" },
+    ],
+    loop: {
+      iterations: 1000, // override per-run with vscode.env.PERF_SOAK_ITERATIONS
+      warmupIterations: 5,
+      onFailure: "continue", // reliability runs record every failure
+      steps: [
+        { type: "mssqlConnect", profile: "default", timeoutMs: 30000 },
+        { type: "waitForMarker", name: "mssql.connection.ready", timeoutMs: 30000 },
+        { type: "command", command: "mssql.runQuery", timeoutMs: 30000 },
+        { type: "waitForMarker", name: "mssql.query.complete", timeoutMs: 60000 },
+        { type: "mssqlDisconnect", timeoutMs: 30000 },
+      ],
+      // Correctness under load: every iteration must return exactly 10k rows.
+      success: [{ type: "markerSeen", name: "mssql.query.complete", attrs: { rowCount: 10000 } }],
+    },
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [], // the loop IS the measured window
+      end: { type: "afterLastAction" },
+      timeoutMs: 7_200_000, // 2h ceiling for the full 1000 iterations
+    },
+    success: [{ type: "noErrors", sources: ["automation"] }],
+    cleanup: [{ type: "command", command: "workbench.view.explorer" }],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
 export function listScenarios(): RegisteredScenario[] {
   return [...registry.values()];
 }

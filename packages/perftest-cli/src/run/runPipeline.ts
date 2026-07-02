@@ -41,6 +41,7 @@ import {
   getGitInfo,
   canonicalJson,
 } from "./environment";
+import { extractIterations } from "../regression/soakAnalysis";
 import { normalizeRep } from "../normalize/normalizer";
 import { renderMarkdownReport } from "../report/markdownReport";
 import { renderHtmlReport } from "../report/htmlReport";
@@ -651,8 +652,24 @@ async function executeRep(
     );
   }
 
+  // Soak runs: per-iteration records land beside the markers (contract:
+  // result.json carries summaries only; the artifact carries the series).
+  if (spec.loop) {
+    const iterations = extractIterations(sink.all());
+    if (iterations.length > 0) {
+      writeFileSync(
+        join(repDir, "soak-iterations.jsonl"),
+        iterations.map((i) => JSON.stringify(i)).join("\n") + "\n",
+        "utf8",
+      );
+    }
+  }
+
   const artifacts: ArtifactRef[] = [
     ...collectorArtifacts,
+    ...(spec.loop && existsSync(join(repDir, "soak-iterations.jsonl"))
+      ? [{ kind: "soakIterations", path: "soak-iterations.jsonl", retention: "always" as const }]
+      : []),
     { kind: "markers", path: "markers.jsonl", retention: "always", ...sizeOf(join(repDir, "markers.jsonl")) },
     {
       kind: "vscodeStdout",

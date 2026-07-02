@@ -473,6 +473,75 @@ export class PerfStore {
       );
   }
 
+  /**
+   * Median value per metric key across a run's passed non-warmup reps —
+   * official AND diagnostic metrics (investigation diffs span both; gating
+   * still uses officialSamples only).
+   */
+  metricMedians(runId: string): Array<{
+    scenarioId: string;
+    name: string;
+    component: string;
+    unit: string;
+    official: boolean;
+    median: number;
+    samples: number;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.scenario_id, m.name, m.component, m.unit, m.official, m.value
+         FROM metrics m
+         JOIN repetitions rep
+           ON rep.run_id = m.run_id AND rep.scenario_id = m.scenario_id
+          AND rep.rep_id = m.rep_id AND rep.attempt_id = m.attempt_id
+         WHERE m.run_id = ? AND rep.status = 'passed' AND rep.warmup = 0
+         ORDER BY m.scenario_id, m.name`,
+      )
+      .all(runId) as Array<{
+      scenario_id: string;
+      name: string;
+      component: string;
+      unit: string;
+      official: number;
+      value: number;
+    }>;
+    const grouped = new Map<string, { meta: (typeof rows)[0]; values: number[] }>();
+    for (const row of rows) {
+      const key = `${row.scenario_id}|${row.name}|${row.component}|${row.unit}`;
+      const entry = grouped.get(key) ?? { meta: row, values: [] };
+      entry.values.push(row.value);
+      grouped.set(key, entry);
+    }
+    return [...grouped.values()].map(({ meta, values }) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      const median =
+        sorted.length % 2 === 1
+          ? sorted[(sorted.length - 1) / 2]!
+          : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2;
+      return {
+        scenarioId: meta.scenario_id,
+        name: meta.name,
+        component: meta.component,
+        unit: meta.unit,
+        official: meta.official === 1,
+        median,
+        samples: sorted.length,
+      };
+    });
+  }
+
+  gitContext(runId: string): Array<{ repo: string; sha: string; branch?: string; dirty: boolean }> {
+    const rows = this.db
+      .prepare("SELECT repo, sha, branch, dirty FROM run_repositories WHERE run_id = ?")
+      .all(runId) as Array<{ repo: string; sha: string; branch: string | null; dirty: number }>;
+    return rows.map((r) => ({
+      repo: r.repo,
+      sha: r.sha,
+      ...(r.branch ? { branch: r.branch } : {}),
+      dirty: r.dirty === 1,
+    }));
+  }
+
   /** Raw prepared access for read paths (reports/regression build on this). */
   query<T>(sql: string, params: unknown[] = []): T[] {
     return this.db.prepare(sql).all(...params) as T[];

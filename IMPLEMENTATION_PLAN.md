@@ -228,11 +228,11 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
 
 ### M10 — Stress / load / soak
 
-- [ ] 10.1 ScenarioSpec `loop` block (iterations, warmupIterations, steps, per-iteration
+- [x] 10.1 ScenarioSpec `loop` block (iterations, warmupIterations, steps, per-iteration
       success, onFailure continue|abort, settle step); iteration.start/end markers with
       attrs.index; soak-iterations.jsonl artifact; result.json summary-only (additive;
       document in CONTRACTS.md).
-- [ ] 10.2 Soak analysis module (pure, unit-tested): latency p50/p95+trend slope; reliability
+- [x] 10.2 Soak analysis module (pure, unit-tested): latency p50/p95+trend slope; reliability
       failure count/rate/first-failure/taxonomy + correctness drift check; memory leak fit
       (steady-state RSS slope + CI + R², retained growth after settle, plateau-vs-monotonic)
       → verdict stable|growing|inconclusive; soak.* metrics (latency/reliability/RSS-slope
@@ -248,9 +248,9 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
 
 ### M11 — Rich A/B change tracking (investigation diff)
 
-- [ ] 11.1 `perftest diff --baseline --candidate`: official gate section (existing engine) +
+- [x] 11.1 `perftest diff --baseline --candidate`: official gate section (existing engine) +
       non-gating investigation section; comparison.json gains additive `investigation` block.
-- [ ] 11.2 SQL-activity delta (commands added/removed, round-trips, per-command
+- [x] 11.2 SQL-activity delta (commands added/removed, round-trips, per-command
       duration/reads/rows deltas) as the headline; waterfall/memory/render deltas; git
       context from run_repositories surfaced.
 - [ ] 11.3 A/B investigation report (md+html); acceptance: candidate with an extra SQL
