@@ -15,19 +15,27 @@ import {
   traceparent,
   PerfEnv,
   type ArtifactRef,
+  type ConnectionProfileSpec,
   type GitRepoInfo,
   type PerfResult,
   type PassType,
   type ScenarioSpec,
 } from "@mssqlperf/contracts";
+import { provisionSql } from "../sql/sqlProvisioner";
 import type { LoadedConfig } from "../config/loadConfig";
 import { ControlServer } from "../control/controlServer";
 import { MarkerSink } from "../markers/markerSink";
 import { resolveVscode, type ResolvedVscode } from "../launch/resolveVscode";
 import { spawnVscode } from "../launch/spawnVscode";
-import { captureEnvironment, getGitInfo, canonicalJson } from "./environment";
+import {
+  captureEnvironment,
+  environmentRelevantConfig,
+  getGitInfo,
+  canonicalJson,
+} from "./environment";
 import { normalizeRep } from "../normalize/normalizer";
 import { renderMarkdownReport } from "../report/markdownReport";
+import { renderHtmlReport } from "../report/htmlReport";
 import { PerfStore } from "../store/sqliteStore";
 import { getScenario } from "../scenarios/registry";
 import { ExitCode, type ExitCodeValue } from "../exitCodes";
@@ -123,6 +131,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     }
   }
 
+  const configFingerprint = environmentRelevantConfig(config);
   const environment = captureEnvironment({
     vscode: vscodeBuild,
     extensionVersions,
@@ -132,7 +141,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
       cacheMode: config.sql.cacheMode,
       provider: config.sql.provider,
     },
-    configHash: loaded.configHash,
+    configFingerprint,
     passType,
   });
   writeFileSync(join(runDir, "environment.json"), JSON.stringify(environment, null, 2), "utf8");
@@ -165,7 +174,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     extensionVersionsJson: JSON.stringify(extensionVersions),
     sqlImageDigest: config.sql.imageDigest ?? "",
     sqlSnapshot: config.sql.snapshot,
-    configFingerprintJson: canonicalJson({ configHash: loaded.configHash, passType }),
+    configFingerprintJson: canonicalJson({ config: configFingerprint, passType }),
   });
   store?.insertRun({
     runId,
@@ -180,6 +189,26 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
   });
   for (const repo of git) {
     store?.insertRunRepository(runId, repo);
+  }
+
+  // --- SQL provisioning (only when a selected scenario needs a connection) ---
+  let sqlProfiles: Record<string, ConnectionProfileSpec> | undefined;
+  const needsSql = specs.some(
+    (s) => s.sql?.connectionProfile && s.sql.connectionProfile !== "none",
+  );
+  if (needsSql) {
+    const provisioned = await provisionSql(config, logger.child("sql"), {
+      seedFiles: [resolve("sql", "seed", "create-perf-db.sql")],
+      verifyQuery: {
+        sql: "SET NOCOUNT ON; SELECT COUNT(*) FROM PerfHarness.dbo.PerfRows",
+        expect: "10000",
+      },
+    });
+    sqlProfiles = { default: provisioned.profile };
+    logger.info("run.sqlProvisioned", undefined, {
+      provider: provisioned.provider,
+      validation: provisioned.validation,
+    });
   }
 
   // --- Execute ----------------------------------------------------------------
@@ -207,6 +236,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
         environment,
         git,
         config,
+        ...(sqlProfiles ? { sqlProfiles } : {}),
         logger: logger.child("rep"),
       });
       allResults.push(repResult.result);
@@ -263,6 +293,19 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     harnessLogPath: "harness-log.jsonl",
   });
   writeFileSync(join(runDir, "report.md"), report, "utf8");
+  writeFileSync(
+    join(runDir, "report.html"),
+    renderHtmlReport({
+      runId,
+      passType,
+      createdAt: new Date().toISOString(),
+      environmentHash: environment.environmentHash,
+      ...(environment.machineId !== undefined ? { machineId: environment.machineId } : {}),
+      vscodeVersion: vscodeBuild.version,
+      results: allResults,
+    }),
+    "utf8",
+  );
 
   const exitCode: ExitCodeValue = infrastructureBroken
     ? ExitCode.infrastructureFailure
@@ -292,6 +335,7 @@ interface RepExecutionInputs {
   environment: ReturnType<typeof captureEnvironment>;
   git: GitRepoInfo[];
   config: LoadedConfig["config"];
+  sqlProfiles?: Record<string, ConnectionProfileSpec>;
   logger: HarnessLogger;
 }
 
@@ -377,7 +421,7 @@ async function executeRep(
     calibration = await server.calibrate();
     await Promise.race([server.waitForReady(READY_TIMEOUT_MS), exitEarly]);
 
-    server.startScenario(spec, traceId, rootTraceparent, artifactsDir);
+    server.startScenario(spec, traceId, rootTraceparent, artifactsDir, inputs.sqlProfiles);
     const outcomeTimeout = spec.measure.timeoutMs + 30_000;
     outcome = await Promise.race([server.waitForScenarioOutcome(outcomeTimeout), exitEarly]);
   } catch (error) {

@@ -15,6 +15,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import {
   nowUnixNs,
   type CalibrationPongMessage,
+  type ConnectionProfileSpec,
   type ControlMessage,
   type ControlMessageKind,
   type HelloMessage,
@@ -371,14 +372,28 @@ export class ControlServer {
     return result;
   }
 
-  startScenario(spec: ScenarioSpec, traceId: string, rootTraceparent: string, artifactDir: string): void {
+  startScenario(
+    spec: ScenarioSpec,
+    traceId: string,
+    rootTraceparent: string,
+    artifactDir: string,
+    connectionProfiles?: Record<string, ConnectionProfileSpec>,
+  ): void {
     this.options.logger.info("controlServer.startScenario", undefined, {
       scenarioId: spec.scenarioId,
       traceId,
+      // profile names only — never the contents (they carry credentials)
+      profiles: Object.keys(connectionProfiles ?? {}),
     });
     this.send({
       ...this.envelope("startScenario"),
-      payload: { scenario: spec, traceId, rootTraceparent, artifactDir },
+      payload: {
+        scenario: spec,
+        traceId,
+        rootTraceparent,
+        artifactDir,
+        ...(connectionProfiles ? { connectionProfiles } : {}),
+      },
     } as ControlMessage);
   }
 

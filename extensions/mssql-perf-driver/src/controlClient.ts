@@ -9,7 +9,11 @@
 
 import * as vscode from "vscode";
 import { MarkerBus, type BusMarker } from "./markerBus";
-import { runScenario, type ScenarioSpec } from "./scenarioEngine";
+import {
+  runScenario,
+  type ConnectionProfileSpec,
+  type ScenarioSpec,
+} from "./scenarioEngine";
 
 export interface ControlClientOptions {
   controlUrl: string;
@@ -104,8 +108,11 @@ export class ControlClient implements vscode.Disposable {
       case "startScenario": {
         this.repId = message.repId;
         this.scenarioId = message.scenarioId;
-        const payload = message.payload as { scenario: ScenarioSpec };
-        await this.executeScenario(payload.scenario);
+        const payload = message.payload as {
+          scenario: ScenarioSpec;
+          connectionProfiles?: Record<string, ConnectionProfileSpec>;
+        };
+        await this.executeScenario(payload.scenario, payload.connectionProfiles);
         break;
       }
       case "marker": {
@@ -126,7 +133,10 @@ export class ControlClient implements vscode.Disposable {
     }
   }
 
-  private async executeScenario(spec: ScenarioSpec): Promise<void> {
+  private async executeScenario(
+    spec: ScenarioSpec,
+    connectionProfiles?: Record<string, ConnectionProfileSpec>,
+  ): Promise<void> {
     this.send("scenarioStarted", {});
     const errors: string[] = [];
     try {
@@ -135,6 +145,7 @@ export class ControlClient implements vscode.Disposable {
         bus: this.bus,
         errors,
         log: (m) => this.log(m),
+        ...(connectionProfiles ? { connectionProfiles } : {}),
       });
       if (result.failure) {
         this.send("scenarioFailed", {

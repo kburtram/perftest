@@ -100,32 +100,51 @@ register({
 });
 
 register({
-  implemented: false,
+  implemented: true, // M4': product connection markers + driver mssqlConnect step
   plannedMilestone: "M4",
   spec: {
     scenarioId: "connect-local-container",
     displayName: "Connect to local SQL Server",
     tags: ["connection", "sts", "sql"],
     profileMode: "warmed",
-    sql: { connectionProfile: "local-container", cacheMode: "warm" },
+    sql: { connectionProfile: "default", cacheMode: "warm" },
+    setup: [
+      // Activate the extension outside the measured window, then give the
+      // connect step a document to bind the connection to.
+      { type: "command", command: "objectExplorer.focus", timeoutMs: 300000 },
+      { type: "waitForMarker", name: "mssql.activate.end", timeoutMs: 300000 },
+      { type: "openDocument", path: "queries/select-10000.sql" },
+    ],
     measure: {
-      start: { type: "beforeCommand", command: "mssql.connect" },
-      action: [{ type: "command", command: "mssql.connect" }],
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "mssqlConnect", profile: "default", timeoutMs: 60000 }],
       end: { type: "waitForMarker", name: "mssql.connection.ready" },
       timeoutMs: 60000,
     },
     success: [
+      { type: "markerSeen", name: "mssql.connection.begin" },
       { type: "markerSeen", name: "mssql.connection.ready" },
       { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
     ],
+    cleanup: [{ type: "command", command: "workbench.view.explorer" }],
     metrics: [
       { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "mssql.connection",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.connection.begin",
+        endMarker: "mssql.connection.ready",
+        component: "connection",
+        processRole: "extensionHost",
+      },
     ],
   },
 });
 
 register({
-  implemented: false,
+  implemented: true, // M4': query markers + webview render-complete bridge
   plannedMilestone: "M4",
   spec: {
     scenarioId: "query-10k-results",
@@ -135,12 +154,14 @@ register({
     sql: {
       database: "PerfHarness",
       cacheMode: "warm",
-      connectionProfile: "local-container",
+      connectionProfile: "default",
     },
     setup: [
-      { type: "command", command: "mssql.connect" },
-      { type: "waitForMarker", name: "mssql.connection.ready", timeoutMs: 30000 },
+      { type: "command", command: "objectExplorer.focus", timeoutMs: 300000 },
+      { type: "waitForMarker", name: "mssql.activate.end", timeoutMs: 300000 },
       { type: "openDocument", path: "queries/select-10000.sql" },
+      { type: "mssqlConnect", profile: "default", timeoutMs: 60000 },
+      { type: "waitForMarker", name: "mssql.connection.ready", timeoutMs: 60000 },
     ],
     measure: {
       start: { type: "beforeCommand", command: "mssql.runQuery" },
@@ -149,13 +170,85 @@ register({
       timeoutMs: 120000,
     },
     success: [
-      { type: "markerSeen", name: "mssql.query.rowsRendered", attrs: { rowCount: 10000 } },
-      { type: "webviewProbe", probe: "resultsGrid", assert: "rowCount == 10000" },
+      // Success proof from two independent sources (design §7): the extension
+      // saw 10k rows complete AND the webview grid rendered 10k rows.
+      { type: "markerSeen", name: "mssql.query.complete", attrs: { rowCount: 10000 } },
+      {
+        type: "markerSeen",
+        name: "mssql.resultsGrid.renderComplete",
+        attrs: { rowCount: 10000 },
+      },
       { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
     ],
+    cleanup: [{ type: "command", command: "workbench.view.explorer" }],
     metrics: [
       { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
-      { name: "webview.resultsGrid.render", source: "webviewMark", official: false },
+      {
+        name: "mssql.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.query.submit",
+        endMarker: "mssql.query.complete",
+        component: "query",
+        processRole: "extensionHost",
+      },
+      {
+        name: "mssql.query.toRender",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.query.submit",
+        endMarker: "mssql.resultsGrid.renderComplete",
+        component: "webview",
+        processRole: "boundary",
+      },
+    ],
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Harness self-test scenarios (design §32 M6 acceptance). These exist to
+// prove the gate and the invalid-run rules against real behavior.
+// ---------------------------------------------------------------------------
+register({
+  implemented: true,
+  plannedMilestone: "M6'",
+  spec: {
+    scenarioId: "noop-synthetic-delay",
+    displayName: "No-op with synthetic 250ms delay (regression-gate proof)",
+    tags: ["harness", "synthetic"],
+    profileMode: "fresh",
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "syntheticDelay", ms: 250 }],
+      end: { type: "afterLastAction" },
+      timeoutMs: 30000,
+    },
+    success: [{ type: "noErrors", sources: ["automation"] }],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M6'",
+  spec: {
+    scenarioId: "noop-missing-marker",
+    displayName: "Waits for a marker that never arrives (invalid-run proof)",
+    tags: ["harness", "synthetic"],
+    profileMode: "fresh",
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "noop" }],
+      end: { type: "waitForMarker", name: "perf.never.emitted" },
+      timeoutMs: 5000,
+    },
+    success: [{ type: "noErrors", sources: ["automation"] }],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
     ],
   },
 });

@@ -336,6 +336,143 @@ export class PerfStore {
     return row ? { runId: row.run_id, environmentHash: row.environment_hash } : undefined;
   }
 
+  getRun(
+    runId: string,
+  ): { runId: string; environmentHash: string; passType: string; status: string; outputDir: string } | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT run_id, environment_hash, pass_type, status, output_dir FROM runs WHERE run_id = ?",
+      )
+      .get(runId) as
+      | { run_id: string; environment_hash: string; pass_type: string; status: string; output_dir: string }
+      | undefined;
+    return row
+      ? {
+          runId: row.run_id,
+          environmentHash: row.environment_hash,
+          passType: row.pass_type,
+          status: row.status,
+          outputDir: row.output_dir,
+        }
+      : undefined;
+  }
+
+  /**
+   * Regression-eligible samples for a run: official metrics from passed,
+   * NON-WARMUP measurement reps (design §24.3 step 3 — the SQL view alone
+   * does not exclude warmups; this query does).
+   */
+  officialSamples(runId: string): Array<{
+    scenarioId: string;
+    name: string;
+    component: string;
+    processRole: string;
+    unit: string;
+    value: number;
+    lowerIsBetter: boolean;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.scenario_id, m.name, m.component, m.process_role, m.unit, m.value, m.lower_is_better
+         FROM metrics m
+         JOIN runs r ON r.run_id = m.run_id
+         JOIN repetitions rep
+           ON rep.run_id = m.run_id AND rep.scenario_id = m.scenario_id
+          AND rep.rep_id = m.rep_id AND rep.attempt_id = m.attempt_id
+         WHERE m.run_id = ? AND m.official = 1 AND r.pass_type = 'measurement'
+           AND rep.status = 'passed' AND rep.warmup = 0
+         ORDER BY m.scenario_id, m.name, m.rep_id`,
+      )
+      .all(runId) as Array<{
+      scenario_id: string;
+      name: string;
+      component: string;
+      process_role: string;
+      unit: string;
+      value: number;
+      lower_is_better: number;
+    }>;
+    return rows.map((r) => ({
+      scenarioId: r.scenario_id,
+      name: r.name,
+      component: r.component,
+      processRole: r.process_role,
+      unit: r.unit,
+      value: r.value,
+      lowerIsBetter: r.lower_is_better === 1,
+    }));
+  }
+
+  insertComparison(
+    currentRunId: string,
+    baselineRunId: string,
+    status: string,
+    summaryJson: string,
+  ): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO comparisons (current_run_id, baseline_run_id, created_at_unix_ns, status, summary_json)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        currentRunId,
+        baselineRunId,
+        (BigInt(Date.now()) * 1_000_000n).toString(),
+        status,
+        summaryJson,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  insertComparisonMetric(
+    comparisonId: number,
+    metric: {
+      scenarioId: string;
+      metricName: string;
+      component: string;
+      processRole: string;
+      unit: string;
+      official: boolean;
+      baselineValue?: number;
+      currentValue?: number;
+      deltaAbs?: number;
+      deltaPct?: number;
+      baselineSamples?: number;
+      currentSamples?: number;
+      pValue?: number;
+      verdict: string;
+      thresholdJson?: string;
+      detailsJson?: string;
+    },
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO comparison_metrics (comparison_id, scenario_id, metric_name, component,
+           process_role, unit, official, baseline_value, current_value, delta_abs, delta_pct,
+           baseline_samples, current_samples, p_value, verdict, threshold_json, details_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        comparisonId,
+        metric.scenarioId,
+        metric.metricName,
+        metric.component,
+        metric.processRole,
+        metric.unit,
+        metric.official ? 1 : 0,
+        metric.baselineValue ?? null,
+        metric.currentValue ?? null,
+        metric.deltaAbs ?? null,
+        metric.deltaPct ?? null,
+        metric.baselineSamples ?? null,
+        metric.currentSamples ?? null,
+        metric.pValue ?? null,
+        metric.verdict,
+        metric.thresholdJson ?? null,
+        metric.detailsJson ?? null,
+      );
+  }
+
   /** Raw prepared access for read paths (reports/regression build on this). */
   query<T>(sql: string, params: unknown[] = []): T[] {
     return this.db.prepare(sql).all(...params) as T[];

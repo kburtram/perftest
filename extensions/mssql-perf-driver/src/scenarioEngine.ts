@@ -19,7 +19,18 @@ export interface ScenarioStep {
   attrs?: Record<string, unknown>;
   probe?: string;
   assert?: string;
+  profile?: string;
   timeoutMs?: number;
+}
+
+export interface ConnectionProfileSpec {
+  server: string;
+  database?: string;
+  authenticationType: "SqlLogin" | "Integrated";
+  user?: string;
+  password?: string;
+  encrypt?: string;
+  trustServerCertificate?: boolean;
 }
 
 export interface SuccessCriterion {
@@ -69,6 +80,7 @@ export interface EngineContext {
   bus: MarkerBus;
   errors: string[];
   log(message: string): void;
+  connectionProfiles?: Record<string, ConnectionProfileSpec>;
 }
 
 const DEFAULT_STEP_TIMEOUT_MS = 30000;
@@ -119,8 +131,15 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
     // first action; scenario.end when the end condition resolves.
     const measureStartUnixNs = (BigInt(Date.now()) * 1000000n).toString();
     ctx.emitMarker("scenario.start", "instant", { scenarioId: spec.scenarioId });
+    // Gate-proof hook: PERF_SYNTHETIC_DELAY_MS injects a real, transparent
+    // delay into the measured window so the regression pipeline can be proven
+    // against an actual slowdown. Recorded on scenario.end for auditability.
+    const syntheticDelayMs = Number(process.env["PERF_SYNTHETIC_DELAY_MS"] ?? "0");
     try {
       await runSteps(spec.measure.action, "action");
+      if (syntheticDelayMs > 0) {
+        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, syntheticDelayMs));
+      }
       if (spec.measure.end.type === "waitForMarker" && spec.measure.end.name) {
         // Freshness guard: only a marker emitted at/after scenario.start can
         // end the measured interval — stale markers from startup can't.
@@ -133,11 +152,13 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
         ctx.emitMarker("scenario.end", "instant", {
           scenarioId: spec.scenarioId,
           endBasis: spec.measure.end.name,
+          ...(syntheticDelayMs > 0 ? { syntheticDelayMs } : {}),
         });
       } else {
         ctx.emitMarker("scenario.end", "instant", {
           scenarioId: spec.scenarioId,
           endBasis: "afterLastAction",
+          ...(syntheticDelayMs > 0 ? { syntheticDelayMs } : {}),
         });
       }
     } catch (error) {
@@ -197,6 +218,13 @@ async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void
   switch (step.type) {
     case "noop":
       return;
+    case "syntheticDelay":
+      // Gate-proving synthetic workload only (see contracts): the delay is a
+      // real elapsed cost inside the measured window, honestly measured.
+      await new Promise<void>((resolveDelay) =>
+        setTimeout(resolveDelay, (step as unknown as { ms: number }).ms),
+      );
+      return;
     case "command":
     case "waitForCommandCompletion": {
       if (!step.command) {
@@ -232,6 +260,15 @@ async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void
       await ctx.bus.wait(step.name, step.attrs, timeoutMs);
       return;
     }
+    case "mssqlConnect": {
+      const profileName = step.profile ?? "default";
+      const profile = ctx.connectionProfiles?.[profileName];
+      if (!profile) {
+        throw new Error(`No connection profile '${profileName}' was provided by the orchestrator`);
+      }
+      await withTimeout(mssqlConnect(profile, ctx), timeoutMs, `mssqlConnect(${profileName})`);
+      return;
+    }
     case "webviewProbe":
     case "objectExplorerProbe":
       // Arrives with product instrumentation (M2/M4). Failing honestly beats
@@ -239,6 +276,61 @@ async function executeStep(step: ScenarioStep, ctx: EngineContext): Promise<void
       throw new Error(`${step.type} is not implemented yet`);
     default:
       throw new Error(`Unknown step type '${step.type}'`);
+  }
+}
+
+/**
+ * Non-interactive connect through the product's own test seam. The product
+ * emits mssql.connection.begin/ready markers around the real connection flow,
+ * so timing comes from the product, not from this call.
+ */
+async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    throw new Error("mssqlConnect requires an open document (add an openDocument step first)");
+  }
+  // Must match the product's connection key exactly: it uses uri.toString()
+  // WITH encoding (models/utils.ts getActiveTextEditorUri) — toString(true)
+  // would register the connection under a different key on Windows (c%3A vs c:).
+  const uri = editor.document.uri.toString();
+  const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
+    | { connectionManager?: { connect(fileUri: string, credentials: unknown, options?: unknown): Promise<boolean> } }
+    | undefined;
+  if (!controller?.connectionManager) {
+    throw new Error("mssql.getControllerForTests returned no controller (is ms-mssql.mssql active?)");
+  }
+  const encrypt =
+    profile.encrypt !== undefined
+      ? profile.encrypt.toLowerCase() === "true"
+        ? "Mandatory"
+        : profile.encrypt.toLowerCase() === "false"
+          ? "Optional"
+          : profile.encrypt
+      : "Optional";
+  const credentials: Record<string, unknown> = {
+    server: profile.server,
+    database: profile.database ?? "",
+    authenticationType: profile.authenticationType,
+    user: profile.user ?? "",
+    password: profile.password ?? "",
+    savePassword: false,
+    encrypt,
+    trustServerCertificate: profile.trustServerCertificate ?? false,
+    persistSecurityInfo: false,
+    email: undefined,
+    accountId: undefined,
+    tenantId: undefined,
+    connectTimeout: 30,
+    commandTimeout: 30,
+    applicationName: "vscode-mssql-perf",
+  };
+  ctx.log(`connecting ${uri.slice(0, 80)} to ${profile.server}`);
+  const ok = await controller.connectionManager.connect(uri, credentials, {
+    shouldHandleErrors: false,
+    connectionSource: "perfDriver",
+  });
+  if (!ok) {
+    throw new Error(`connectionManager.connect returned false for server ${profile.server}`);
   }
 }
 

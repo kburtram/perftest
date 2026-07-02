@@ -67,6 +67,22 @@ export interface ReadyMessage extends ControlMessageBase {
   };
 }
 
+/**
+ * Connection details the driver may use for non-interactive product
+ * connections. Synthetic perf credentials only (design §29); the control
+ * channel is localhost + token-authenticated. Never logged or persisted in
+ * markers/results.
+ */
+export interface ConnectionProfileSpec {
+  server: string;
+  database?: string;
+  authenticationType: "SqlLogin" | "Integrated";
+  user?: string;
+  password?: string;
+  encrypt?: string;
+  trustServerCertificate?: boolean;
+}
+
 /** Orchestrator → driver: execute this scenario now. */
 export interface StartScenarioMessage extends ControlMessageBase {
   kind: "startScenario";
@@ -75,6 +91,7 @@ export interface StartScenarioMessage extends ControlMessageBase {
     traceId: string;
     rootTraceparent: string;
     artifactDir: string;
+    connectionProfiles?: Record<string, ConnectionProfileSpec>;
   };
 }
 
@@ -201,6 +218,18 @@ export type ScenarioStep =
   | { type: "waitForCommandCompletion"; command: string; args?: unknown[]; timeoutMs?: number }
   | { type: "webviewProbe"; probe: string; assert?: string; timeoutMs?: number }
   | { type: "objectExplorerProbe"; assert?: string; timeoutMs?: number }
+  /**
+   * Non-interactively connect the active editor's document to the named
+   * connection profile via the product's own test seam
+   * (mssql.getControllerForTests → connectionManager.connect).
+   */
+  | { type: "mssqlConnect"; profile: string; timeoutMs?: number }
+  /**
+   * Deliberate busy-delay INSIDE a measured window. Exists solely so the
+   * regression gate can be proven against a real slowdown (design §32 M6
+   * acceptance). Never use in a product scenario — semantic waits only.
+   */
+  | { type: "syntheticDelay"; ms: number }
   | { type: "noop" };
 
 export type SuccessCriterion =

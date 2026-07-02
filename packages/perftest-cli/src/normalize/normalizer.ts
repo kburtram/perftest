@@ -121,7 +121,17 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
     errors.push({ kind: "control", message: "no scenario outcome received", source: "harness" });
   } else if (!requiredPresent) {
     // Even a "completed" scenario without its required markers is untrusted.
+    // Preserve the driver's failure reason so the report explains WHY.
     status = "invalid";
+    if (inputs.outcome.kind === "failed") {
+      const failed = inputs.outcome.failed;
+      errors.push({
+        kind: "scenario",
+        message: failed?.payload.reason ?? "scenario failed",
+        ...(failed?.payload.stack ? { stack: failed.payload.stack } : {}),
+        source: "automationExtension",
+      });
+    }
   } else if (inputs.outcome.kind === "failed") {
     status = "failed";
     const failed = inputs.outcome.failed;

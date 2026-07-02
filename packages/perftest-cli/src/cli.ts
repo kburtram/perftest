@@ -19,6 +19,7 @@ import { PerfStore } from "./store/sqliteStore";
 import { listScenarios } from "./scenarios/registry";
 import { listCollectors, PLANNED_COLLECTORS } from "./collectors/registry";
 import { executeRun, RunConfigError } from "./run/runPipeline";
+import { compareRuns, renderComparisonConsole, CompareError } from "./regression/compareRuns";
 
 const { logger, sink } = createRootLogger();
 const HARNESS_ROOT = resolve(__dirname, "..", "..", "..");
@@ -255,6 +256,40 @@ program
         );
       }
       process.stdout.write(`Report: ${join(summary.runDir, "report.md")}\n`);
+
+      // Regression gate (design §24.3/§26): when a baseline is configured,
+      // compare and let a gated regression drive the exit code.
+      const regression = loaded.config.regression;
+      const baselineRef = regression?.baseline;
+      if (
+        summary.exitCode === ExitCode.ok &&
+        baselineRef &&
+        baselineRef !== "none" &&
+        loaded.config.store.type === "sqlite"
+      ) {
+        const store = PerfStore.open(loaded.config.store.path ?? "./perf.db", logger.child("store"));
+        try {
+          const comparison = compareRuns(
+            store,
+            summary.runId,
+            baselineRef,
+            logger.child("compare"),
+            { thresholds: regression.thresholds as never },
+          );
+          process.stdout.write("\n" + renderComparisonConsole(comparison) + "\n");
+          if (comparison.status === "regressed" && regression.failOnRegression) {
+            exit(ExitCode.regression);
+          }
+        } catch (error) {
+          if (error instanceof CompareError) {
+            process.stderr.write(`Baseline comparison skipped: ${error.message}\n`);
+          } else {
+            throw error;
+          }
+        } finally {
+          store.close();
+        }
+      }
       exit(summary.exitCode);
     } catch (error) {
       if (error instanceof RunConfigError) {
@@ -268,16 +303,112 @@ program
 
 program
   .command("report <runId>")
-  .description("Render the report for a run (Milestone 1+)")
-  .option("--open", "open the HTML report")
-  .action(() => notImplemented("report", "Milestone 1"));
+  .description("Re-render the Markdown/HTML report for a stored run")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--open", "open the HTML report when done")
+  .action(async (runId: string, opts: { db: string; open?: boolean }) => {
+    const store = PerfStore.open(opts.db, logger.child("store"));
+    const run = store.getRun(runId);
+    store.close();
+    if (!run) {
+      process.stderr.write(`Run '${runId}' not found in ${opts.db}\n`);
+      exit(ExitCode.configInvalid);
+    }
+    const { readdirSync } = await import("node:fs");
+    const results: import("@mssqlperf/contracts").PerfResult[] = [];
+    const scenariosDir = join(run.outputDir, "scenarios");
+    if (existsSync(scenariosDir)) {
+      for (const scenario of readdirSync(scenariosDir)) {
+        const repsDir = join(scenariosDir, scenario, "reps");
+        if (!existsSync(repsDir)) continue;
+        for (const rep of readdirSync(repsDir)) {
+          const resultPath = join(repsDir, rep, "result.json");
+          if (existsSync(resultPath)) {
+            results.push(
+              JSON.parse(readFileSync(resultPath, "utf8")) as import("@mssqlperf/contracts").PerfResult,
+            );
+          }
+        }
+      }
+    }
+    if (results.length === 0) {
+      process.stderr.write(`No rep results found under ${run.outputDir}\n`);
+      exit(ExitCode.infrastructureFailure);
+    }
+    const { renderMarkdownReport } = await import("./report/markdownReport");
+    const { renderHtmlReport } = await import("./report/htmlReport");
+    const env = results[0]!.environment;
+    const { writeFileSync } = await import("node:fs");
+    const common = {
+      runId,
+      passType: run.passType,
+      createdAt: new Date().toISOString(),
+      environmentHash: run.environmentHash,
+      ...(env.machineId !== undefined ? { machineId: String(env.machineId) } : {}),
+      vscodeVersion: String((env.vscode as Record<string, unknown>)?.["version"] ?? "unknown"),
+      results,
+    };
+    writeFileSync(
+      join(run.outputDir, "report.md"),
+      renderMarkdownReport({ ...common, harnessLogPath: "harness-log.jsonl" }),
+      "utf8",
+    );
+    const htmlPath = join(run.outputDir, "report.html");
+    writeFileSync(htmlPath, renderHtmlReport(common), "utf8");
+    process.stdout.write(`Report rendered: ${htmlPath}\n`);
+    if (opts.open) {
+      const { exec } = await import("node:child_process");
+      exec(`start "" "${htmlPath}"`, { windowsHide: true });
+    }
+    exit(ExitCode.ok);
+  });
 
 program
   .command("compare")
-  .description("Compare a run against a baseline (Milestone 6')")
+  .description("Compare a run's official metrics against a baseline run or named baseline")
   .requiredOption("--current <runId>")
-  .requiredOption("--baseline <runIdOrTag>")
-  .action(() => notImplemented("compare", "Milestone 6'"));
+  .requiredOption("--baseline <runIdOrName>")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--allow-cross-environment", "compare despite differing environment hashes")
+  .option("--json", "emit the comparison as JSON")
+  .action(
+    (opts: {
+      current: string;
+      baseline: string;
+      db: string;
+      allowCrossEnvironment?: boolean;
+      json?: boolean;
+    }) => {
+      const store = PerfStore.open(opts.db, logger.child("store"));
+      try {
+        const comparison = compareRuns(store, opts.current, opts.baseline, logger.child("compare"), {
+          ...(opts.allowCrossEnvironment !== undefined
+            ? { allowCrossEnvironment: opts.allowCrossEnvironment }
+            : {}),
+        });
+        process.stdout.write(
+          (opts.json
+            ? JSON.stringify(comparison, null, 2)
+            : renderComparisonConsole(comparison)) + "\n",
+        );
+        exit(
+          comparison.status === "regressed"
+            ? ExitCode.regression
+            : comparison.status === "inconclusive"
+              ? ExitCode.insufficientSamples
+              : ExitCode.ok,
+        );
+      } catch (error) {
+        if (error instanceof CompareError) {
+          process.stderr.write(`${error.message}\n`);
+          exit(ExitCode.configInvalid);
+        }
+        throw error;
+      } finally {
+        store.close();
+      }
+    },
+  );
 
 const baseline = program.command("baseline").description("Baseline management");
 baseline

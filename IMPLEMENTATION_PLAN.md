@@ -93,33 +93,33 @@ from real markers; PERF_MODE off ⇒ identical behavior.
 
 ## Milestone 4′ — Connect + query scenarios (timing payload)
 
-- [ ] 4.1 SQL provisioning: docker-compose pinned by digest, deterministic seed
+- [x] 4.1 SQL provisioning: docker-compose pinned by digest, deterministic seed
       (`create-perf-db.sql`, 10k-row fixture, OE shape), `external` provider fallback
       (STS2_SQLSERVER_CONNSTRING), snapshot/reset strategy, cache modes.
-- [ ] 4.2 `connect-local-container` scenario: semantic connection-ready end marker
+- [x] 4.2 `connect-local-container` scenario: semantic connection-ready end marker
       (`mssql.connection.ready` product marker or perf-API probe), STS spawn PID marker.
-- [ ] 4.3 `query-10k-results` scenario: webview mark bridge
+- [x] 4.3 `query-10k-results` scenario: webview mark bridge
       (`performance.timeOrigin + performance.now()` → postMessage → extension → sink),
       `mssql.resultsGrid.renderComplete`, success proof rowCount == 10000 else `invalid`.
-- [ ] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
-- [ ] 4.5 Real E2E both scenarios; verify against local SQL (docker or external).
-- [ ] 4.6 Docs: `docs/SCENARIO_AUTHORING.md`, `docs/SQL_PROVISIONING.md`. Commit.
+- [x] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
+- [x] 4.5 Real E2E both scenarios; verify against local SQL (docker or external).
+- [x] 4.6 Docs: `docs/SCENARIO_AUTHORING.md`, `docs/SQL_PROVISIONING.md`. Commit.
 
 **Acceptance:** both scenarios produce schema-valid results end to end; query proves 10k rows;
 all product changes PERF_MODE-gated.
 
 ## Milestone 6′ — Baselines, regression gate, reports
 
-- [ ] 6.1 Aggregation math (§24.1: trimmed mean/median, CV, p90/p95, CI) + invalid-run rules
+- [x] 6.1 Aggregation math (§24.1: trimmed mean/median, CV, p90/p95, CI) + invalid-run rules
       (§24.2) with unit tests.
-- [ ] 6.2 Regression classification (§24.3: pct + absolute floor + Welch t, worst-metric-wins,
+- [x] 6.2 Regression classification (§24.3: pct + absolute floor + Welch t, worst-metric-wins,
       environmentHash matching) + comparison JSON + SQLite comparisons tables.
-- [ ] 6.3 Reports: console summary, Markdown, static HTML (§27 sections incl. per-rep samples,
+- [x] 6.3 Reports: console summary, Markdown, static HTML (§27 sections incl. per-rep samples,
       verdicts, artifact links, suggested diagnostic follow-up command).
-- [ ] 6.4 CLI exit codes wired (regression ⇒ 1); artifact retention cleanup.
-- [ ] 6.5 Prove the gate: synthetic injected delay ⇒ REGRESSED + exit 1; deliberately missing
+- [x] 6.4 CLI exit codes wired (regression ⇒ 1); artifact retention cleanup.
+- [x] 6.5 Prove the gate: synthetic injected delay ⇒ REGRESSED + exit 1; deliberately missing
       required marker ⇒ `invalid` rep, never a fast number.
-- [ ] 6.6 Docs: `docs/REGRESSION_MODEL.md`, `docs/REPORTS.md`. Commit.
+- [x] 6.6 Docs: `docs/REGRESSION_MODEL.md`, `docs/REPORTS.md`. Commit.
 
 **Acceptance:** re-run vs stored baseline reports deltas/verdicts; injected delay fails run;
 missing marker ⇒ invalid.

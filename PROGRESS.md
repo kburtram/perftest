@@ -235,3 +235,76 @@ Known notes:
 Next: Milestone 4' (connect + query scenarios): SQL provisioning (docker digest
 pin + external fallback), mssql.connection.ready marker, webview mark bridge,
 query-10k success proof. Seed SQL already authored (sql/seed/*).
+
+---
+
+## 2026-07-01 - Entry 5: Milestones 4-prime and 6-prime COMPLETE (SQL scenarios + regression gate)
+
+### M4-prime: connect + query scenarios (verified E2E vs local SQL Server)
+
+Product markers added (vscode-mssql, PERF_MODE-gated):
+- connectionManager.ts: mssql.connection.begin (connect() entry) /
+  mssql.connection.ready (after onSuccessfulConnection fire).
+- queryRunner.ts: mssql.query.submit (before STS request) / mssql.query.complete
+  (handleQueryComplete, attrs.rowCount summed from batch resultSetSummaries).
+- Webview mark bridge: sharedInterfaces/perf.ts (PerfEnable + PerfWebviewMark
+  notifications); webviewBaseController forwards webview marks -> Perf.webviewMark
+  (role=webview, pid=0, webview-clock timestamps); webviews/common/perfMarks.ts
+  (timeOrigin+now epoch ns, us-precision monotonic; QUEUE until enable arrives so
+  the enable/handler race can never lose marks - timestamps captured at mark time);
+  controller re-sends enable at 0/1/3/10s; queryResultsGridView emits
+  mssql.resultsGrid.renderComplete after double-rAF with attrs.rowCount when
+  isExecuting flips false.
+- SQL provisioning: sqlProvisioner.ts (external via connectionStringEnv - default
+  STS2_SQLSERVER_CONNSTRING (local server, Integrated auth); dockerCompose via
+  compose up --wait + in-container sqlcmd; SQLCMDPASSWORD never on argv; redaction
+  on all error paths); sql/docker-compose.sqlserver.yml DIGEST-PINNED
+  (sha256:e07b9699a2b7...); sql/seed/create-perf-db.sql (10k deterministic rows +
+  OE shape, verified COUNT=10000 before every run).
+- Driver: mssqlConnect step via mssql.getControllerForTests ->
+  connectionManager.connect. BUG FIXED: product keys connections by
+  uri.toString() (encoded); toString(true) registered under a different key so
+  runQuery silently no-oped. Also: connection profiles ship in startScenario
+  payload (names logged, contents never).
+- VERIFIED run 2026-07-02T03-47-19Z_fb7d42e1: connect-local-container 4/4 passed
+  (measured 636-769ms); query-10k-results measured 3/3 passed (579-866ms official;
+  mssql.query.toComplete ~585ms monotonic; mssql.query.toRender ~642ms epoch;
+  success = query.complete rowCount 10000 AND renderComplete rowCount 10000).
+  Warmup rep invalid due to the enable race - fixed after (queue + resend);
+  re-verification run in flight.
+
+### M6-prime: baselines, regression gate, reports (ACCEPTANCE PROVEN)
+
+- statistics.ts: summarize (trimmed mean n>=10 else median, cv, p90/p95, ci95),
+  Welch t w/ incomplete-beta p-values (validated vs scipy reference point).
+- regression.ts: classifyMetric (minSamples -> inconclusive; maxCv -> inconclusive;
+  pct AND absMs must both trip; welch significance; direction-aware lowerIsBetter),
+  worst-metric-wins overallStatus.
+- compareRuns.ts: baseline resolution (run id or named baseline), ENV HASH MATCH
+  REQUIRED (CompareError otherwise; --allow-cross-environment override),
+  warmup-excluded official samples (store.officialSamples), persistence to
+  comparisons/comparison_metrics + comparison.json in run dir.
+- ENV HASH FIX: fingerprint now covers the environment-RELEVANT config subset
+  (vscode version/quality/extensions/extraArgs, sql provider/digest/snapshot/
+  cacheMode, environment reqs, passType) - NOT the raw config hash, so rep-count/
+  threshold/scenario-list edits stay comparable while measurement-affecting knobs
+  break comparability as they must. vscode.env EXCLUDED (documented escape hatch
+  used by the synthetic-delay proof).
+- CLI: compare command (exit 1 regressed / 6 inconclusive), baseline set, run
+  auto-gates when regression.baseline != none, report <runId> re-renders md+html.
+- report.html (self-contained static, verdict-colored comparison table).
+- Driver: PERF_SYNTHETIC_DELAY_MS injects transparent delay into measured window
+  (attrs.syntheticDelayMs on scenario.end); syntheticDelay step; harness-test
+  scenarios noop-synthetic-delay + noop-missing-marker.
+- normalizer fix: failed-outcome reason preserved even when rep is invalid.
+- ACCEPTANCE (all three proven on real runs):
+  1. baseline noop 5/5 passed ~0.5ms -> baseline set gate-proof (exit 0)
+  2. same scenario + 250ms injected delay: reps 253-267ms, verdict REGRESSED
+     (p=0.0000, +260.1ms), comparison.json persisted, EXIT CODE 1
+  3. noop-missing-marker: 5/5 INVALID, no wallclock metric anywhere, EXIT CODE 6
+- 32 unit tests green (contracts 14 + cli 35... vitest: logger 4, normalizer 7,
+  store 4, regression 17 = 32 in cli + 14 contracts).
+- Docs: REGRESSION_MODEL.md, REPORTS.md, SCENARIO_AUTHORING.md, SQL_PROVISIONING.md.
+
+Remaining core-box item: SQL rerun verifying webview enable-race fix (in flight).
+Then: M3 (STS diag on sts2 seams), M4-rest (XEvents), M5 (diag collectors).

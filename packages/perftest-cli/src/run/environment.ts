@@ -18,8 +18,42 @@ export interface EnvironmentCaptureInputs {
   extensionVersions: Record<string, string>;
   stsVersion?: string;
   sql: { imageDigest?: string; snapshot: string; cacheMode: string; provider: string };
-  configHash: string;
+  /**
+   * The environment-relevant config subset (see environmentRelevantConfig).
+   * Deliberately NOT the whole config hash: rep counts, thresholds, scenario
+   * lists, and output settings must not break run comparability — while
+   * anything that changes what is measured must.
+   */
+  configFingerprint: Record<string, unknown>;
   passType: PassType;
+}
+
+/** Extract the config knobs that define the measured environment (§23.1). */
+export function environmentRelevantConfig(config: {
+  vscode: {
+    version: string;
+    quality?: string;
+    extraArgs?: string[];
+    extensions: Array<{ id: string; source: string }>;
+  };
+  sql: { provider: string; imageDigest?: string; snapshot: string; cacheMode: string };
+  environment: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    vscode: {
+      version: config.vscode.version,
+      quality: config.vscode.quality ?? "stable",
+      extraArgs: config.vscode.extraArgs ?? [],
+      extensions: config.vscode.extensions.map((e) => ({ id: e.id, source: e.source })),
+    },
+    sql: {
+      provider: config.sql.provider,
+      imageDigest: config.sql.imageDigest ?? null,
+      snapshot: config.sql.snapshot,
+      cacheMode: config.sql.cacheMode,
+    },
+    environment: config.environment,
+  };
 }
 
 /** Deterministic JSON: keys sorted at every level. */
@@ -55,7 +89,7 @@ export function captureEnvironment(inputs: EnvironmentCaptureInputs): Environmen
     extensions: inputs.extensionVersions,
     sts: { version: inputs.stsVersion ?? null },
     sql: inputs.sql,
-    configHash: inputs.configHash,
+    config: inputs.configFingerprint,
     passType: inputs.passType,
   };
   const environmentHash =
