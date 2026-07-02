@@ -61,3 +61,30 @@ measured connection flow is the product's real one.
 `warm` (default): seed + verify acts as the warmup; buffers stay warm across
 reps. `coldDb`/`coldOs` are defined by the design but not implemented yet —
 configs asking for them fail honestly rather than mislabeling a warm run.
+
+## Phase-3 fixtures
+
+| Fixture | Shape | Used by |
+|---|---|---|
+| `dbo.PerfRows100k` | 100,000 deterministic rows (Id = correctness key) | large-result-100k, query-large-scroll-virtual-window |
+| `dbo.PerfBlobs` | 20 rows: 256KB VARBINARY + XML + NVARCHAR(MAX) | query-blob-xml |
+| `PerfCatalog` database | exactly 10,000 tables t00000..t09999 (skip-guarded rebuild; verified `COUNT(*) FROM PerfCatalog.sys.tables = 10000` at provisioning) | expand-tables-node-10k |
+
+The catalog seed only runs when a selected scenario declares
+`sql.database: "PerfCatalog"`, and skips itself when the catalog is already
+intact. Scenario-level `sql.database` overrides the connection profile the
+driver uses (the OE tree is then database-scoped).
+
+## coldDb cache mode
+
+`sql.cacheMode: "coldDb"` issues `DBCC DROPCLEANBUFFERS; DBCC FREEPROCCACHE`
+before each rep (requires sysadmin on the target instance) so SQL starts with
+cold buffer/plan caches; the reset is recorded in the harness log. Container
+restart per rep ("cold" for the whole instance) remains a docker-provider
+concern.
+
+## Seed determinism note
+
+Two truncation traps found by the seed verify (kept here so they aren't
+re-learned): `REPLICATE` truncates at 4000/8000 unless its FIRST argument is
+cast to `(N)VARCHAR(MAX)`, and `CAST(n AS CHAR(1))` overflows for n >= 10.

@@ -610,7 +610,14 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
   const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
     | {
         _objectExplorerProvider?: {
-          createSession(credentials: unknown): Promise<{ sessionId?: string; errorMessage?: string } | undefined>;
+          createSession(credentials: unknown): Promise<
+            | {
+                sessionId?: string;
+                errorMessage?: string;
+                connectionNode?: { label?: unknown; nodePath?: string };
+              }
+            | undefined
+          >;
           getChildren(element?: unknown): Promise<Array<{ label?: unknown; nodePath?: string }> | undefined>;
         };
       }
@@ -637,36 +644,47 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
   if (!session || session.errorMessage) {
     throw new Error(`OE session failed: ${session?.errorMessage ?? "no session"}`);
   }
-  const nodes = (await provider.getChildren(undefined)) ?? [];
-  if (nodes.length === 0) {
-    throw new Error("OE root has no nodes after session creation");
+  // Walk from the session-bound connection node — root-list nodes can be
+  // saved-but-disconnected profiles whose expansion would prompt for creds.
+  let current: { label?: unknown; nodePath?: string } | undefined = session.connectionNode;
+  if (!current) {
+    const nodes = (await provider.getChildren(undefined)) ?? [];
+    current = nodes[nodes.length - 1];
   }
-  // The freshest server node is last.
-  let current: { label?: unknown; nodePath?: string } = nodes[nodes.length - 1]!;
+  if (!current) {
+    throw new Error("OE has no connection node after session creation");
+  }
 
-  // The provider's getChildren returns a "Loading..." placeholder while the
-  // async expand runs — the semantic completion signal is the product's own
-  // mssql.oe.expand.end marker for that nodePath, after which the provider
-  // serves the cached real children.
+  // getChildren caches a "Loading..." placeholder and expands async; each
+  // completed expansion emits the product's mssql.oe.expand.end marker and
+  // refreshes the cache. Re-check after every fresh end marker until settled.
+  const walkDeadline = Date.now() + 280000;
   const expandSettled = async (
     node: { label?: unknown; nodePath?: string },
   ): Promise<Array<{ label?: unknown; nodePath?: string }>> => {
-    const beforeNs = (BigInt(Date.now()) * 1000000n).toString();
-    let children = (await provider.getChildren(node)) ?? [];
-    const isLoading = (list: typeof children): boolean =>
+    const isLoading = (list: Array<{ label?: unknown }>): boolean =>
       list.length === 1 &&
       String(
         typeof list[0]!.label === "string"
           ? list[0]!.label
           : ((list[0]!.label as { label?: string })?.label ?? ""),
       ).startsWith("Loading");
-    if (isLoading(children)) {
-      await ctx.bus.wait(
+    let afterNs = (BigInt(Date.now()) * 1000000n).toString();
+    let children = (await provider.getChildren(node)) ?? [];
+    while (isLoading(children)) {
+      const remaining = walkDeadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error(`OE expand of '${node.nodePath ?? "?"}' did not settle in time`);
+      }
+      // Any fresh expansion completion is a re-check trigger (tree nodePath
+      // and notification payload formats can differ).
+      const marker = await ctx.bus.wait(
         "mssql.oe.expand.end",
-        node.nodePath ? { nodePath: node.nodePath } : undefined,
-        120000,
-        beforeNs,
+        undefined,
+        Math.min(remaining, 120000),
+        afterNs,
       );
+      afterNs = marker.timestampUnixNs;
       children = (await provider.getChildren(node)) ?? [];
     }
     return children;

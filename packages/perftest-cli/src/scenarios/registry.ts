@@ -358,7 +358,7 @@ register({
       action: [
         {
           type: "oeExpand",
-          oePath: ["Databases", "PerfCatalog", "Tables"],
+          oePath: ["Tables"],
           profile: "default",
           timeoutMs: 300000,
         },
@@ -367,8 +367,13 @@ register({
       timeoutMs: 360000,
     },
     success: [
-      { type: "markerSeen", name: "mssql.oe.expand.end", attrs: { childCount: 10000 } },
-      { type: "objectExplorerProbe", name: "Tables", assert: "childCount == 10000" },
+      // The Tables node holds the 10,000 seeded tables PLUS SMO folder nodes
+      // ("System Tables" etc.), so the tree count is bounded, not exact; the
+      // exactly-10000 user tables proof is the provisioner's seed verify
+      // (SELECT COUNT(*) FROM PerfCatalog.sys.tables = 10000).
+      { type: "markerSeen", name: "mssql.oe.expand.end" },
+      { type: "objectExplorerProbe", name: "Tables", assert: "childCount >= 10000" },
+      { type: "objectExplorerProbe", name: "Tables", assert: "childCount <= 10050" },
       { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
     ],
     cleanup: CLEANUP_EXPLORER,
@@ -507,6 +512,14 @@ register({
         { type: "windowFetchCheck", rowStart: 50000, numberOfRows: 50, expectFirstCell: "50001" },
         { type: "windowFetchCheck", rowStart: 99900, numberOfRows: 50, expectFirstCell: "99901" },
         { type: "windowFetchCheck", rowStart: 12345, numberOfRows: 50, expectFirstCell: "12346" },
+        // The fetch markers travel exthost→HTTP→relay; await the last one so
+        // the success criteria (and teardown) can't race the marker flow.
+        {
+          type: "waitForMarker",
+          name: "mssql.resultsGrid.windowFetch.end",
+          attrs: { rowStart: 12345 },
+          timeoutMs: 30000,
+        },
       ],
       end: { type: "afterLastAction" },
       timeoutMs: 60000,
@@ -623,9 +636,9 @@ register({
     measure: {
       start: { type: "beforeFirstAction" },
       action: [
-        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Tables"], profile: "default", timeoutMs: 120000 },
-        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Views"], profile: "default", timeoutMs: 120000 },
-        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Stored Procedures"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Tables"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Views"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Programmability", "Stored Procedures"], profile: "default", timeoutMs: 120000 },
       ],
       end: { type: "afterLastAction" },
       timeoutMs: 300000,
@@ -657,7 +670,7 @@ register({
       action: [
         {
           type: "oeExpand",
-          oePath: ["Databases", "PerfHarness", "Tables", "sales.Orders", "Columns"],
+          oePath: ["Tables", "sales.Orders", "Columns"],
           profile: "default",
           timeoutMs: 180000,
         },
@@ -689,8 +702,8 @@ register({
     measure: {
       start: { type: "beforeFirstAction" },
       action: [
-        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Tables"], profile: "default", timeoutMs: 120000 },
-        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Tables"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Tables"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Tables"], profile: "default", timeoutMs: 120000 },
       ],
       end: { type: "afterLastAction" },
       timeoutMs: 300000,

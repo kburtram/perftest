@@ -636,7 +636,16 @@ async function executeRep(
     await Promise.race([server.waitForReady(READY_TIMEOUT_MS), exitEarly]);
     readyAtMs = Date.now();
 
-    server.startScenario(spec, traceId, rootTraceparent, artifactsDir, inputs.sqlProfiles);
+    // Per-scenario database override (e.g. expand-tables-node-10k targets
+    // PerfCatalog while the provisioned default is PerfHarness).
+    const scenarioProfiles =
+      inputs.sqlProfiles && spec.sql?.database && inputs.sqlProfiles["default"]
+        ? {
+            ...inputs.sqlProfiles,
+            default: { ...inputs.sqlProfiles["default"], database: spec.sql.database },
+          }
+        : inputs.sqlProfiles;
+    server.startScenario(spec, traceId, rootTraceparent, artifactsDir, scenarioProfiles);
     const outcomeTimeout = spec.measure.timeoutMs + 30_000;
     outcome = await Promise.race([server.waitForScenarioOutcome(outcomeTimeout), exitEarly]);
 

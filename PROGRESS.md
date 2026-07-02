@@ -675,3 +675,52 @@ baselines. Report design feedback from owner may adjust M14 output.
      (-219ms, -85k reads on one sp_executesql group) - reinforces that SQL
      deltas are investigation context, never gates.
 - 12.2 catalog seed SQL written (see Entry 15 for the remaining 12.2 steps).
+
+---
+
+## 2026-07-02 - Entry 17: Phase-3 finish-out - scenarios, probes, M15 (bring-up + fixes)
+
+BUILT (see commit 5df508c + product f6bb08740):
+- Product markers: mssql.oe.expand.begin/end (childCount), windowFetch
+  begin/end IN rowRequestHandler (single row path: webview scrolls + probes),
+  mssql.query.cancelled. Perf-only probe APIs: gridState (rows/resultSets/
+  columns/isExecuting), gridFetchWindow (real row path w/ cell values),
+  oeSnapshot (expanded-node childCounts).
+- Driver steps: webviewProbe/objectExplorerProbe (tiny field-op-number
+  assertion language, also usable as success criteria), oeExpand (walks the
+  REAL tree provider from the session connectionNode; settles on the
+  product's own oe.expand.end markers), windowFetchCheck (offset content
+  correctness), completionProbe (cursor-at-end, contains-match, retry while
+  intellisense warms; first-attempt latency markers).
+- 15 scenarios registered incl. ext-first-launch (official
+  vscode.startup.ready from orchestrator spawn->ready; measured 11.7s fresh
+  profile), expand-tables-node-10k, cancel/error/100k/blob/many/wide,
+  oe mixed/deep/refresh, intellisense, reconnect-cycle, large-script.
+- 12.4 dotnetCounters collector (stop = target-exit like dotnet-trace);
+  12.6 coldDb (DBCC drop buffers+proc cache per rep, sysadmin required);
+  12.9 setup-windows.ps1 (verified PASS on this box) + `setup verify`;
+  M15: trend command (per-run medians + step-change attribution to product
+  SHA - VERIFIED: flagged +71.6% step at run 0b576cd0 @1c6e464b),
+  history.html (39 runs, 4 trend charts), rolling:N baselines (pooled last-N
+  green runs, env-hash-scoped, honest refusal on new env hash), run tags.
+- Seeds: PerfRows100k (100k), PerfBlobs (256KB bin + XML + MAX text;
+  two T-SQL truncation bugs found by the harness seed verify), PerfCatalog
+  10k tables (skip-guarded rebuild).
+
+BRING-UP RESULTS (run 2026-07-02T19-52-03Z_a8772341): 9/15 passed first try.
+Fixed since: intellisense (contains+retry) PASSES 2596ms cold completion.
+IN FLIGHT: scroll (fix: await last windowFetch.end - marker-vs-teardown race
+found by the harness itself), OE walk (fix: walk from session connectionNode,
+settle on oe.expand.end markers - root-list nodes are saved-but-disconnected
+profiles).
+
+HONEST DEFERRALS (documented, not silently dropped):
+- True UI scroll injection (renderer-side scroll events) deferred; windowing
+  is proven via the real row path + product windowFetch markers instead.
+- reconnect-after-drop implemented as reconnect-cycle (disconnect/reconnect);
+  true network-drop simulation needs a KILL-session orchestration seam.
+- Scroll-soak variant = loop composition of existing steps (available via
+  ScenarioLoopSpec; not a separate registered scenario).
+- Normalizer honesty fix: scenario.wallclock officialness now respects the
+  scenario's declared official flag (ext-first-launch noop wallclock was
+  incorrectly official).

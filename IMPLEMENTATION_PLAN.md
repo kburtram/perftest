@@ -241,9 +241,9 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
       product test seam + markers; per-iteration success = connected + 10k rows + clean
       disconnect. Acceptance incl. PERF_SYNTHETIC_LEAK detection as `growing` and honest
       stable/inconclusive on clean runs.
-- [ ] 10.4 Large-catalog fixture (10,000 deterministic tables, verified) +
+- [x] 10.4 (delivered as 12.2) Large-catalog fixture (10,000 deterministic tables, verified) +
       `expand-tables-node-10k` scenario (all 10k render, exact count) with scaled timeouts.
-- [ ] 10.5 (diagnostic) leak root-cause: CDP HeapProfiler snapshots (start/mid/end + forced
+- [x] 10.5 (delivered as 12.1) (diagnostic) leak root-cause: CDP HeapProfiler snapshots (start/mid/end + forced
       GC) diffed; STS gcdump start/end diffed; "top growth" summary; graceful degrade.
 
 ### M11 — Rich A/B change tracking (investigation diff)
@@ -253,7 +253,7 @@ changes additive; SQL text capture diagnostic-pass + synthetic-DB only.
 - [x] 11.2 SQL-activity delta (commands added/removed, round-trips, per-command
       duration/reads/rows deltas) as the headline; waterfall/memory/render deltas; git
       context from run_repositories surfaced.
-- [ ] 11.3 A/B investigation report (md+html); acceptance: candidate with an extra SQL
+- [x] 11.3 (delivered as 12.3) A/B investigation report (md+html); acceptance: candidate with an extra SQL
       round-trip shows the added activity as investigation context while gating stays
       official-only. Docs + commit.
 
@@ -298,7 +298,7 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       snapshots start/end + constructor-level growth diff + retainedGrowth
       metric) + gcDump collector (STS managed heap start/end); diagnostic soak
       config; ACCEPTANCE: the exthost ~30KB/iter growth gets named top retainers.
-- [ ] 12.2 (=10.4) 10k-table catalog seed (idempotent, verified COUNT=10000) +
+- [x] 12.2 (=10.4) 10k-table catalog seed (idempotent, verified COUNT=10000) +
       `expand-tables-node-10k` scenario (all 10k proven rendered, scaled timeouts).
 - [x] 12.3 (=11.3) Investigation report (self-contained md/html, SQL-activity
       delta headline) + extra-round-trip acceptance; gate stays official-only.
@@ -315,16 +315,16 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
 
 ### M13 — Advanced, realistic scenarios
 
-- [ ] 13.1 `query-large-scroll-virtual-window` (100k rows; scroll → windowed
+- [x] 13.1 `query-large-scroll-virtual-window` (100k rows; scroll → windowed
       fetch PROVEN via new PERF_MODE window-fetch markers; correctness at
       multiple offsets).
 - [x] 13.2 `query-blob-xml` (VARBINARY/XML/NVARCHAR(MAX) cells; size/content
       proofs; transfer + cell render timing).
 - [x] 13.3 `query-many-result-sets` (25-50 sets; all grids proven) +
       `query-wide-columns` (hundreds of columns proven).
-- [ ] 13.4 `oe-expand-mixed-schema` / `oe-expand-deep` / `oe-refresh` via
+- [x] 13.4 `oe-expand-mixed-schema` / `oe-expand-deep` / `oe-refresh` via
       objectExplorerProbe correctness checks.
-- [ ] 13.5 `intellisense-completion-latency` (large schema; expected suggestions
+- [x] 13.5 `intellisense-completion-latency` (large schema; expected suggestions
       proven; foreshadows Phase-4 completions instrumentation).
 - [x] 13.6 `query-cancel-midflight`, `reconnect-after-drop`,
       `large-script-execution`; scroll-heavy soak variant. Docs + commit.
