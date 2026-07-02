@@ -562,3 +562,28 @@ M12.0 GAP AUDIT vs design SS32/SS34 complete:
 In-flight from the interrupted M10.5 start (now 12.1): cdpHeapSnapshot.ts +
 gcDump.ts + config.soakdiag.local.jsonc + pipeline wiring are WRITTEN but not
 yet built/verified - continuing there.
+
+---
+
+## 2026-07-02 - Entry 13: M12.1 COMPLETE - exthost growth ATTRIBUTED (leak root-cause collectors verified)
+
+- cdpHeapSnapshot collector VERIFIED (run 2026-07-02T16-06-46Z_b1e04363, 60-iter
+  diagnostic soak): forced-GC V8 snapshots at scenario start+end (248MB/251MB
+  .heapsnapshot artifacts), constructor-level diff -> heap-growth-summary.json,
+  exthost.heap.retainedGrowth metric (official:false).
+- gcDump collector VERIFIED: STS managed-heap dumps captured start+end
+  (3.2MB -> 5.7MB - STS managed heap nearly doubled over 60 cycles; pair
+  available for PerfView diff).
+- *** ATTRIBUTION ANSWER for the connection-cycling growth finding: post-GC
+  retained JS heap grew only 2.9MB/60 iters (~48KB/iter). Top retainers:
+  (code) +2.59MB/+9,767 objects (V8 compiled-code accumulation from repeated
+  connect/query - dynamic function/regex/lazy compilation per cycle);
+  Object +99KB/+3,112; (string) +178KB/+678; _QueryHistoryNode +21 (one per
+  query-ish, bounded-looking but real). CONCLUSION: the RSS growth is mostly
+  V8 code-space + unpressured heap expansion, NOT a classic data-structure
+  leak; two small named retainers to watch (_QueryHistoryNode, per-cycle
+  Objects); STS managed-heap growth flagged for PerfView follow-up. ***
+- M14.1 started: charts.ts written (deterministic inline-SVG histogram/trend
+  w/ CI band+R2+n/horizontal bars/cross-process waterfall with
+  monotonic-vs-epoch plane distinction + calibration jitter in the legend;
+  benchmark.html design tokens). Not yet built/wired.

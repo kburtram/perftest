@@ -294,7 +294,7 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       dir; measured from orchestrator spawn timestamp to driver `ready` (+
       product activation if triggered); official wallclock; startup breakdown
       diagnostic.
-- [ ] 12.1 (=10.5) Leak root-cause: cdpHeapSnapshot collector (forced-GC V8
+- [x] 12.1 (=10.5) Leak root-cause: cdpHeapSnapshot collector (forced-GC V8
       snapshots start/end + constructor-level growth diff + retainedGrowth
       metric) + gcDump collector (STS managed heap start/end); diagnostic soak
       config; ACCEPTANCE: the exthost ~30KB/iter growth gets named top retainers.
