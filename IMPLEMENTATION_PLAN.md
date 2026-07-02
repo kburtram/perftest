@@ -1,0 +1,182 @@
+# MSSQL VS Code Perf Harness — Implementation Plan
+
+> Working backlog for the autonomous build. Derived from `PERFTEST_BUILD_PROMPT.md` and
+> `perftest-docs/mssql-vscode-perf-system-v2/MSSQL_VSCODE_PERF_SYSTEM_DESIGN.md` (§32/§33),
+> plus user-expanded scope: full diagnostic pass, STS trace context building on the sts2
+> refactor, harness self-telemetry, and a `docs/` folder built alongside the code.
+>
+> **Restart protocol:** if this job is restarted in a clean session, read `PROGRESS.md`
+> (append-only log, newest entry at bottom) to find the last completed task, then resume at
+> the first unchecked box below. Re-read the design doc sections referenced by that milestone.
+
+## Scope decisions (locked)
+
+- Repos: harness in `C:\repos\test\perftest` (blank git repo), product changes on branch
+  `dev/karlb/perftest` in `C:\repos\test\vscode-mssql` and `C:\repos\test\sqltoolsservice`.
+- Order: **M0 → M1 → M2 → M4′ (connect+query timing) → M6′ (regression gate)** = the core
+  local test box, then **M3 (STS trace context / sts2 alignment) → M4 (XEvents server timing)
+  → M5 (diagnostic collectors)** = the full-diag expansion. Central/fleet stays deferred
+  (seams preserved); we decide on it with the user later.
+- Tech: TypeScript strict on Node LTS, npm workspaces monorepo; `ajv` (JSON Schema),
+  `better-sqlite3`, `ws`, `commander`, `@vscode/test-electron` (acquire only; direct spawn).
+- SQL: Docker Compose pinned by digest as primary; `external` provider fallback using
+  `STS2_SQLSERVER_CONNSTRING` for dev/testing.
+- Harness self-telemetry from day one: every component logs structured JSONL
+  (`harness-log.jsonl` per run) with component/event/level/timestamps + harness-internal
+  span ids, so the harness itself is fully traceable.
+- Docs: `perftest/docs/` grows with each milestone; quality bar = the input design docs.
+- Non-negotiable guardrails: see PERFTEST_BUILD_PROMPT.md §guardrails. Never fabricate a
+  metric. Official metrics from markers only, measurement pass only. `PERF_MODE` gates every
+  product change. Success proven or rep is `invalid`.
+
+## Milestone 0 — Contracts and CLI skeleton
+
+- [ ] 0.1 Monorepo scaffold: root `package.json` (npm workspaces), `tsconfig.base.json`
+      (strict), `.gitignore`, `.editorconfig`, workspace layout per design §5
+      (`packages/perf-contracts`, `packages/perftest-cli`, `extensions/mssql-perf-driver`,
+      `sql/`, `scripts/`, `examples/`, `docs/`, `perf-runs/`).
+- [ ] 0.2 `perf-contracts`: copy 3 JSON schemas + SQLite schema verbatim from perftest-docs;
+      TS types mirroring marker/result/config/control messages; runtime validators (ajv);
+      example config/result/marker as test fixtures that must validate.
+- [ ] 0.3 Harness telemetry core: `HarnessLogger` (structured JSONL + pretty console),
+      harness span helper, used by all later components.
+- [ ] 0.4 CLI skeleton (`perftest`): commander wiring for `doctor`, `run`, `report`,
+      `compare`, `baseline set`, `scenarios list`, `collectors list`, `schema validate`,
+      `cleanup`; §26 exit-code contract as a single ExitCode enum; config loader (jsonc +
+      schema validation + defaults).
+- [ ] 0.5 SQLite store init from schema; `perftest doctor` first version (env probe: node,
+      docker, dotnet, VS Code resolvable, disk space); unit tests (contracts + store init).
+- [ ] 0.6 Docs: `docs/README.md` (system overview), `docs/CONTRACTS.md`, `docs/CLI.md`.
+      Git commit at milestone end.
+
+**Acceptance:** example config/result/marker validate via `perftest schema validate`;
+`tsc --strict` clean; SQLite DB initializes; unit tests pass.
+
+## Milestone 1 — Smallest end-to-end loop (seed crystal)
+
+- [ ] 1.1 Control server: `ws` on 127.0.0.1, random token auth, §9.1 message types,
+      lifecycle state machine, clock calibration ping/pong (§11.3), marker ingestion.
+- [ ] 1.2 Marker sink: append-only `markers.jsonl` writer + schema validation + required
+      marker bookkeeping (`scenario.start`/`scenario.end`).
+- [ ] 1.3 VS Code launcher: `@vscode/test-electron` acquire pinned build; direct spawn with
+      fresh `--user-data-dir`/`--extensions-dir`, §13.1 base args, env from §9; graceful
+      shutdown + kill escalation; stdout/stderr capture.
+- [ ] 1.4 `mssql-perf-driver` extension: activates only when `PERF_MODE=1`, connects to
+      control URL, `hello`→calibration→`ready`, scenario step engine (command, openDocument,
+      waitForMarker, waitForCommandCompletion), `noop` scenario emitting
+      `scenario.start`/`scenario.end`.
+- [ ] 1.5 Rep pipeline: run dir layout (§22), normalizer (markers → official
+      `scenario.wallclock` + result.json §20), SQLite insertion (§23), minimal Markdown report.
+- [ ] 1.6 Real E2E verification: `perftest run --scenario noop` on this machine, VS Code
+      launched unforked and shut down cleanly; inspect real markers.jsonl/result.json.
+- [ ] 1.7 Docs: `docs/ARCHITECTURE.md` (control plane + lifecycle diagrams),
+      `docs/RUNNING_TESTS.md`. Commit.
+
+**Acceptance:** schema-valid `result.json` with official `scenario.wallclock` from real
+markers; SQLite rows inserted; report rendered; driver connects only when `PERF_MODE=1`.
+
+## Milestone 2 — Product command scenarios (first vscode-mssql instrumentation)
+
+- [ ] 2.1 Deep-read vscode-mssql activation + command seams (from explorer report).
+- [ ] 2.2 Perf telemetry module in vscode-mssql behind `PERF_MODE`: bounded-queue marker
+      writer (control channel or direct sink), activation begin/end markers, command
+      begin/end wrapper.
+- [ ] 2.3 Product-private perf API (§16.3 subset): activation state + child process PIDs.
+- [ ] 2.4 Driver: `ext-normal-activation` scenario + generic command scenario.
+- [ ] 2.5 Verify zero behavior change with PERF_MODE off (build + smoke run + explicit check).
+- [ ] 2.6 Baseline compare plumbing (store metrics keyed by environmentHash, `baseline set`).
+- [ ] 2.7 Docs: `docs/PRODUCT_INSTRUMENTATION.md`. Commit both repos.
+
+**Acceptance:** activation scenario yields official `scenario.wallclock` + `extension.activate`
+from real markers; PERF_MODE off ⇒ identical behavior.
+
+## Milestone 4′ — Connect + query scenarios (timing payload)
+
+- [ ] 4.1 SQL provisioning: docker-compose pinned by digest, deterministic seed
+      (`create-perf-db.sql`, 10k-row fixture, OE shape), `external` provider fallback
+      (STS2_SQLSERVER_CONNSTRING), snapshot/reset strategy, cache modes.
+- [ ] 4.2 `connect-local-container` scenario: semantic connection-ready end marker
+      (`mssql.connection.ready` product marker or perf-API probe), STS spawn PID marker.
+- [ ] 4.3 `query-10k-results` scenario: webview mark bridge
+      (`performance.timeOrigin + performance.now()` → postMessage → extension → sink),
+      `mssql.resultsGrid.renderComplete`, success proof rowCount == 10000 else `invalid`.
+- [ ] 4.4 processSampler collector (low-cost CPU/RSS of owned PIDs) — measurement-approved.
+- [ ] 4.5 Real E2E both scenarios; verify against local SQL (docker or external).
+- [ ] 4.6 Docs: `docs/SCENARIO_AUTHORING.md`, `docs/SQL_PROVISIONING.md`. Commit.
+
+**Acceptance:** both scenarios produce schema-valid results end to end; query proves 10k rows;
+all product changes PERF_MODE-gated.
+
+## Milestone 6′ — Baselines, regression gate, reports
+
+- [ ] 6.1 Aggregation math (§24.1: trimmed mean/median, CV, p90/p95, CI) + invalid-run rules
+      (§24.2) with unit tests.
+- [ ] 6.2 Regression classification (§24.3: pct + absolute floor + Welch t, worst-metric-wins,
+      environmentHash matching) + comparison JSON + SQLite comparisons tables.
+- [ ] 6.3 Reports: console summary, Markdown, static HTML (§27 sections incl. per-rep samples,
+      verdicts, artifact links, suggested diagnostic follow-up command).
+- [ ] 6.4 CLI exit codes wired (regression ⇒ 1); artifact retention cleanup.
+- [ ] 6.5 Prove the gate: synthetic injected delay ⇒ REGRESSED + exit 1; deliberately missing
+      required marker ⇒ `invalid` rep, never a fast number.
+- [ ] 6.6 Docs: `docs/REGRESSION_MODEL.md`, `docs/REPORTS.md`. Commit.
+
+**Acceptance:** re-run vs stored baseline reports deltas/verdicts; injected delay fails run;
+missing marker ⇒ invalid.
+
+## Milestone 3 — STS perf diagnostics (sts2-aligned) + correlation
+
+(Sequenced after the local box works. **Plan amendment vs design §18:** exploration showed
+sts2 already ships a journaled envelope observability core — `IEnvelopeSink`, gapless-seq
+JSONL journal with `corr`/`cause` causality, `Microsoft-SqlTools-Sts2` EventSource counters,
+`v2/diagnostics.*` RPCs — gated by `STS_ENABLE_STS2=1`. We build STS perf diag ON that seam
+instead of a parallel ActivitySource story; W3C traceparent/OTLP becomes an adapter later.)
+
+- [ ] 3.1 Document the decision + mapping (envelope `corr`/`cause` ↔ harness traceId model)
+      in docs/STS_INSTRUMENTATION.md.
+- [ ] 3.2 STS self-report: minimal `PERF_MODE`-gated startup marker POST to PERF_MARKER_URL
+      (`sts.process.ready` with pid/version) — smallest possible product change.
+- [ ] 3.3 Harness `stsEnvelopeJournal` collector: run STS with `STS_ENABLE_STS2=1` in
+      diagnostic pass, copy/parse journal segments from the run's log dir, normalize
+      envelope timings into official:false metrics (rpc in→out latency per method).
+- [ ] 3.4 Correlation: perf context (runId/scenarioId/repId) flowing into STS
+      (env vars at spawn: PERF_RUN_ID etc. are inherited — verify) + normalizer joins
+      envelope `ts` windows to scenario windows; optional envelope→marker adapter sink
+      (new `IEnvelopeSink` impl) if in-repo change is warranted.
+- [ ] 3.5 `dotnet-counters` on `Microsoft-SqlTools-Sts2` EventSource as a cheap live collector.
+- [ ] 3.6 Verify STS builds/behaves identically without PERF_MODE/STS_ENABLE_STS2.
+      Commit both repos.
+
+**Acceptance:** a diagnostic run of connect/query scenarios yields an STS-side timing
+breakdown (rpc handler latencies) correlated to the scenario window, with zero product
+behavior change when flags are off.
+
+## Milestone 4 (rest) — Server-side SQL timing
+
+- [ ] 4.7 XEvents session create/read scripts; collector start/stop per scenario window;
+      normalizer emitting `sqlserver.duration`/`cpu`/`logicalReads` + derived
+      `sql.networkDriver.duration` with confidence + provenance.
+- [ ] 4.8 `expand-tables-node` scenario.
+- [ ] 4.9 Docs update. Commit.
+
+## Milestone 5 — Diagnostic collectors (full diag)
+
+- [ ] 5.1 Collector framework hardening per §14 (validate/attach lifecycle, missing tool ⇒
+      warning not corruption).
+- [ ] 5.2 CDP: ext-host CPU profile + renderer trace (diagnostic pass only).
+- [ ] 5.3 dotnet-counters + dotnet-trace collectors (attach on STS PID discovery).
+- [ ] 5.4 WPR/ETW collector (Windows, admin check in doctor).
+- [ ] 5.5 Diagnostic pass E2E on query-10k; artifacts land in rep dir + linked in HTML report;
+      all heavy metrics `official:false`.
+- [ ] 5.6 Docs: `docs/DIAGNOSTIC_COLLECTORS.md`. Commit.
+
+## Cross-cutting (every milestone)
+
+- Harness self-telemetry on every new component (logger + spans).
+- Unit tests for pure logic; real E2E for launch/control/marker loops.
+- `PROGRESS.md` entry after every task; checkbox updates here.
+- Git commit per task/milestone in perftest; product repos commit on their branches.
+
+## Deferred (seams preserved, do NOT build)
+
+- Central/fleet aggregation, Bencher push, shared dashboards (§30).
+- `mcp-server-first-request` scenario (until MCP surface stabilizes).
