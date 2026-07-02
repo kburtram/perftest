@@ -314,6 +314,15 @@ async function executeRep(
   const rootTraceparent = traceparent(traceId, newSpanId());
   const token = newControlToken();
 
+  // Profile mode (design §13.2): fresh = new dirs per rep; warmed = dirs
+  // shared across the scenario's reps (rep 0 / warmups warm the caches).
+  const warmedProfile = spec.profileMode === "warmed";
+  const profileRoot = warmedProfile
+    ? join(inputs.runDir, "scenarios", spec.scenarioId, "profile")
+    : repDir;
+  const userDataDir = join(profileRoot, "vscode-user-data");
+  const extensionsDir = join(profileRoot, "vscode-extensions");
+
   const sink = new MarkerSink(join(repDir, "markers.jsonl"), logger.child("markerSink"));
   const server = await ControlServer.start({
     token,
@@ -334,8 +343,8 @@ async function executeRep(
     launched = spawnVscode(
       {
         executablePath: inputs.vscodeBuild.executablePath,
-        userDataDir: join(repDir, "vscode-user-data"),
-        extensionsDir: join(repDir, "vscode-extensions"),
+        userDataDir,
+        extensionsDir,
         extensionDevelopmentPaths: inputs.devPaths,
         crashDir: join(artifactsDir, "vscode-crashes"),
         ...(inputs.config.vscode.workspaceRoot
@@ -424,6 +433,7 @@ async function executeRep(
     environment: inputs.environment,
     git: inputs.git,
     artifacts,
+    spec,
   });
   writeFileSync(join(repDir, "result.json"), JSON.stringify(result, null, 2), "utf8");
   repSpan.end({ status: result.status });

@@ -186,3 +186,52 @@ Notes:
 Next: Milestone 2 - vscode-mssql instrumentation behind PERF_MODE (activation +
 command markers, perf API w/ STS pid), ext-normal-activation scenario, flag-off
 verification. Product repo branch dev/karlb/perftest.
+
+---
+
+## 2026-07-01 - Entry 4: Milestone 2 COMPLETE (product instrumentation + activation scenario)
+
+vscode-mssql changes (branch dev/karlb/perftest, commit 10539f918):
+- NEW src/perf/perfTelemetry.ts: Perf singleton, PERF_MODE gate resolved at module
+  load (Noop outside perf mode); bounded queue (1000, drop-oldest) -> 250ms batched
+  HTTP POST (ndjson) to PERF_MARKER_URL w/ Bearer token; never throws/blocks.
+- NEW src/perf/perfApi.ts: mssql.perf.getState command (perf mode only).
+- extension.ts: mssql.activate.begin (first line) / mssql.activate.end (after last
+  awaited init) + registerPerfApi + flush.
+- mainController.ts registerCommand/WithArgs: mssql.command.invoked instant marker
+  (EventEmitter dispatch is fire-and-forget -> no honest duration at that seam;
+  durations come from semantic completion markers instead).
+- serviceclient.ts: mssql.sts.spawn.begin/end + mssql.sts.ready with pid from
+  PUBLIC LanguageClient.serverProcess getter; Perf.setStsPid.
+
+Harness changes:
+- Marker relay bug found via real run: product ext shares the driver ext-host PID,
+  so pid-based echo suppression dropped product markers -> relay now dedupes by
+  INGEST SOURCE (http relayed, ws not). Plus: replay of pre-hello http markers on
+  driver connect; markerBus freshness guard (measure-end waitForMarker only accepts
+  markers >= scenario.start ts); normalizer pairs LAST begin before FIRST end
+  (sts spawn retry emits two begins).
+- Warmed profile mode (dirs shared per scenario); scenario cleanup resets sidebar
+  to Explorer so window restore doesn't pre-activate the extension.
+- ext-normal-activation scenario: action = objectExplorer.focus, end =
+  waitForMarker mssql.activate.end; metrics scenario.wallclock (official) +
+  extension.activate (official, marker pair) + extension.stsSpawn (diagnostic).
+- baseline set CLI + store.setBaseline/getBaselineRun ('*' wildcards, env-hash bound).
+- normalizer unit tests (7) incl. honesty rules; 15 tests total green.
+- scripts/verify-perf-mode-off.ps1.
+
+VERIFIED (run 2026-07-02T03-04-51Z_a95b6e4e, exit 0): 4/4 reps passed;
+scenario.wallclock ~2.1-2.2s official; extension.activate 1400-1458ms official
+(tight variance); extension.stsSpawn ~965ms official=false. All success
+validations passed. PERF_MODE-off check: VS Code alive 45s, decoy listener got
+0 connections, driver loads but stays inert. Exit 0.
+
+Known notes:
+- official_metric_samples view does NOT filter warmup reps - M6' aggregation must
+  drop warmups via repetitions.warmup flag (design SS24.3 step 3).
+- First-ever activation run downloads STS into the product repo (cached across
+  runs since install dir resolves relative to extension folder).
+
+Next: Milestone 4' (connect + query scenarios): SQL provisioning (docker digest
+pin + external fallback), mssql.connection.ready marker, webview mark bridge,
+query-10k success proof. Seed SQL already authored (sql/seed/*).

@@ -244,6 +244,16 @@ export interface ScenarioSpec {
     source: string;
     official: boolean;
     lowerIsBetter?: boolean;
+    /**
+     * When set, the normalizer derives this metric's duration from the first
+     * begin/end marker pair with these names (same-process monotonic time
+     * when available). scenario.wallclock is always derived from
+     * scenario.start/scenario.end and needs no pair declaration.
+     */
+    beginMarker?: string;
+    endMarker?: string;
+    component?: string;
+    processRole?: string;
   }>;
   timeouts?: {
     readinessMs?: number;

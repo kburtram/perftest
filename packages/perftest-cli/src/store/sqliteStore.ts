@@ -284,6 +284,58 @@ export class PerfStore {
     }
   }
 
+  /**
+   * Mark a run as a named baseline (design §24.3 step 1). Scenario/metric
+   * wildcards are stored as '*' (the composite PK cannot hold NULLs
+   * meaningfully). The baseline is bound to the run's environment hash.
+   */
+  setBaseline(
+    name: string,
+    runId: string,
+    options: { scenarioId?: string; metricName?: string; createdBy?: string; notes?: string } = {},
+  ): { environmentHash: string } {
+    const run = this.db
+      .prepare("SELECT run_id, environment_hash FROM runs WHERE run_id = ?")
+      .get(runId) as { run_id: string; environment_hash: string } | undefined;
+    if (!run) {
+      throw new Error(`Run '${runId}' not found in store ${this.path}`);
+    }
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO baselines
+           (baseline_name, scenario_id, metric_name, environment_hash, run_id,
+            created_at_unix_ns, created_by, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        name,
+        options.scenarioId ?? "*",
+        options.metricName ?? "*",
+        run.environment_hash,
+        runId,
+        (BigInt(Date.now()) * 1_000_000n).toString(),
+        options.createdBy ?? null,
+        options.notes ?? null,
+      );
+    this.logger.info("store.baselineSet", undefined, { name, runId });
+    return { environmentHash: run.environment_hash };
+  }
+
+  /** Resolve a baseline name to its run id (optionally per scenario). */
+  getBaselineRun(name: string, scenarioId?: string): { runId: string; environmentHash: string } | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT run_id, environment_hash FROM baselines
+         WHERE baseline_name = ? AND scenario_id IN (?, '*')
+         ORDER BY CASE scenario_id WHEN '*' THEN 1 ELSE 0 END
+         LIMIT 1`,
+      )
+      .get(name, scenarioId ?? "*") as
+      | { run_id: string; environment_hash: string }
+      | undefined;
+    return row ? { runId: row.run_id, environmentHash: row.environment_hash } : undefined;
+  }
+
   /** Raw prepared access for read paths (reports/regression build on this). */
   query<T>(sql: string, params: unknown[] = []): T[] {
     return this.db.prepare(sql).all(...params) as T[];

@@ -26,16 +26,32 @@ export class MarkerBus {
     }
   }
 
-  find(name: string, attrs?: Record<string, unknown>): BusMarker | undefined {
-    return this.markers.find((m) => m.name === name && attrsMatch(m, attrs));
+  find(
+    name: string,
+    attrs?: Record<string, unknown>,
+    afterUnixNs?: string,
+  ): BusMarker | undefined {
+    return this.markers.find(
+      (m) => m.name === name && attrsMatch(m, attrs) && isFresh(m, afterUnixNs),
+    );
   }
 
   has(name: string, attrs?: Record<string, unknown>): boolean {
     return this.find(name, attrs) !== undefined;
   }
 
-  wait(name: string, attrs: Record<string, unknown> | undefined, timeoutMs: number): Promise<BusMarker> {
-    const existing = this.find(name, attrs);
+  /**
+   * Resolve when a matching marker is (or was) observed. Pass `afterUnixNs`
+   * for measured-interval end waits so a stale marker from before
+   * scenario.start can never satisfy the wait.
+   */
+  wait(
+    name: string,
+    attrs: Record<string, unknown> | undefined,
+    timeoutMs: number,
+    afterUnixNs?: string,
+  ): Promise<BusMarker> {
+    const existing = this.find(name, attrs, afterUnixNs);
     if (existing) {
       return Promise.resolve(existing);
     }
@@ -45,7 +61,7 @@ export class MarkerBus {
         reject(new Error(`Timed out after ${timeoutMs}ms waiting for marker '${name}'`));
       }, timeoutMs);
       const listener: Listener = (marker) => {
-        if (marker.name === name && attrsMatch(marker, attrs)) {
+        if (marker.name === name && attrsMatch(marker, attrs) && isFresh(marker, afterUnixNs)) {
           clearTimeout(timer);
           this.listeners.delete(listener);
           resolve(marker);
@@ -53,6 +69,17 @@ export class MarkerBus {
       };
       this.listeners.add(listener);
     });
+  }
+}
+
+function isFresh(marker: BusMarker, afterUnixNs?: string): boolean {
+  if (!afterUnixNs) {
+    return true;
+  }
+  try {
+    return BigInt(marker.timestampUnixNs) >= BigInt(afterUnixNs);
+  } catch {
+    return false;
   }
 }
 

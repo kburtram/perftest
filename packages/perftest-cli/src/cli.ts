@@ -279,11 +279,32 @@ program
   .requiredOption("--baseline <runIdOrTag>")
   .action(() => notImplemented("compare", "Milestone 6'"));
 
-const baseline = program.command("baseline").description("Baseline management (Milestone 6')");
+const baseline = program.command("baseline").description("Baseline management");
 baseline
   .command("set <name> <runId>")
-  .description("Mark a run as a named baseline")
-  .action(() => notImplemented("baseline set", "Milestone 6'"));
+  .description("Mark a run as a named baseline (bound to the run's environment hash)")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--scenario <id>", "restrict the baseline to one scenario")
+  .option("--notes <text>", "free-form notes")
+  .action((name: string, runId: string, opts: { db: string; scenario?: string; notes?: string }) => {
+    const store = PerfStore.open(opts.db, logger.child("store"));
+    try {
+      const { environmentHash } = store.setBaseline(name, runId, {
+        ...(opts.scenario !== undefined ? { scenarioId: opts.scenario } : {}),
+        ...(opts.notes !== undefined ? { notes: opts.notes } : {}),
+        createdBy: process.env["USERNAME"] ?? process.env["USER"] ?? "unknown",
+      });
+      process.stdout.write(
+        `Baseline '${name}' -> run ${runId} (environment ${environmentHash.slice(0, 18)}...)\n`,
+      );
+      exit(ExitCode.ok);
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      exit(ExitCode.configInvalid);
+    } finally {
+      store.close();
+    }
+  });
 
 program
   .command("cleanup")

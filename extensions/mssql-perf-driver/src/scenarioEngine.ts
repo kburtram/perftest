@@ -117,11 +117,19 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
 
     // Measured interval. scenario.start is emitted immediately before the
     // first action; scenario.end when the end condition resolves.
+    const measureStartUnixNs = (BigInt(Date.now()) * 1000000n).toString();
     ctx.emitMarker("scenario.start", "instant", { scenarioId: spec.scenarioId });
     try {
       await runSteps(spec.measure.action, "action");
       if (spec.measure.end.type === "waitForMarker" && spec.measure.end.name) {
-        await ctx.bus.wait(spec.measure.end.name, spec.measure.end.attrs, spec.measure.timeoutMs);
+        // Freshness guard: only a marker emitted at/after scenario.start can
+        // end the measured interval — stale markers from startup can't.
+        await ctx.bus.wait(
+          spec.measure.end.name,
+          spec.measure.end.attrs,
+          spec.measure.timeoutMs,
+          measureStartUnixNs,
+        );
         ctx.emitMarker("scenario.end", "instant", {
           scenarioId: spec.scenarioId,
           endBasis: spec.measure.end.name,

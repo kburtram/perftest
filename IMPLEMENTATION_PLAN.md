@@ -78,15 +78,15 @@ markers; SQLite rows inserted; report rendered; driver connects only when `PERF_
 
 ## Milestone 2 — Product command scenarios (first vscode-mssql instrumentation)
 
-- [ ] 2.1 Deep-read vscode-mssql activation + command seams (from explorer report).
-- [ ] 2.2 Perf telemetry module in vscode-mssql behind `PERF_MODE`: bounded-queue marker
+- [x] 2.1 Deep-read vscode-mssql activation + command seams (from explorer report).
+- [x] 2.2 Perf telemetry module in vscode-mssql behind `PERF_MODE`: bounded-queue marker
       writer (control channel or direct sink), activation begin/end markers, command
       begin/end wrapper.
-- [ ] 2.3 Product-private perf API (§16.3 subset): activation state + child process PIDs.
-- [ ] 2.4 Driver: `ext-normal-activation` scenario + generic command scenario.
-- [ ] 2.5 Verify zero behavior change with PERF_MODE off (build + smoke run + explicit check).
-- [ ] 2.6 Baseline compare plumbing (store metrics keyed by environmentHash, `baseline set`).
-- [ ] 2.7 Docs: `docs/PRODUCT_INSTRUMENTATION.md`. Commit both repos.
+- [x] 2.3 Product-private perf API (§16.3 subset): activation state + child process PIDs.
+- [x] 2.4 Driver: `ext-normal-activation` scenario + generic command scenario.
+- [x] 2.5 Verify zero behavior change with PERF_MODE off (build + smoke run + explicit check).
+- [x] 2.6 Baseline compare plumbing (store metrics keyed by environmentHash, `baseline set`).
+- [x] 2.7 Docs: `docs/PRODUCT_INSTRUMENTATION.md`. Commit both repos.
 
 **Acceptance:** activation scenario yields official `scenario.wallclock` + `extension.activate`
 from real markers; PERF_MODE off ⇒ identical behavior.

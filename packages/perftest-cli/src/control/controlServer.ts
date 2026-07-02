@@ -79,17 +79,16 @@ export class ControlServer {
     this.http = http;
     this.wss = new WebSocketServer({ server: http, path: "/control" });
     this.wss.on("connection", (socket) => this.onConnection(socket));
-    // Markers ingested from other processes (HTTP) are relayed to the driver
-    // so its waitForMarker steps can resolve on product/STS markers.
-    options.sink.on("marker", (marker) => {
-      if (this.driver && this.driver.readyState === WebSocket.OPEN) {
-        const driverPid = this.helloMessage?.payload.extensionHostPid;
-        if (marker.process.pid !== driverPid) {
-          this.send({
-            ...this.envelope("marker"),
-            payload: { marker },
-          } as ControlMessage);
-        }
+    // Markers ingested from other processes (HTTP path: product extension,
+    // STS, webview bridge) are relayed to the driver so its waitForMarker
+    // steps can resolve on them. Dedup is by INGEST SOURCE, not pid — the
+    // product extension shares the driver's extension-host pid.
+    options.sink.on("marker", (marker, source) => {
+      if (source === "http" && this.driver && this.driver.readyState === WebSocket.OPEN) {
+        this.send({
+          ...this.envelope("marker"),
+          payload: { marker },
+        } as ControlMessage);
       }
     });
   }
@@ -204,6 +203,17 @@ export class ControlServer {
             extensionHostPid: this.helloMessage.payload.extensionHostPid,
             vscodeVersion: this.helloMessage.payload.vscodeVersion,
           });
+          // Replay markers that arrived before the driver connected (e.g. a
+          // product extension that activated during window startup) so the
+          // driver's marker view is complete from the beginning.
+          for (const entry of this.options.sink.allWithSource()) {
+            if (entry.source === "http") {
+              this.send({
+                ...this.envelope("marker"),
+                payload: { marker: entry.marker },
+              } as ControlMessage);
+            }
+          }
           this.settle(this.waitingHello, this.helloMessage);
           this.waitingHello = undefined;
         } else {

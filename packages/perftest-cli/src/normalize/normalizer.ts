@@ -23,6 +23,7 @@ import type {
   GitRepoInfo,
   EnvironmentInfo,
   ArtifactRef,
+  ScenarioSpec,
 } from "@mssqlperf/contracts";
 import { validateResult } from "@mssqlperf/contracts";
 import type { CalibrationResult, ScenarioOutcome } from "../control/controlServer";
@@ -44,6 +45,29 @@ export interface NormalizeInputs {
   environment: EnvironmentInfo;
   git: GitRepoInfo[];
   artifacts: ArtifactRef[];
+  /** Scenario spec, for declared marker-pair metrics. */
+  spec?: ScenarioSpec;
+}
+
+/**
+ * Duration between two markers, honest about the timing plane: same-process
+ * monotonic when both markers allow it, epoch otherwise (tagged).
+ */
+function markerPairDuration(
+  begin: Marker,
+  end: Marker,
+): { valueMs: number; timePlane: "monotonic" | "epoch" } {
+  const samePlane = begin.process.pid === end.process.pid && begin.monotonicNs && end.monotonicNs;
+  if (samePlane) {
+    return {
+      valueMs: Number(BigInt(end.monotonicNs as string) - BigInt(begin.monotonicNs as string)) / 1e6,
+      timePlane: "monotonic",
+    };
+  }
+  return {
+    valueMs: Number(BigInt(end.timestampUnixNs) - BigInt(begin.timestampUnixNs)) / 1e6,
+    timePlane: "epoch",
+  };
 }
 
 export function normalizeRep(inputs: NormalizeInputs): PerfResult {
@@ -130,25 +154,65 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
   }
 
   // --- Official wall-clock (only from real markers) -------------------------
+  const officialEligible = inputs.passType === "measurement" && status === "passed";
   if (start && end) {
-    const samePlane =
-      start.process.pid === end.process.pid && start.monotonicNs && end.monotonicNs;
-    const wallclockMs = samePlane
-      ? Number(BigInt(end.monotonicNs as string) - BigInt(start.monotonicNs as string)) / 1e6
-      : Number(BigInt(end.timestampUnixNs) - BigInt(start.timestampUnixNs)) / 1e6;
+    const { valueMs, timePlane } = markerPairDuration(start, end);
     metrics.push({
       name: "scenario.wallclock",
-      value: wallclockMs,
+      value: valueMs,
       unit: "ms",
       component: "scenario",
       processRole: "boundary",
       source: "marker",
-      official: inputs.passType === "measurement" && status === "passed",
+      official: officialEligible,
       lowerIsBetter: true,
       traceId: inputs.traceId,
       startUnixNs: start.timestampUnixNs,
       endUnixNs: end.timestampUnixNs,
-      tags: { timePlane: samePlane ? "monotonic" : "epoch" },
+      tags: { timePlane },
+    });
+  }
+
+  // --- Declared marker-pair metrics (design §7 scenario metric definitions) --
+  for (const metricSpec of inputs.spec?.metrics ?? []) {
+    if (!metricSpec.beginMarker || !metricSpec.endMarker) {
+      continue;
+    }
+    // Pair the LAST begin preceding the FIRST end: retry paths can emit
+    // multiple begins (e.g. sts spawn re-attempts) and the tightest pair is
+    // the honest duration of the attempt that completed.
+    const endIndex = inputs.markers.findIndex((m) => m.name === metricSpec.endMarker);
+    const endMarker = endIndex >= 0 ? inputs.markers[endIndex] : undefined;
+    const begin =
+      endIndex >= 0
+        ? [...inputs.markers.slice(0, endIndex)]
+            .reverse()
+            .find((m) => m.name === metricSpec.beginMarker)
+        : undefined;
+    if (!begin || !endMarker) {
+      // No fabrication: a declared metric whose markers were not observed is
+      // simply absent, and that absence is recorded as a validation.
+      validations.push({
+        name: `metricMarkers:${metricSpec.name}`,
+        status: "warning",
+        message: `markers ${metricSpec.beginMarker}/${metricSpec.endMarker} not both observed`,
+      });
+      continue;
+    }
+    const { valueMs, timePlane } = markerPairDuration(begin, endMarker);
+    metrics.push({
+      name: metricSpec.name,
+      value: valueMs,
+      unit: "ms",
+      component: metricSpec.component ?? "extension",
+      processRole: metricSpec.processRole ?? begin.process.role,
+      source: "marker",
+      official: metricSpec.official && officialEligible,
+      lowerIsBetter: metricSpec.lowerIsBetter ?? true,
+      traceId: inputs.traceId,
+      startUnixNs: begin.timestampUnixNs,
+      endUnixNs: endMarker.timestampUnixNs,
+      tags: { timePlane },
     });
   }
 

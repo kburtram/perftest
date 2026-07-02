@@ -47,7 +47,7 @@ register({
 });
 
 register({
-  implemented: false,
+  implemented: true, // M2: product activation markers landed in vscode-mssql
   plannedMilestone: "M2",
   spec: {
     scenarioId: "ext-normal-activation",
@@ -56,18 +56,45 @@ register({
     profileMode: "warmed",
     measure: {
       start: { type: "beforeFirstAction" },
-      action: [{ type: "waitForMarker", name: "mssql.activate.end", timeoutMs: 60000 }],
+      // Focusing the Object Explorer view is the deterministic user action
+      // that activates the extension (its view becomes visible).
+      action: [{ type: "command", command: "objectExplorer.focus", timeoutMs: 300000 }],
       end: { type: "waitForMarker", name: "mssql.activate.end" },
-      timeoutMs: 90000,
+      // Generous: the very first run may download SQL Tools Service into the
+      // product repo (cached afterwards); the warmup rep absorbs it.
+      timeoutMs: 300000,
     },
     success: [
       { type: "markerSeen", name: "mssql.activate.begin" },
       { type: "markerSeen", name: "mssql.activate.end" },
       { type: "noErrors", sources: ["automation", "vscode-mssql"] },
     ],
+    // Reset the sidebar to Explorer so the next rep's window restore does NOT
+    // re-open the Object Explorer view (which would activate the extension at
+    // startup instead of on our measured action).
+    cleanup: [{ type: "command", command: "workbench.view.explorer" }],
     metrics: [
       { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
-      { name: "extension.activate", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "extension.activate",
+        source: "marker",
+        official: true,
+        lowerIsBetter: true,
+        beginMarker: "mssql.activate.begin",
+        endMarker: "mssql.activate.end",
+        component: "extension",
+        processRole: "extensionHost",
+      },
+      {
+        name: "extension.stsSpawn",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.sts.spawn.begin",
+        endMarker: "mssql.sts.spawn.end",
+        component: "sts",
+        processRole: "extensionHost",
+      },
     ],
   },
 });

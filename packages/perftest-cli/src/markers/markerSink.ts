@@ -20,9 +20,11 @@ export interface MarkerSinkEvents {
   marker: (marker: Marker) => void;
 }
 
+export type MarkerSource = "ws" | "http";
+
 export class MarkerSink extends EventEmitter {
   private stream: WriteStream | undefined;
-  private readonly markers: Marker[] = [];
+  private readonly entries: Array<{ marker: Marker; source: MarkerSource }> = [];
   private rejectedCount = 0;
 
   constructor(
@@ -33,7 +35,7 @@ export class MarkerSink extends EventEmitter {
   }
 
   /** Validate and record a marker. Invalid markers are logged and dropped. */
-  ingest(data: unknown, source: string): boolean {
+  ingest(data: unknown, source: MarkerSource): boolean {
     const outcome = validateMarker(data);
     if (!outcome.valid) {
       this.rejectedCount += 1;
@@ -44,7 +46,7 @@ export class MarkerSink extends EventEmitter {
       return false;
     }
     const marker = data as Marker;
-    this.markers.push(marker);
+    this.entries.push({ marker, source });
     if (!this.stream) {
       mkdirSync(dirname(this.filePath), { recursive: true });
       this.stream = createWriteStream(this.filePath, { flags: "a" });
@@ -55,20 +57,24 @@ export class MarkerSink extends EventEmitter {
       processRole: marker.process.role,
       source,
     });
-    this.emit("marker", marker);
+    this.emit("marker", marker, source);
     return true;
   }
 
   all(): Marker[] {
-    return [...this.markers];
+    return this.entries.map((e) => e.marker);
+  }
+
+  allWithSource(): Array<{ marker: Marker; source: MarkerSource }> {
+    return [...this.entries];
   }
 
   byName(name: string): Marker[] {
-    return this.markers.filter((m) => m.name === name);
+    return this.entries.filter((e) => e.marker.name === name).map((e) => e.marker);
   }
 
   first(name: string, attrs?: Record<string, unknown>): Marker | undefined {
-    return this.markers.find((m) => m.name === name && attrsMatch(m, attrs));
+    return this.entries.find((e) => e.marker.name === name && attrsMatch(e.marker, attrs))?.marker;
   }
 
   get rejected(): number {
