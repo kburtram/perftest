@@ -83,8 +83,24 @@ surface.
 | `mssql.sts.spawn.begin` / `mssql.sts.spawn.end` | begin/end | Around STS LanguageClient creation+start (end carries pid) |
 | `mssql.sts.ready` | instant | STS accepting RPC (client.start() resolved) |
 
-M4′ adds: `mssql.connection.ready`, query/results-grid markers, webview mark
-bridge. See IMPLEMENTATION_PLAN.md.
+M4′ added: `mssql.connection.begin/ready`, `mssql.query.submit/complete`
+(rowCount/hasError attrs), the webview mark bridge and
+`mssql.resultsGrid.renderComplete`.
+
+Phase 3 added:
+
+| Marker | Where | Attrs |
+|---|---|---|
+| `mssql.oe.expand.begin/end` | `objectExplorerService.expandNode` | nodePath, nodeType, childCount (end), error |
+| `mssql.resultsGrid.windowFetch.begin/end` | `queryResult/utils.ts` GetRowsRequest handler | batchId, resultId, rowStart, numberOfRows/rowsReturned — the virtual-windowing proof |
+| `mssql.query.cancelled` | `queryRunner.cancel` success path | messages |
+
+Phase 3 perf-only probe commands (registered by `registerPerfApi`, PERF_MODE
+only): `mssql.perf.gridState` (result-set rowCounts/columnCounts/isExecuting),
+`mssql.perf.gridFetchWindow` (a real row-path window fetch for offset
+correctness checks), `mssql.perf.oeSnapshot` (expanded-node child counts).
+These reach internals through any-casts by design — sanctioned, gated test
+seams like `mssql.getControllerForTests`.
 
 ## Zero-behavior-change verification
 

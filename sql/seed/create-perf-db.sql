@@ -104,6 +104,51 @@ BEGIN
 END;
 GO
 
+-- ---------------------------------------------------------------------------
+-- 100k-row fixture for virtual-window / large-result scenarios (Phase 3).
+-- Deterministic content; Id is the correctness key at any scroll offset.
+-- ---------------------------------------------------------------------------
+CREATE TABLE dbo.PerfRows100k (
+    Id INT NOT NULL PRIMARY KEY,
+    Category NVARCHAR(32) NOT NULL,
+    Label NVARCHAR(64) NOT NULL,
+    Amount DECIMAL(18, 4) NOT NULL
+);
+GO
+
+;WITH N AS (
+    SELECT TOP (100000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n
+    FROM sys.all_columns a CROSS JOIN sys.all_columns b
+)
+INSERT INTO dbo.PerfRows100k (Id, Category, Label, Amount)
+SELECT n, N'cat-' + CAST(n % 20 AS NVARCHAR(3)), N'row-' + CAST(n AS NVARCHAR(10)),
+       CAST(n AS DECIMAL(18, 4)) / 11.0
+FROM N;
+GO
+
+-- ---------------------------------------------------------------------------
+-- Blob/XML/MAX-type fixture (Phase 3): deterministic large cells.
+-- ---------------------------------------------------------------------------
+CREATE TABLE dbo.PerfBlobs (
+    Id INT NOT NULL PRIMARY KEY,
+    BinPayload VARBINARY(MAX) NOT NULL,
+    XmlPayload XML NOT NULL,
+    TextPayload NVARCHAR(MAX) NOT NULL
+);
+GO
+
+;WITH N AS (
+    SELECT TOP (20) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n FROM sys.all_columns
+)
+INSERT INTO dbo.PerfBlobs (Id, BinPayload, XmlPayload, TextPayload)
+SELECT
+    n,
+    CAST(REPLICATE(CAST(CHAR(65 + n % 26) AS VARCHAR(MAX)), 262144) AS VARBINARY(MAX)), -- 256KB deterministic letter fill
+    CAST(N'<root id="' + CAST(n AS NVARCHAR(10)) + N'">' + REPLICATE(CAST(N'<item>x</item>' AS NVARCHAR(MAX)), 500) + N'</root>' AS XML),
+    REPLICATE(CAST(N'lorem-' + CAST(n AS NVARCHAR(10)) + N' ' AS NVARCHAR(MAX)), 8192)
+FROM N;
+GO
+
 -- Deterministic small data for the OE-shape tables.
 ;WITH N AS (
     SELECT TOP (100) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n

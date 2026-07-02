@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>perftest trend</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f8fb; --panel: #ffffff; --panel-alt: #f2f5f9;
+  --line: #d9e0ea; --grid: #e2e8f0; --text: #172033; --muted: #64748b;
+  --ok: #087f5b; --warn: #b45309; --fail: #b42318; --info: #2563eb;
+  --shadow: 0 4px 14px rgba(15, 23, 42, .05);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+header.top-bar { padding: 14px 22px 12px; background: linear-gradient(180deg,#fff 0%,#f8fafc 100%);
+  border-bottom: 1px solid var(--line); display: flex; justify-content: space-between;
+  align-items: baseline; gap: 12px; flex-wrap: wrap; }
+header.top-bar h1 { margin: 0; font-size: 22px; }
+header.top-bar .sub { margin-top: 4px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+main { padding: 14px 22px 40px; max-width: 1400px; margin: 0 auto; }
+h2 { margin: 0; font-size: 15px; }
+h3 { margin: 0 0 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+a { color: var(--info); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.spacer { height: 10px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 11px; box-shadow: var(--shadow); min-width: 0; }
+details.panel.section { padding: 0; overflow: hidden; margin-bottom: 10px; }
+details.panel.section > summary { padding: 11px 13px; cursor: pointer; list-style: none;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 600; }
+details.panel.section > summary::-webkit-details-marker { display: none; }
+details.panel.section > summary::before { content: "\25B8"; font-size: 11px; color: var(--muted);
+  transition: transform .12s; }
+details.panel.section[open] > summary::before { transform: rotate(90deg); }
+details.panel.section > summary .section-title { font-size: 15px; }
+details.panel.section > summary .section-subtitle { color: var(--muted); font-weight: 400; font-size: 12px; }
+.section-body { padding: 0 13px 13px; }
+.pill { display: inline-flex; min-height: 18px; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap; align-items: center; border: 1px solid; }
+.pill.ok { background: #ecfdf5; color: var(--ok); border-color: rgba(8,127,91,.25); }
+.pill.warn { background: #fffbeb; color: var(--warn); border-color: rgba(180,83,9,.25); }
+.pill.fail { background: #fff1f2; color: var(--fail); border-color: rgba(180,35,24,.25); }
+.pill.info { background: #eff6ff; color: var(--info); border-color: rgba(37,99,235,.25); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; box-shadow: var(--shadow); }
+.kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.kpi .value { font-size: 20px; font-weight: 650; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.kpi .value .unit { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 3px; }
+.kpi.ok .value { color: var(--ok); } .kpi.warn .value { color: var(--warn); }
+.kpi.fail .value { color: var(--fail); }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 10px; }
+.chart { background: var(--panel-alt); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.chart-title { font-weight: 600; font-size: 12px; margin-bottom: 6px; }
+.chart-caption { color: var(--muted); font-size: 11px; margin-top: 6px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.data th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .03em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.data td { padding: 5px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.data tr:hover td { background: var(--panel-alt); }
+.scroll-x { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header class="top-bar">
+  <div>
+    <h1>perftest trend</h1>
+    <div class="sub">query-10k-results / scenario.wallclock · 6 runs</div>
+  </div>
+  <span class="pill fail" style="font-size:13px;padding:5px 12px;">step +71.6%</span>
+</header>
+<main>
+<div class="chart"><div class="chart-title">scenario.wallclock across runs</div><svg class="chart-svg" viewBox="0 0 640 240" width="100%" font-family="Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif" font-size="11" role="img" aria-label="query-10k-results / scenario.wallclock"><line x1="62" y1="204" x2="626" y2="204" stroke="#d9e0ea"/><line x1="62" y1="16" x2="62" y2="204" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="62" y="218" text-anchor="middle" fill="#64748b">0.0</text><line x1="174.8" y1="16" x2="174.8" y2="204" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="174.8" y="218" text-anchor="middle" fill="#64748b">1.00</text><line x1="287.6" y1="16" x2="287.6" y2="204" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="287.6" y="218" text-anchor="middle" fill="#64748b">2.00</text><line x1="400.4" y1="16" x2="400.4" y2="204" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="400.4" y="218" text-anchor="middle" fill="#64748b">3.00</text><line x1="513.2" y1="16" x2="513.2" y2="204" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="513.2" y="218" text-anchor="middle" fill="#64748b">4.00</text><line x1="626" y1="16" x2="626" y2="204" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="626" y="218" text-anchor="middle" fill="#64748b">5.00</text><text x="344" y="236" text-anchor="middle" fill="#64748b">run (chronological)</text><line x1="62" y1="16" x2="62" y2="204" stroke="#d9e0ea"/><line x1="62" y1="187.77908670986383" x2="626" y2="187.77908670986383" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="56" y="190.77908670986383" text-anchor="end" fill="#64748b">600.0</text><line x1="62" y1="114.99132946815371" x2="626" y2="114.99132946815371" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="56" y="117.99132946815371" text-anchor="end" fill="#64748b">800.0</text><line x1="62" y1="42.20357222644358" x2="626" y2="42.20357222644358" stroke="#e2e8f0" stroke-dasharray="2,3"/><text x="56" y="45.20357222644358" text-anchor="end" fill="#64748b">1000.0</text><text x="12" y="110" text-anchor="middle" fill="#64748b" transform="rotate(-90 12 110)">scenario.wallclock</text><rect x="62" y="87.50674148205334" width="564" height="57.93374853689835" fill="#087f5b" opacity="0.08"><title>prior-runs median ±10% (5 runs)</title></rect><line x1="62" y1="116.47361575050252" x2="626" y2="116.47361575050252" stroke="#087f5b" stroke-dasharray="4,3" opacity="0.6"/><circle cx="62" cy="191.0344827586207" r="2.5" fill="#172033" opacity="0.55"><title>2026-07-02T03-47-19Z_fb7d42e1 — 591.1 (3 reps) @10539f91</title></circle><circle cx="174.8" cy="116.47361575050252" r="2.5" fill="#172033" opacity="0.55"><title>2026-07-02T04-01-28Z_15063b72 — 795.9 (3 reps) @10539f91</title></circle><circle cx="287.6" cy="186.27882185147632" r="2.5" fill="#172033" opacity="0.55"><title>2026-07-02T04-06-13Z_dca10a3f — 604.1 (3 reps) @c1a14167</title></circle><circle cx="400.4" cy="28.965517241379303" r="2.5" fill="#172033" opacity="0.55"><title>2026-07-02T04-38-59Z_0b576cd0 — 1036.4 (3 reps) @1c6e464b</title></circle><circle cx="513.2" cy="41.03922286772658" r="2.5" fill="#172033" opacity="0.55"><title>2026-07-02T05-16-33Z_c866be3a — 1003.2 (3 reps) @1c6e464b</title></circle><circle cx="626" cy="90.11815148800206" r="2.5" fill="#172033" opacity="0.55"><title>2026-07-02T05-17-32Z_e2343958 — 868.3 (3 reps) @1c6e464b</title></circle><line x1="400.4" y1="16" x2="400.4" y2="204" stroke="#b42318" stroke-dasharray="4,3"/><text x="404.4" y="26" fill="#b42318">+71.6% @1c6e464b</text><text x="626" y="16" text-anchor="end" fill="#64748b">n=6 (small sample)</text></svg><div class="chart-caption">Step change flagged at run 2026-07-02T04-38-59Z_0b576cd0 (+71.6%) — product SHA 1c6e464b161c9aad2a5cf90d9ef66054e3d298f2.</div></div>
+<div class="spacer"></div>
+<details class="panel section" open><summary><span class="section-title">Runs</span><span class="section-subtitle"></span></summary><div class="section-body"><div class="scroll-x"><table class="data"><thead><tr><th>#</th><th>Run</th><th>When (UTC)</th><th>Median</th><th>Reps</th><th>Tag</th><th>vscode-mssql SHA</th></tr></thead><tbody><tr><td>0</td><td><span class="mono">2026-07-02T03-47-19Z_fb7d42e1</span></td><td>2026-07-02 03:47</td><td class="num">591.1</td><td class="num">3</td><td>—</td><td><span class="mono">10539f918f</span></td></tr><tr><td>1</td><td><span class="mono">2026-07-02T04-01-28Z_15063b72</span></td><td>2026-07-02 04:01</td><td class="num">795.9</td><td class="num">3</td><td>—</td><td><span class="mono">10539f918f</span></td></tr><tr><td>2</td><td><span class="mono">2026-07-02T04-06-13Z_dca10a3f</span></td><td>2026-07-02 04:06</td><td class="num">604.1</td><td class="num">3</td><td>—</td><td><span class="mono">c1a14167db</span></td></tr><tr><td>3</td><td><span class="mono">2026-07-02T04-38-59Z_0b576cd0</span></td><td>2026-07-02 04:39</td><td class="num">1036.4</td><td class="num">3</td><td>—</td><td><span class="mono">1c6e464b16</span></td></tr><tr><td>4</td><td><span class="mono">2026-07-02T05-16-33Z_c866be3a</span></td><td>2026-07-02 05:16</td><td class="num">1003.2</td><td class="num">3</td><td>—</td><td><span class="mono">1c6e464b16</span></td></tr><tr><td>5</td><td><span class="mono">2026-07-02T05-17-32Z_e2343958</span></td><td>2026-07-02 05:17</td><td class="num">868.3</td><td class="num">3</td><td>—</td><td><span class="mono">1c6e464b16</span></td></tr></tbody></table></div></div></details>
+</main>
+</body>
+</html>

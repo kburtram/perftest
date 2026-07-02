@@ -217,7 +217,19 @@ export type ScenarioStep =
   | { type: "waitForMarker"; name: string; attrs?: Record<string, unknown>; timeoutMs?: number }
   | { type: "waitForCommandCompletion"; command: string; args?: unknown[]; timeoutMs?: number }
   | { type: "webviewProbe"; probe: string; assert?: string; timeoutMs?: number }
-  | { type: "objectExplorerProbe"; assert?: string; timeoutMs?: number }
+  | { type: "objectExplorerProbe"; name?: string; assert?: string; timeoutMs?: number }
+  /** Expand an OE path (labels from the server root) via the real tree provider. */
+  | { type: "oeExpand"; oePath: string[]; profile?: string; timeoutMs?: number }
+  /** Invoke the completion provider at the cursor; `expect` must be suggested. */
+  | { type: "completionProbe"; expect?: string; timeoutMs?: number }
+  /** Fetch a row window via the real product path; verify offset correctness. */
+  | {
+      type: "windowFetchCheck";
+      rowStart: number;
+      numberOfRows?: number;
+      expectFirstCell?: string;
+      timeoutMs?: number;
+    }
   /**
    * Non-interactively connect the active editor's document to the named
    * connection profile via the product's own test seam
@@ -237,6 +249,7 @@ export type ScenarioStep =
 export type SuccessCriterion =
   | { type: "markerSeen"; name: string; attrs?: Record<string, unknown> }
   | { type: "webviewProbe"; probe: string; assert: string }
+  | { type: "objectExplorerProbe"; name?: string; assert: string }
   | { type: "noErrors"; sources: string[] }
   | { type: "custom"; name: string };
 

@@ -20,6 +20,10 @@ export interface ScenarioStep {
   probe?: string;
   assert?: string;
   profile?: string;
+  /** oeExpand: node labels from the server root, e.g. ["Databases","PerfCatalog","Tables"]. */
+  oePath?: string[];
+  /** completionProbe: a suggestion label that must be present. */
+  expect?: string;
   timeoutMs?: number;
 }
 
@@ -193,7 +197,7 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
 
     // Success criteria (design §7): all must pass or the rep is failed.
     for (const criterion of spec.success ?? []) {
-      successChecks.push(evaluateCriterion(criterion, ctx));
+      successChecks.push(await evaluateCriterion(criterion, ctx));
     }
 
     await runSteps(spec.cleanup, "cleanup");
@@ -271,7 +275,7 @@ async function runLoop(
         }
       }
       for (const criterion of loop.success ?? []) {
-        const outcome = evaluateCriterion(criterion, ctx, iterStartUnixNs);
+        const outcome = await evaluateCriterion(criterion, ctx, iterStartUnixNs);
         if (outcome.status === "failed") {
           status = "failed";
           errorKind = errorKind ?? classifyCriterion(criterion, outcome.message);
@@ -425,11 +429,137 @@ async function executeStep(
       await withTimeout(mssqlDisconnect(ctx), timeoutMs, "mssqlDisconnect");
       return;
     }
-    case "webviewProbe":
-    case "objectExplorerProbe":
-      // Arrives with product instrumentation (M2/M4). Failing honestly beats
-      // pretending the probe ran.
-      throw new Error(`${step.type} is not implemented yet`);
+    case "webviewProbe": {
+      // Live results-grid state via the perf-only product API.
+      const state = (await vscode.commands.executeCommand("mssql.perf.gridState")) as {
+        error?: string;
+        totalRows?: number;
+        resultSets?: unknown[];
+        maxColumns?: number;
+        isExecuting?: boolean | null;
+      };
+      if (!state || state.error) {
+        throw new Error(`gridState probe failed: ${state?.error ?? "no response"}`);
+      }
+      if (step.assert) {
+        assertProbe(step.assert, {
+          rowCount: state.totalRows ?? 0,
+          resultSets: state.resultSets?.length ?? 0,
+          columns: state.maxColumns ?? 0,
+          isExecuting: state.isExecuting === true ? 1 : 0,
+        });
+      }
+      return;
+    }
+    case "objectExplorerProbe": {
+      const snapshot = (await vscode.commands.executeCommand("mssql.perf.oeSnapshot")) as {
+        error?: string;
+        nodes?: Array<{ nodePath: string; label: string; childCount: number }>;
+      };
+      if (!snapshot || snapshot.error) {
+        throw new Error(`oeSnapshot probe failed: ${snapshot?.error ?? "no response"}`);
+      }
+      if (step.assert) {
+        const target = step.name
+          ? snapshot.nodes?.find(
+              (n) => n.label === step.name || n.nodePath.endsWith(step.name as string),
+            )
+          : undefined;
+        assertProbe(step.assert, {
+          childCount: target?.childCount ?? 0,
+          expandedNodes: snapshot.nodes?.length ?? 0,
+        });
+      }
+      return;
+    }
+    case "oeExpand": {
+      if (!step.oePath || step.oePath.length === 0) {
+        throw new Error("oeExpand step requires oePath (node labels from the server root)");
+      }
+      await withTimeout(
+        oeExpand(step.oePath, step.profile ?? "default", ctx),
+        timeoutMs,
+        `oeExpand(${step.oePath.join("/")})`,
+      );
+      return;
+    }
+    case "windowFetchCheck": {
+      // Fetch a window through the REAL product row path and verify content
+      // correctness at the offset (deterministic fixtures: first cell = Id).
+      const args = step as unknown as {
+        rowStart?: number;
+        numberOfRows?: number;
+        expectFirstCell?: string;
+      };
+      const result = (await vscode.commands.executeCommand("mssql.perf.gridFetchWindow", {
+        rowStart: args.rowStart ?? 0,
+        numberOfRows: args.numberOfRows ?? 50,
+      })) as { error?: string; rowsReturned?: number; firstRow?: string[] };
+      if (!result || result.error) {
+        throw new Error(`gridFetchWindow failed: ${result?.error ?? "no response"}`);
+      }
+      if ((result.rowsReturned ?? 0) === 0) {
+        throw new Error(`gridFetchWindow returned no rows at offset ${args.rowStart}`);
+      }
+      if (args.expectFirstCell !== undefined && result.firstRow?.[0] !== args.expectFirstCell) {
+        throw new Error(
+          `window content mismatch at offset ${args.rowStart}: first cell '${result.firstRow?.[0]}' != '${args.expectFirstCell}'`,
+        );
+      }
+      return;
+    }
+    case "completionProbe": {
+      // Semantic completion measurement: invoke the completion provider at
+      // the current cursor and verify expected suggestions arrive.
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        throw new Error("completionProbe requires an open document");
+      }
+      const expect = (step as unknown as { expect?: string }).expect;
+      // Place the cursor at the end of the document (fixtures end mid-clause,
+      // e.g. "SELECT * FROM ").
+      const endPos = editor.document.lineAt(Math.max(0, editor.document.lineCount - 1)).range.end;
+      editor.selection = new vscode.Selection(endPos, endPos);
+      // IntelliSense warms asynchronously after connect: retry the provider
+      // until the expected suggestion appears (contains-match: schemas may
+      // qualify labels, e.g. dbo.PerfRows) or the step timeout elapses. The
+      // begin/end markers time the FIRST attempt (cold completion latency).
+      const deadline = Date.now() + timeoutMs;
+      let attempt = 0;
+      for (;;) {
+        attempt++;
+        if (attempt === 1) ctx.emitMarker("driver.completion.begin", "begin");
+        const list = (await vscode.commands.executeCommand(
+          "vscode.executeCompletionItemProvider",
+          editor.document.uri,
+          editor.selection.active,
+        )) as { items?: Array<{ label: string | { label: string } }> };
+        if (attempt === 1) {
+          ctx.emitMarker("driver.completion.end", "end", {
+            suggestions: list?.items?.length ?? 0,
+          });
+        }
+        const found =
+          !expect ||
+          (list?.items ?? []).some((item) => {
+            const label = typeof item.label === "string" ? item.label : item.label?.label;
+            return (label ?? "").includes(expect);
+          });
+        if (found) {
+          ctx.emitMarker("driver.completion.found", "instant", {
+            attempts: attempt,
+            suggestions: list?.items?.length ?? 0,
+          });
+          return;
+        }
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `completion did not include '${expect}' within ${timeoutMs}ms (${attempt} attempts, last ${list?.items?.length ?? 0} suggestions)`,
+          );
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
     default:
       throw new Error(`Unknown step type '${step.type}'`);
   }
@@ -440,6 +570,127 @@ async function executeStep(
  * emits mssql.connection.begin/ready markers around the real connection flow,
  * so timing comes from the product, not from this call.
  */
+/**
+ * Tiny assertion evaluator for probe steps: supports "<field> <op> <number>"
+ * with ops == != >= <= > <. No eval, no expressions — honest and predictable.
+ */
+function assertProbe(assertion: string, fields: Record<string, number>): void {
+  const match = /^\s*(\w+)\s*(==|!=|>=|<=|>|<)\s*(\d+(?:\.\d+)?)\s*$/.exec(assertion);
+  if (!match) {
+    throw new Error(`unsupported probe assertion '${assertion}'`);
+  }
+  const [, field, op, rawExpected] = match;
+  const actual = fields[field!];
+  if (actual === undefined) {
+    throw new Error(`probe assertion field '${field}' unavailable (have: ${Object.keys(fields).join(",")})`);
+  }
+  const expected = Number(rawExpected);
+  const pass =
+    op === "==" ? actual === expected :
+    op === "!=" ? actual !== expected :
+    op === ">=" ? actual >= expected :
+    op === "<=" ? actual <= expected :
+    op === ">" ? actual > expected : actual < expected;
+  if (!pass) {
+    throw new Error(`probe assertion failed: ${field}=${actual} ${op} ${expected} is false`);
+  }
+}
+
+/**
+ * Expand an Object Explorer path (labels from the server root, e.g.
+ * ["Databases", "PerfCatalog", "Tables"]) through the product's REAL tree
+ * provider — the same getChildren path the tree UI uses, so the product's
+ * mssql.oe.expand markers fire.
+ */
+async function oeExpand(path: string[], profileName: string, ctx: EngineContext): Promise<void> {
+  const profile = ctx.connectionProfiles?.[profileName];
+  if (!profile) {
+    throw new Error(`No connection profile '${profileName}' for oeExpand`);
+  }
+  const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
+    | {
+        _objectExplorerProvider?: {
+          createSession(credentials: unknown): Promise<{ sessionId?: string; errorMessage?: string } | undefined>;
+          getChildren(element?: unknown): Promise<Array<{ label?: unknown; nodePath?: string }> | undefined>;
+        };
+      }
+    | undefined;
+  const provider = controller?._objectExplorerProvider;
+  if (!provider) {
+    throw new Error("object explorer provider unavailable");
+  }
+  const credentials: Record<string, unknown> = {
+    server: profile.server,
+    database: profile.database ?? "",
+    authenticationType: profile.authenticationType,
+    user: profile.user ?? "",
+    password: profile.password ?? "",
+    savePassword: false,
+    encrypt: profile.encrypt ?? "Optional",
+    trustServerCertificate: profile.trustServerCertificate ?? false,
+    applicationName: ctx.applicationName ?? "vscode-mssql-perf",
+    connectTimeout: 30,
+    commandTimeout: 30,
+    profileName: `perf-oe-${Date.now()}`,
+  };
+  const session = await provider.createSession(credentials);
+  if (!session || session.errorMessage) {
+    throw new Error(`OE session failed: ${session?.errorMessage ?? "no session"}`);
+  }
+  const nodes = (await provider.getChildren(undefined)) ?? [];
+  if (nodes.length === 0) {
+    throw new Error("OE root has no nodes after session creation");
+  }
+  // The freshest server node is last.
+  let current: { label?: unknown; nodePath?: string } = nodes[nodes.length - 1]!;
+
+  // The provider's getChildren returns a "Loading..." placeholder while the
+  // async expand runs — the semantic completion signal is the product's own
+  // mssql.oe.expand.end marker for that nodePath, after which the provider
+  // serves the cached real children.
+  const expandSettled = async (
+    node: { label?: unknown; nodePath?: string },
+  ): Promise<Array<{ label?: unknown; nodePath?: string }>> => {
+    const beforeNs = (BigInt(Date.now()) * 1000000n).toString();
+    let children = (await provider.getChildren(node)) ?? [];
+    const isLoading = (list: typeof children): boolean =>
+      list.length === 1 &&
+      String(
+        typeof list[0]!.label === "string"
+          ? list[0]!.label
+          : ((list[0]!.label as { label?: string })?.label ?? ""),
+      ).startsWith("Loading");
+    if (isLoading(children)) {
+      await ctx.bus.wait(
+        "mssql.oe.expand.end",
+        node.nodePath ? { nodePath: node.nodePath } : undefined,
+        120000,
+        beforeNs,
+      );
+      children = (await provider.getChildren(node)) ?? [];
+    }
+    return children;
+  };
+
+  for (const label of path) {
+    const children = await expandSettled(current);
+    const next = children.find((c) => {
+      const l = typeof c.label === "string" ? c.label : (c.label as { label?: string })?.label;
+      return l === label || (l ?? "").startsWith(label);
+    });
+    if (!next) {
+      const available = children
+        .map((c) => (typeof c.label === "string" ? c.label : (c.label as { label?: string })?.label))
+        .slice(0, 12)
+        .join(", ");
+      throw new Error(`OE node '${label}' not found (children: ${available})`);
+    }
+    current = next;
+  }
+  // Expand the final node (e.g. Tables) — this is the measured expansion.
+  await expandSettled(current);
+}
+
 /** Disconnect the active editor's connection via the product's test seam. */
 async function mssqlDisconnect(ctx: EngineContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
@@ -512,11 +763,11 @@ async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext):
   }
 }
 
-function evaluateCriterion(
+async function evaluateCriterion(
   criterion: SuccessCriterion,
   ctx: EngineContext,
   afterUnixNs?: string,
-): StepOutcome {
+): Promise<StepOutcome> {
   switch (criterion.type) {
     case "markerSeen": {
       const seen = criterion.name
@@ -536,12 +787,29 @@ function evaluateCriterion(
       return result;
     }
     case "webviewProbe":
-    case "objectExplorerProbe":
-      return {
-        step: criterion.type,
-        status: "failed",
-        message: `${criterion.type} not implemented yet`,
-      };
+    case "objectExplorerProbe": {
+      // Probe criteria execute the same probe steps and pass iff no throw.
+      const label = `${criterion.type}(${criterion.assert ?? ""})`;
+      try {
+        await executeStep(
+          {
+            type: criterion.type,
+            assert: criterion.assert,
+            ...(criterion.type === "objectExplorerProbe" && criterion.name
+              ? { name: criterion.name }
+              : {}),
+          } as ScenarioStep,
+          ctx,
+        );
+        return { step: label, status: "passed" };
+      } catch (error) {
+        return {
+          step: label,
+          status: "failed",
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
     default:
       return {
         step: criterion.type,

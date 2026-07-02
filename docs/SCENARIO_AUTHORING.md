@@ -36,9 +36,18 @@ lives in imperative test code.
 | `openDocument` | open+show a file (relative to the workspace root) |
 | `waitForMarker` | semantic wait on any marker (product/STS/webview/driver) |
 | `waitForCommandCompletion` | alias of `command` (kept for spec fidelity) |
-| `mssqlConnect` | non-interactive connect of the active editor via the product's test seam; profile shipped by the orchestrator |
-| `webviewProbe` / `objectExplorerProbe` | reserved; fail honestly until implemented |
+| `mssqlConnect` / `mssqlDisconnect` | non-interactive connect/disconnect of the active editor via the product's test seam |
+| `webviewProbe` | live results-grid state via `mssql.perf.gridState`: assert on `rowCount`, `resultSets`, `columns`, `isExecuting` |
+| `objectExplorerProbe` | live OE tree state via `mssql.perf.oeSnapshot`: assert on `childCount` of a named node / `expandedNodes` |
+| `oeExpand` | expand an OE label path (e.g. `["Databases","PerfCatalog","Tables"]`) through the REAL tree provider — product `mssql.oe.expand.*` markers fire |
+| `windowFetchCheck` | fetch a row window through the real product row path; verify content at the offset (`expectFirstCell`) |
+| `completionProbe` | invoke the completion provider at the cursor; `expect` must be among the suggestions |
+| `syntheticDelay` | gate-proving only (never in product scenarios) |
 | `noop` | nothing (harness-loop scenarios) |
+
+Probe assertions are deliberately tiny: `field op number` with `== != >= <= > <`
+— no expressions, no eval. Success-criteria variants of `webviewProbe` /
+`objectExplorerProbe` execute the same probes.
 
 There is deliberately **no `sleep` step**. If you need to wait, you must name
 the semantic condition you're waiting for. If no marker exists for it, add an

@@ -39,11 +39,29 @@ used, verdicts, and the run-level status. CI and agents should consume this,
 not parse the console output. Also persisted to the `comparisons` /
 `comparison_metrics` tables.
 
+## index.html (per run directory — the primary report)
+
+Benchmark-report-grade standalone page (design system + inline SVG, zero
+external fetches): KPI tiles, the **cross-process waterfall** (solid bars =
+official same-process monotonic intervals; dashed = epoch-aligned diagnostic
+intervals, calibration jitter in the legend; SQL Server lane labeled as the
+server's own clock), per-scenario wallclock distributions, soak latency/RSS
+trends with fitted slope + CI band + verdict, SQL top-N by duration, rep
+tables, validation notes, environment, artifact index.
+
+## Cross-run pages
+
+- `perftest trend --scenario <id> --metric <name>` → trend HTML with the
+  prior-runs baseline band and step-change attribution (run + product SHA).
+- `perftest history` → `history.html`: recent runs (status/tags/environments),
+  per-scenario trend charts, comparison verdicts, named baselines.
+- `perftest diff … ` → `investigation.html` (gate + SQL-activity delta).
+
 ## Regenerating
 
 ```powershell
 node packages/perftest-cli/dist/cli.js report <runId> [--open]
 ```
 
-Reads rep `result.json` files from the run's stored output dir and rewrites
-report.md/report.html.
+Reads rep `result.json` files + artifacts from the run's stored output dir
+and rewrites report.md/report.html/index.html.

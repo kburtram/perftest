@@ -58,10 +58,54 @@ Loads and schema-validates the config (real today; exit 2 on invalid), then
 executes the run pipeline. **Pipeline lands in Milestone 1** — until then the
 command reports not-implemented and exits 5 without writing anything.
 
-### `perftest report <runId> [--open]` · `perftest compare --current <runId> --baseline <runId|tag>` · `perftest baseline set <name> <runId>` · `perftest cleanup --older-than <d> [--keep-regressions]`
+### `perftest report <runId> [--open]`
 
-Reporting, comparison, baseline management, and artifact retention — land in
-Milestones 1/6′. Same honest not-implemented behavior until then.
+Re-renders `report.md`, `report.html`, and the standalone `index.html`
+(waterfall + plots) from stored artifacts.
+
+### `perftest compare --current <runId> --baseline <runId|name|rolling:N>`
+
+Official-metrics comparison with the §24 rules. `rolling:N` pools the last N
+green runs on the same environment hash (noise-resistant baseline; persisted
+as JSON only). Exit 1 on regression, 6 on inconclusive.
+
+### `perftest diff --baseline <runId> --candidate <runId> [--json]`
+
+A/B investigation: the official gate plus non-gating what-changed analysis
+(SQL-activity delta headline, cross-signal metric deltas, git context).
+Writes `investigation.json` + `investigation.html` beside the candidate run.
+
+### `perftest trend --scenario <id> [--metric <name>] [--last N] [--tag <t>]`
+
+Cross-run time-series of an official metric: per-run medians, prior-runs
+baseline band, and **step-change attribution** (the run + product SHA where
+the metric stepped beyond 10%/5-unit thresholds). Writes a self-contained
+trend HTML.
+
+### `perftest history [--out history.html] [--open]`
+
+Local dashboard: recent runs (status, tags, environments), per-scenario
+trend charts, recent comparison verdicts, named baselines.
+
+### `perftest tag <runId> <label>` · `perftest run … --tag <label>`
+
+Label runs (`before-fix`, `after-fix`, `PR#123`) for filtering in
+trend/history.
+
+### `perftest baseline set <name> <runId>` · `perftest baseline list`
+
+Named baselines (bound to the run's environment hash).
+
+### `perftest setup verify` · `scripts/setup-windows.ps1 [-Install]`
+
+Machine validation (§28): toolchain, dotnet diagnostic tools, power/AC
+warnings; the script writes `setup-report.json` and can install missing
+dotnet global tools with `-Install`.
+
+### `perftest cleanup --older-than <30d|12h> [--keep-regressions] [--dry-run]`
+
+Artifact retention: deletes old run directories, never those referenced by a
+regressed comparison when `--keep-regressions` is set.
 
 ## Config loading
 

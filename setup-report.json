@@ -1,0 +1,91 @@
+{
+  "status": "passed",
+  "machineId": "CPC-karlb-O7ROV",
+  "generatedAt": "2026-07-02T12:57:00.2482444-07:00",
+  "checks": [
+    {
+      "name": "node",
+      "status": "passed",
+      "message": "v24.17.0",
+      "remediation": ""
+    },
+    {
+      "name": "npm",
+      "status": "passed",
+      "message": "11.13.0",
+      "remediation": ""
+    },
+    {
+      "name": "dotnet",
+      "status": "passed",
+      "message": "10.0.301",
+      "remediation": ""
+    },
+    {
+      "name": "docker",
+      "status": "passed",
+      "message": "Docker version 29.6.1, build 8900f1d",
+      "remediation": ""
+    },
+    {
+      "name": "sqlcmd",
+      "status": "passed",
+      "message": "Microsoft (R) SQL Server Command Line Tool",
+      "remediation": ""
+    },
+    {
+      "name": "git",
+      "status": "passed",
+      "message": "git version 2.54.0.vfs.0.2",
+      "remediation": ""
+    },
+    {
+      "name": "dotnet-trace",
+      "status": "passed",
+      "message": "9.0.661903+d7b455b46332b31fd9ba3a3f3e020387984c511a",
+      "remediation": ""
+    },
+    {
+      "name": "dotnet-counters",
+      "status": "passed",
+      "message": "9.0.661903+d7b455b46332b31fd9ba3a3f3e020387984c511a",
+      "remediation": ""
+    },
+    {
+      "name": "dotnet-gcdump",
+      "status": "passed",
+      "message": "9.0.661903+d7b455b46332b31fd9ba3a3f3e020387984c511a",
+      "remediation": ""
+    },
+    {
+      "name": "wpr",
+      "status": "passed",
+      "message": "Windows Performance Recorder available (elevation/policy checked at run time)",
+      "remediation": ""
+    },
+    {
+      "name": "powerProfile",
+      "status": "passed",
+      "message": "Power Scheme GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (High performance)",
+      "remediation": ""
+    },
+    {
+      "name": "acPower",
+      "status": "passed",
+      "message": "on AC power / no battery",
+      "remediation": ""
+    },
+    {
+      "name": "directories",
+      "status": "passed",
+      "message": "perf-runs + .vscode-test present",
+      "remediation": ""
+    },
+    {
+      "name": "harnessBuilt",
+      "status": "passed",
+      "message": "packages/perftest-cli/dist/cli.js",
+      "remediation": ""
+    }
+  ]
+}

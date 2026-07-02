@@ -46,32 +46,47 @@ export function compareRuns(
     throw new CompareError(`Current run '${currentRunId}' not found in the store`);
   }
 
-  // Baseline: an explicit run id, or a named baseline from `baseline set`.
+  // Baseline forms: explicit run id, named baseline, or "rolling:N" — the
+  // pooled official samples of the last N green runs on the SAME environment
+  // hash (M15.3; cuts single-run baseline noise).
   let baselineRunId = baselineRef;
-  if (!store.getRun(baselineRef)) {
-    const named = store.getBaselineRun(baselineRef);
-    if (!named) {
+  let baselineSamples: ReturnType<PerfStore["officialSamples"]>;
+  let environmentMatched = true;
+  const rollingMatch = /^rolling:(\d+)$/.exec(baselineRef);
+  if (rollingMatch) {
+    const lastN = Number(rollingMatch[1]);
+    baselineSamples = store.rollingBaselineSamples(current.environmentHash, lastN, currentRunId);
+    if (baselineSamples.length === 0) {
       throw new CompareError(
-        `Baseline '${baselineRef}' is neither a run id nor a named baseline`,
+        `rolling:${lastN} baseline has no prior green runs on environment ${current.environmentHash.slice(0, 18)}...`,
       );
     }
-    baselineRunId = named.runId;
-  }
-  const baseline = store.getRun(baselineRunId);
-  if (!baseline) {
-    throw new CompareError(`Baseline run '${baselineRunId}' not found in the store`);
-  }
-
-  const environmentMatched = current.environmentHash === baseline.environmentHash;
-  if (!environmentMatched && !options.allowCrossEnvironment) {
-    throw new CompareError(
-      `Environment hash mismatch: current ${current.environmentHash.slice(0, 18)}... vs baseline ${baseline.environmentHash.slice(0, 18)}... ` +
-        `Official metrics are not comparable across environments (design §23.1); pass allowCrossEnvironment to override.`,
-    );
+    baselineRunId = `rolling:${lastN}@${current.environmentHash.slice(0, 15)}`;
+  } else {
+    if (!store.getRun(baselineRef)) {
+      const named = store.getBaselineRun(baselineRef);
+      if (!named) {
+        throw new CompareError(
+          `Baseline '${baselineRef}' is neither a run id, a named baseline, nor rolling:N`,
+        );
+      }
+      baselineRunId = named.runId;
+    }
+    const baseline = store.getRun(baselineRunId);
+    if (!baseline) {
+      throw new CompareError(`Baseline run '${baselineRunId}' not found in the store`);
+    }
+    environmentMatched = current.environmentHash === baseline.environmentHash;
+    if (!environmentMatched && !options.allowCrossEnvironment) {
+      throw new CompareError(
+        `Environment hash mismatch: current ${current.environmentHash.slice(0, 18)}... vs baseline ${baseline.environmentHash.slice(0, 18)}... ` +
+          `Official metrics are not comparable across environments (design §23.1); pass allowCrossEnvironment to override.`,
+      );
+    }
+    baselineSamples = store.officialSamples(baselineRunId);
   }
 
   const currentSamples = store.officialSamples(currentRunId);
-  const baselineSamples = store.officialSamples(baselineRunId);
 
   const grouped = new Map<
     string,
@@ -120,7 +135,8 @@ export function compareRuns(
     environmentMatched,
   };
 
-  if (options.persist !== false) {
+  // Rolling baselines have no baseline run row (FK) — persist JSON only.
+  if (options.persist !== false && !rollingMatch) {
     const comparisonId = store.insertComparison(
       currentRunId,
       baselineRunId,
@@ -145,6 +161,8 @@ export function compareRuns(
         detailsJson: JSON.stringify({ reason: m.reason }),
       });
     }
+  }
+  if (options.persist !== false) {
     try {
       writeFileSync(
         join(current.outputDir, "comparison.json"),

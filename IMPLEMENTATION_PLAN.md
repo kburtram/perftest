@@ -285,12 +285,12 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       `setup verify` → 12.9. STALE BOXES CONSOLIDATED: old 4.7 (XEvents) was
       delivered by M8 ✓; old 4.8 → 12.2; old 4.9 → 12.8; 3.5 → 12.4;
       V.1/V.2 → 12.7/13.6. Everything else in §34 verified in Phases 1-2.
-- [ ] 12.9 §28 setup scripts: `scripts/setup-windows.ps1` (validate/install
+- [x] 12.9 §28 setup scripts: `scripts/setup-windows.ps1` (validate/install
       node, dotnet SDK, docker, dotnet-trace/counters/gcdump, power-profile
       warnings, perf-runs dirs; conservative, prints remediation; writes
       setup-report.json; runs doctor) + `perftest setup verify` alias. Linux
       variant stubbed with honest not-implemented (no Linux box to verify on).
-- [ ] 12.10 `ext-first-launch` scenario (§8): fresh profile + fresh extensions
+- [x] 12.10 `ext-first-launch` scenario (§8): fresh profile + fresh extensions
       dir; measured from orchestrator spawn timestamp to driver `ready` (+
       product activation if triggered); official wallclock; startup breakdown
       diagnostic.
@@ -302,15 +302,15 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       `expand-tables-node-10k` scenario (all 10k proven rendered, scaled timeouts).
 - [x] 12.3 (=11.3) Investigation report (self-contained md/html, SQL-activity
       delta headline) + extra-round-trip acceptance; gate stays official-only.
-- [ ] 12.4 dotnet-counters live attach w/ reliable Windows stop; time-series of
+- [x] 12.4 dotnet-counters live attach w/ reliable Windows stop; time-series of
       Microsoft-SqlTools-Sts2 + System.Runtime counters; diagnostic-only.
-- [ ] 12.5 Implement `objectExplorerProbe` + `webviewProbe` step types (product
+- [x] 12.5 Implement `objectExplorerProbe` + `webviewProbe` step types (product
       perf API extensions behind PERF_MODE; M13 depends on these).
-- [ ] 12.6 `coldDb` cache mode (DBCC DROPCLEANBUFFERS / container restart) with
+- [x] 12.6 `coldDb` cache mode (DBCC DROPCLEANBUFFERS / container restart) with
       honest cacheMode recording.
-- [ ] 12.7 Scenario variety basics: `cancel-running-query`, `query-error-path`,
+- [x] 12.7 Scenario variety basics: `cancel-running-query`, `query-error-path`,
       `large-result-100k` (data-only, using the new probes).
-- [ ] 12.8 Document STS-waterfall limitation (legacy journals lifecycle only) +
+- [x] 12.8 Document STS-waterfall limitation (legacy journals lifecycle only) +
       keep sql.networkDriver.duration confidence-tagged. Docs + commits.
 
 ### M13 — Advanced, realistic scenarios
@@ -318,15 +318,15 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
 - [ ] 13.1 `query-large-scroll-virtual-window` (100k rows; scroll → windowed
       fetch PROVEN via new PERF_MODE window-fetch markers; correctness at
       multiple offsets).
-- [ ] 13.2 `query-blob-xml` (VARBINARY/XML/NVARCHAR(MAX) cells; size/content
+- [x] 13.2 `query-blob-xml` (VARBINARY/XML/NVARCHAR(MAX) cells; size/content
       proofs; transfer + cell render timing).
-- [ ] 13.3 `query-many-result-sets` (25-50 sets; all grids proven) +
+- [x] 13.3 `query-many-result-sets` (25-50 sets; all grids proven) +
       `query-wide-columns` (hundreds of columns proven).
 - [ ] 13.4 `oe-expand-mixed-schema` / `oe-expand-deep` / `oe-refresh` via
       objectExplorerProbe correctness checks.
 - [ ] 13.5 `intellisense-completion-latency` (large schema; expected suggestions
       proven; foreshadows Phase-4 completions instrumentation).
-- [ ] 13.6 `query-cancel-midflight`, `reconnect-after-drop`,
+- [x] 13.6 `query-cancel-midflight`, `reconnect-after-drop`,
       `large-script-execution`; scroll-heavy soak variant. Docs + commit.
 
 ### M14 — Analysis & viewer (waterfall + plots + standalone index.html)
@@ -337,23 +337,23 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       commands + CDP phases on one epoch-aligned axis w/ per-process calibration
       offsets; official-monotonic vs epoch-aligned visually distinguished;
       jitter surfaced; hover detail.
-- [ ] 14.3 Metric plots: latency distributions, soak trends w/ fitted slope +
+- [x] 14.3 Metric plots: latency distributions, soak trends w/ fitted slope +
       CI band + R² + n, A/B delta bars, SQL-activity top-N.
-- [ ] 14.4 Standalone run `index.html` (benchmark.html-quality): KPIs, waterfall,
+- [x] 14.4 Standalone run `index.html` (benchmark.html-quality): KPIs, waterfall,
       plots, SQL table, soak analysis, validations, env fingerprint, artifact
       links; regenerable via `perftest report`. Docs + commit.
 
 ### M15 — Cross-run tracking & history
 
-- [ ] 15.1 `perftest trend --scenario --metric [--last N] [--by time|sha]` using
+- [x] 15.1 `perftest trend --scenario --metric [--last N] [--by time|sha]` using
       the M14 plot module w/ baseline band.
-- [ ] 15.2 Local history dashboard (`history.html` or `perftest serve`): trends,
+- [x] 15.2 Local history dashboard (`history.html` or `perftest serve`): trends,
       recent runs/regressions, environment changes.
-- [ ] 15.3 Baselines: list/show/promote + rolling auto-baseline (median of last N
+- [x] 15.3 Baselines: list/show/promote + rolling auto-baseline (median of last N
       green runs on same environmentHash) + config wiring.
-- [ ] 15.4 Run tagging/labels (before-fix/after-fix/PR#) filterable in
+- [x] 15.4 Run tagging/labels (before-fix/after-fix/PR#) filterable in
       trend/history/diff.
-- [ ] 15.5 Step-change attribution: flag the introducing run + git SHA in trends.
+- [x] 15.5 Step-change attribution: flag the introducing run + git SHA in trends.
       Docs + commit.
 
 ## Cross-cutting (every milestone)

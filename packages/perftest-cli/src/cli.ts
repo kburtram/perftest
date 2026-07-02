@@ -210,7 +210,8 @@ program
   .requiredOption("--config <path>", "perf config file (jsonc)")
   .option("--scenario <id>", "run a single scenario")
   .option("--pass <type>", "override pass type: measurement | diagnostic | calibration")
-  .action(async (opts: { config: string; scenario?: string; pass?: string }) => {
+  .option("--tag <label>", "tag this run (before-fix / after-fix / PR#…)")
+  .action(async (opts: { config: string; scenario?: string; pass?: string; tag?: string }) => {
     if (opts.pass && !["measurement", "diagnostic", "calibration"].includes(opts.pass)) {
       process.stderr.write(`Invalid --pass '${opts.pass}'\n`);
       exit(ExitCode.configInvalid);
@@ -256,7 +257,15 @@ program
             "\n",
         );
       }
-      process.stdout.write(`Report: ${join(summary.runDir, "report.md")}\n`);
+      process.stdout.write(`Report: ${join(summary.runDir, "index.html")}\n`);
+      if (opts.tag && loaded.config.store.type === "sqlite") {
+        const store = PerfStore.open(loaded.config.store.path ?? "./perf.db", logger.child("store"));
+        try {
+          store.tagRun(summary.runId, opts.tag);
+        } finally {
+          store.close();
+        }
+      }
 
       // Regression gate (design §24.3/§26): when a baseline is configured,
       // compare and let a gated regression drive the exit code.
@@ -486,7 +495,137 @@ program
     },
   );
 
+program
+  .command("trend")
+  .description("Cross-run trend of an official metric with step-change attribution")
+  .requiredOption("--scenario <id>")
+  .option("--metric <name>", "official metric name", "scenario.wallclock")
+  .option("--last <n>", "limit to the last N runs")
+  .option("--tag <tag>", "only runs tagged with this label")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--out <file>", "output HTML path (default trend-<scenario>.html)")
+  .action(
+    (opts: {
+      scenario: string;
+      metric: string;
+      last?: string;
+      tag?: string;
+      db: string;
+      out?: string;
+    }) => {
+      const store = PerfStore.open(opts.db, logger.child("store"));
+      try {
+        const { renderTrend } = require("./report/trendReport") as typeof import("./report/trendReport");
+        const outPath = resolve(opts.out ?? `trend-${opts.scenario}-${opts.metric.replace(/[^a-z0-9.]/gi, "_")}.html`);
+        const result = renderTrend(
+          store,
+          opts.scenario,
+          opts.metric,
+          {
+            ...(opts.last !== undefined ? { lastN: Number(opts.last) } : {}),
+            ...(opts.tag !== undefined ? { tag: opts.tag } : {}),
+            outPath,
+          },
+          logger.child("trend"),
+        );
+        if (result.series.length === 0) {
+          process.stderr.write(`No official samples for ${opts.scenario}/${opts.metric}\n`);
+          exit(ExitCode.insufficientSamples);
+        }
+        for (const point of result.series) {
+          process.stdout.write(
+            `${point.runId}  ${point.median.toFixed(1)} (${point.samples} reps)${point.tag ? ` [${point.tag}]` : ""}${point.productSha ? ` @${point.productSha.slice(0, 8)}` : ""}\n`,
+          );
+        }
+        if (result.stepChange) {
+          process.stdout.write(
+            `STEP CHANGE: ${result.stepChange.deltaPct > 0 ? "+" : ""}${result.stepChange.deltaPct}% at ${result.stepChange.runId} (sha ${result.stepChange.productSha ?? "unknown"})\n`,
+          );
+        }
+        process.stdout.write(`Trend: ${outPath}\n`);
+        exit(ExitCode.ok);
+      } finally {
+        store.close();
+      }
+    },
+  );
+
+program
+  .command("history")
+  .description("Local history dashboard (runs, trends, regressions, baselines)")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--out <file>", "output HTML path", "./history.html")
+  .option("--open", "open in the browser")
+  .action(async (opts: { db: string; out: string; open?: boolean }) => {
+    const store = PerfStore.open(opts.db, logger.child("store"));
+    try {
+      const { renderHistory } = require("./report/trendReport") as typeof import("./report/trendReport");
+      const outPath = renderHistory(store, resolve(opts.out), logger.child("history"));
+      process.stdout.write(`History: ${outPath}\n`);
+      if (opts.open) {
+        const { exec } = await import("node:child_process");
+        exec(`start "" "${outPath}"`, { windowsHide: true });
+      }
+      exit(ExitCode.ok);
+    } finally {
+      store.close();
+    }
+  });
+
+program
+  .command("tag <runId> <label>")
+  .description("Tag a run (before-fix / after-fix / PR#…) for trend/history filtering")
+  .option("--db <path>", "database path", "./perf.db")
+  .action((runId: string, label: string, opts: { db: string }) => {
+    const store = PerfStore.open(opts.db, logger.child("store"));
+    try {
+      if (!store.getRun(runId)) {
+        process.stderr.write(`Run '${runId}' not found\n`);
+        exit(ExitCode.configInvalid);
+      }
+      store.tagRun(runId, label);
+      process.stdout.write(`Tagged ${runId} as '${label}'\n`);
+      exit(ExitCode.ok);
+    } finally {
+      store.close();
+    }
+  });
+
+const setup = program.command("setup").description("Machine setup");
+setup
+  .command("verify")
+  .description("Run environment preflight (alias of doctor; §28 setup scripts install deps)")
+  .action(() => {
+    const report = runDoctor(logger.child("doctor"));
+    process.stdout.write(formatDoctorReport(report) + "\n");
+    process.stdout.write(
+      "Full setup (installs missing dotnet tools with -Install): pwsh scripts/setup-windows.ps1\n",
+    );
+    exit(report.status === "failed" ? ExitCode.preflightFailed : ExitCode.ok);
+  });
+
 const baseline = program.command("baseline").description("Baseline management");
+baseline
+  .command("list")
+  .description("List named baselines")
+  .option("--db <path>", "database path", "./perf.db")
+  .action((opts: { db: string }) => {
+    const store = PerfStore.open(opts.db, logger.child("store"));
+    try {
+      const baselines = store.listBaselines();
+      if (baselines.length === 0) {
+        process.stdout.write("No named baselines. Rolling baselines: use --baseline rolling:N\n");
+      }
+      for (const b of baselines) {
+        process.stdout.write(
+          `${b.name.padEnd(20)} scenario=${b.scenarioId.padEnd(12)} run=${b.runId} env=${b.environmentHash.slice(0, 18)}…\n`,
+        );
+      }
+      exit(ExitCode.ok);
+    } finally {
+      store.close();
+    }
+  });
 baseline
   .command("set <name> <runId>")
   .description("Mark a run as a named baseline (bound to the run's environment hash)")

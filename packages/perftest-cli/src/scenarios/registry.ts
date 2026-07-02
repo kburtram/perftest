@@ -298,6 +298,507 @@ register({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Phase 3: original-scope closures + advanced realistic scenarios.
+// Common setup fragments.
+// ---------------------------------------------------------------------------
+const ACTIVATE_STEPS: import("@mssqlperf/contracts").ScenarioStep[] = [
+  { type: "command", command: "objectExplorer.focus", timeoutMs: 300000 },
+  { type: "waitForMarker", name: "mssql.activate.end", timeoutMs: 300000 },
+];
+const CLEANUP_EXPLORER: import("@mssqlperf/contracts").ScenarioStep[] = [
+  { type: "command", command: "workbench.view.explorer" },
+];
+
+function querySetup(fixture: string): import("@mssqlperf/contracts").ScenarioStep[] {
+  return [
+    ...ACTIVATE_STEPS,
+    { type: "openDocument", path: `queries/${fixture}` },
+    { type: "mssqlConnect", profile: "default", timeoutMs: 60000 },
+    { type: "waitForMarker", name: "mssql.connection.ready", timeoutMs: 60000 },
+  ];
+}
+
+// 12.10 — first-launch: official metric is orchestrator spawn→driver ready.
+register({
+  implemented: true,
+  plannedMilestone: "M12",
+  spec: {
+    scenarioId: "ext-first-launch",
+    displayName: "VS Code first launch to driver-ready (fresh profile)",
+    tags: ["startup", "vscode"],
+    profileMode: "fresh",
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "noop" }],
+      end: { type: "afterLastAction" },
+      timeoutMs: 60000,
+    },
+    success: [{ type: "noErrors", sources: ["automation"] }],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      { name: "vscode.startup.ready", source: "manual", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+// 12.2 — Object Explorer at scale: all 10,000 tables proven.
+register({
+  implemented: true,
+  plannedMilestone: "M12",
+  spec: {
+    scenarioId: "expand-tables-node-10k",
+    displayName: "Expand Tables node with 10,000 tables (PerfCatalog)",
+    tags: ["object-explorer", "scale", "smo"],
+    profileMode: "warmed",
+    sql: { database: "PerfCatalog", cacheMode: "warm", connectionProfile: "default" },
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "oeExpand",
+          oePath: ["Databases", "PerfCatalog", "Tables"],
+          profile: "default",
+          timeoutMs: 300000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 360000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.oe.expand.end", attrs: { childCount: 10000 } },
+      { type: "objectExplorerProbe", name: "Tables", assert: "childCount == 10000" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "mssql.oe.expandTables",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.oe.expand.begin",
+        endMarker: "mssql.oe.expand.end",
+        component: "objectExplorer",
+        processRole: "extensionHost",
+      },
+    ],
+  },
+});
+
+// 12.7 — variety basics.
+register({
+  implemented: true,
+  plannedMilestone: "M12",
+  spec: {
+    scenarioId: "cancel-running-query",
+    displayName: "Cancel a running query mid-flight",
+    tags: ["query", "cancel", "reliability"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("long-query.sql"),
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "command", command: "mssql.runQuery" },
+        { type: "waitForMarker", name: "mssql.query.submit", timeoutMs: 30000 },
+        { type: "command", command: "mssql.cancelQuery" },
+      ],
+      end: { type: "waitForMarker", name: "mssql.query.cancelled" },
+      timeoutMs: 60000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.query.cancelled" },
+      { type: "noErrors", sources: ["automation"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M12",
+  spec: {
+    scenarioId: "query-error-path",
+    displayName: "Query with a syntax error fails gracefully",
+    tags: ["query", "error", "reliability"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("error.sql"),
+    measure: {
+      start: { type: "beforeCommand", command: "mssql.runQuery" },
+      action: [{ type: "command", command: "mssql.runQuery" }],
+      end: { type: "waitForMarker", name: "mssql.query.complete", attrs: { hasError: true } },
+      timeoutMs: 60000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.query.complete", attrs: { hasError: true } },
+      { type: "noErrors", sources: ["automation"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M12",
+  spec: {
+    scenarioId: "large-result-100k",
+    displayName: "Run query with 100,000 result rows",
+    tags: ["query", "results-grid", "scale"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("select-100000.sql"),
+    measure: {
+      start: { type: "beforeCommand", command: "mssql.runQuery" },
+      action: [{ type: "command", command: "mssql.runQuery" }],
+      end: { type: "waitForMarker", name: "mssql.resultsGrid.renderComplete" },
+      timeoutMs: 180000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.query.complete", attrs: { rowCount: 100000 } },
+      { type: "markerSeen", name: "mssql.resultsGrid.renderComplete", attrs: { rowCount: 100000 } },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "mssql.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.query.submit",
+        endMarker: "mssql.query.complete",
+        component: "query",
+        processRole: "extensionHost",
+      },
+    ],
+  },
+});
+
+// 13.1 — virtual windowing proven from product markers + offset correctness.
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "query-large-scroll-virtual-window",
+    displayName: "100k grid: windowed fetches at scroll offsets (windowing proven)",
+    tags: ["query", "results-grid", "virtualization"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: [
+      ...querySetup("select-100000.sql"),
+      { type: "command", command: "mssql.runQuery" },
+      { type: "waitForMarker", name: "mssql.resultsGrid.renderComplete", timeoutMs: 180000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        // Ids are deterministic: first cell at rowStart N is N+1.
+        { type: "windowFetchCheck", rowStart: 50000, numberOfRows: 50, expectFirstCell: "50001" },
+        { type: "windowFetchCheck", rowStart: 99900, numberOfRows: 50, expectFirstCell: "99901" },
+        { type: "windowFetchCheck", rowStart: 12345, numberOfRows: 50, expectFirstCell: "12346" },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 60000,
+    },
+    success: [
+      // Windowing proven TRIGGERED by the product marker, at a deep offset.
+      { type: "markerSeen", name: "mssql.resultsGrid.windowFetch.end", attrs: { rowStart: 99900 } },
+      { type: "webviewProbe", probe: "resultsGrid", assert: "rowCount == 100000" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+// 13.2 / 13.3 — heavy content shapes.
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "query-blob-xml",
+    displayName: "Query VARBINARY(MAX)/XML/NVARCHAR(MAX) cells",
+    tags: ["query", "blob", "content"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("blob-xml.sql"),
+    measure: {
+      start: { type: "beforeCommand", command: "mssql.runQuery" },
+      action: [{ type: "command", command: "mssql.runQuery" }],
+      end: { type: "waitForMarker", name: "mssql.resultsGrid.renderComplete" },
+      timeoutMs: 180000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.query.complete", attrs: { rowCount: 20 } },
+      { type: "webviewProbe", probe: "resultsGrid", assert: "rowCount == 20" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "query-many-result-sets",
+    displayName: "One batch, 30 result sets — all grids proven",
+    tags: ["query", "results-grid"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("many-result-sets.sql"),
+    measure: {
+      start: { type: "beforeCommand", command: "mssql.runQuery" },
+      action: [{ type: "command", command: "mssql.runQuery" }],
+      end: { type: "waitForMarker", name: "mssql.resultsGrid.renderComplete" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "webviewProbe", probe: "resultsGrid", assert: "resultSets == 30" },
+      { type: "webviewProbe", probe: "resultsGrid", assert: "rowCount == 1500" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "query-wide-columns",
+    displayName: "300-column result — full column set proven",
+    tags: ["query", "results-grid", "wide"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("wide-columns.sql"),
+    measure: {
+      start: { type: "beforeCommand", command: "mssql.runQuery" },
+      action: [{ type: "command", command: "mssql.runQuery" }],
+      end: { type: "waitForMarker", name: "mssql.resultsGrid.renderComplete" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "webviewProbe", probe: "resultsGrid", assert: "columns == 300" },
+      { type: "webviewProbe", probe: "resultsGrid", assert: "rowCount == 100" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+// 13.4 — OE realism (assertions use >= to avoid over-claiming system folders).
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "oe-expand-mixed-schema",
+    displayName: "OE: expand Tables/Views/Procedures on a mixed schema",
+    tags: ["object-explorer", "smo"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Tables"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Views"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Stored Procedures"], profile: "default", timeoutMs: 120000 },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "objectExplorerProbe", name: "Tables", assert: "childCount >= 7" },
+      { type: "objectExplorerProbe", name: "Views", assert: "childCount >= 1" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "oe-expand-deep",
+    displayName: "OE: deep expand to table columns",
+    tags: ["object-explorer", "smo"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "oeExpand",
+          oePath: ["Databases", "PerfHarness", "Tables", "sales.Orders", "Columns"],
+          profile: "default",
+          timeoutMs: 180000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "objectExplorerProbe", name: "Columns", assert: "childCount >= 4" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "oe-refresh",
+    displayName: "OE: repeat expansion of the Tables node (refresh path)",
+    tags: ["object-explorer", "smo"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Tables"], profile: "default", timeoutMs: 120000 },
+        { type: "oeExpand", oePath: ["Databases", "PerfHarness", "Tables"], profile: "default", timeoutMs: 120000 },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "objectExplorerProbe", name: "Tables", assert: "childCount >= 7" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+// 13.5 — completion latency (foreshadows Phase-4 completions instrumentation).
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "intellisense-completion-latency",
+    displayName: "IntelliSense completion returns expected table",
+    tags: ["intellisense", "language-service"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("completion.sql"),
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "completionProbe", expect: "PerfRows", timeoutMs: 120000 }],
+      end: { type: "afterLastAction" },
+      timeoutMs: 180000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] }],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "intellisense.completion",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "driver.completion.begin",
+        endMarker: "driver.completion.end",
+        component: "languageService",
+        processRole: "extensionHost",
+      },
+    ],
+  },
+});
+
+// 13.6 — reliability paths.
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "reconnect-cycle",
+    displayName: "Disconnect then reconnect (recovery latency)",
+    tags: ["connection", "reliability"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("select-10000.sql"),
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "mssqlDisconnect", timeoutMs: 30000 },
+        { type: "mssqlConnect", profile: "default", timeoutMs: 60000 },
+      ],
+      end: { type: "waitForMarker", name: "mssql.connection.ready" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.connection.ready" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "M13",
+  spec: {
+    scenarioId: "large-script-execution",
+    displayName: "200-batch script executes end to end",
+    tags: ["query", "script", "reliability"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: querySetup("large-script.sql"),
+    measure: {
+      start: { type: "beforeCommand", command: "mssql.runQuery" },
+      action: [{ type: "command", command: "mssql.runQuery" }],
+      end: { type: "waitForMarker", name: "mssql.query.complete", attrs: { hasError: false } },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.query.complete", attrs: { hasError: false } },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+    ],
+  },
+});
+
 export function listScenarios(): RegisteredScenario[] {
   return [...registry.values()];
 }

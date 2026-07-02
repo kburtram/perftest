@@ -28,10 +28,15 @@ export interface ProvisionedSql {
 
 export class SqlProvisionError extends Error {}
 
+export interface VerifyQuery {
+  sql: string;
+  expect: string;
+}
+
 export async function provisionSql(
   config: PerfConfig,
   logger: HarnessLogger,
-  options: { seedFiles: string[]; verifyQuery?: { sql: string; expect: string } },
+  options: { seedFiles: string[]; verifyQuery?: VerifyQuery; verifyQueries?: VerifyQuery[] },
 ): Promise<ProvisionedSql> {
   const span = logger.span("sql.provision", { provider: config.sql.provider });
   try {
@@ -111,7 +116,7 @@ export function parseSqlConnectionString(connectionString: string): ParsedConnec
 async function provisionExternal(
   config: PerfConfig,
   logger: HarnessLogger,
-  options: { seedFiles: string[]; verifyQuery?: { sql: string; expect: string } },
+  options: { seedFiles: string[]; verifyQuery?: VerifyQuery; verifyQueries?: VerifyQuery[] },
 ): Promise<ProvisionedSql> {
   const envName = (config.sql["connectionStringEnv"] as string) ?? "STS2_SQLSERVER_CONNSTRING";
   const connectionString = process.env[envName];
@@ -132,7 +137,10 @@ async function provisionExternal(
     runSqlcmd([...sqlcmdBase, "-i", resolve(seedFile)], sqlcmdEnv, logger, `seed:${seedFile}`);
   }
 
-  const validation = verify(sqlcmdBase, sqlcmdEnv, options.verifyQuery, logger);
+  let validation = verify(sqlcmdBase, sqlcmdEnv, options.verifyQuery, logger);
+  for (const extraVerify of options.verifyQueries ?? []) {
+    validation = verify(sqlcmdBase, sqlcmdEnv, extraVerify, logger);
+  }
 
   const profile: ConnectionProfileSpec = {
     server: parsed.server,
@@ -178,7 +186,7 @@ function buildHostSqlcmd(parsed: ParsedConnectionString): {
 async function provisionDockerCompose(
   config: PerfConfig,
   logger: HarnessLogger,
-  options: { seedFiles: string[]; verifyQuery?: { sql: string; expect: string } },
+  options: { seedFiles: string[]; verifyQuery?: VerifyQuery; verifyQueries?: VerifyQuery[] },
 ): Promise<ProvisionedSql> {
   const composeFile = config.sql.composeFile;
   if (!composeFile) {

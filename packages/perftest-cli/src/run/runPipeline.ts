@@ -29,6 +29,7 @@ import { CdpExtHostProfileCollector } from "../collectors/cdpExtHostProfile";
 import { CdpRendererTraceCollector } from "../collectors/cdpRendererTrace";
 import { CdpHeapSnapshotCollector } from "../collectors/cdpHeapSnapshot";
 import { GcDumpCollector } from "../collectors/gcDump";
+import { DotnetCountersCollector } from "../collectors/dotnetCounters";
 import { DotnetTraceCollector } from "../collectors/dotnetTrace";
 import { WprEtwCollector } from "../collectors/wprEtw";
 import type { Collector, CollectorContext, PerfProcess, ProcessRegistry } from "../collectors/types";
@@ -209,12 +210,28 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     (s) => s.sql?.connectionProfile && s.sql.connectionProfile !== "none",
   );
   if (needsSql) {
+    // Catalog fixture only when a selected scenario targets it (10k-table
+    // build is skip-guarded server-side but still worth avoiding entirely).
+    const needsCatalog = specs.some((s) => s.sql?.database === "PerfCatalog");
     const provisioned = await provisionSql(config, logger.child("sql"), {
-      seedFiles: [resolve("sql", "seed", "create-perf-db.sql")],
+      seedFiles: [
+        resolve("sql", "seed", "create-perf-db.sql"),
+        ...(needsCatalog ? [resolve("sql", "seed", "create-perf-catalog.sql")] : []),
+      ],
       verifyQuery: {
         sql: "SET NOCOUNT ON; SELECT COUNT(*) FROM PerfHarness.dbo.PerfRows",
         expect: "10000",
       },
+      ...(needsCatalog
+        ? {
+            verifyQueries: [
+              {
+                sql: "SET NOCOUNT ON; SELECT COUNT(*) FROM PerfCatalog.sys.tables",
+                expect: "10000",
+              },
+            ],
+          }
+        : {}),
     });
     sqlProfiles = { default: provisioned.profile };
     logger.info("run.sqlProvisioned", undefined, {
@@ -388,6 +405,9 @@ function createCollectors(
   if (config.diagnostics["gcDump"] === true) {
     collectors.push(new GcDumpCollector());
   }
+  if (config.diagnostics.dotnetCounters === true) {
+    collectors.push(new DotnetCountersCollector());
+  }
   return collectors.filter(
     (c) =>
       c.allowedPassTypes.includes(passType) &&
@@ -473,6 +493,22 @@ async function executeRep(
   let calibration;
   let launched;
   let infrastructureBroken = false;
+  let spawnAtMs = 0;
+  let readyAtMs = 0;
+
+  // coldDb cache mode (12.6): drop clean buffers + proc cache before each
+  // rep so SQL starts cold. Requires sysadmin; failure is a validation
+  // warning and the rep's cacheMode claim would be dishonest — so it aborts.
+  if (inputs.config.sql.cacheMode === "coldDb") {
+    if (!inputs.sqlExec) {
+      throw new Error("cacheMode coldDb requires a SQL executor (external/dockerCompose provider)");
+    }
+    await inputs.sqlExec(
+      "DBCC DROPCLEANBUFFERS WITH NO_INFOMSGS; DBCC FREEPROCCACHE WITH NO_INFOMSGS;",
+      "coldDb:reset",
+    );
+    logger.info("rep.coldDbReset", undefined, { scenarioId: spec.scenarioId, repId });
+  }
 
   // Collector framework (design §14): per-rep instances, fault-isolated.
   const collectors = createCollectors(inputs.config, inputs.passType);
@@ -540,6 +576,7 @@ async function executeRep(
   }
 
   try {
+    spawnAtMs = Date.now();
     launched = spawnVscode(
       {
         executablePath: inputs.vscodeBuild.executablePath,
@@ -597,6 +634,7 @@ async function executeRep(
     });
     calibration = await server.calibrate();
     await Promise.race([server.waitForReady(READY_TIMEOUT_MS), exitEarly]);
+    readyAtMs = Date.now();
 
     server.startScenario(spec, traceId, rootTraceparent, artifactsDir, inputs.sqlProfiles);
     const outcomeTimeout = spec.measure.timeoutMs + 30_000;
@@ -715,6 +753,9 @@ async function executeRep(
     spec,
     extraMetrics: collectorMetrics,
     extraValidations: collectorValidations,
+    ...(spawnAtMs > 0 && readyAtMs > 0
+      ? { orchestratorTimings: { spawnToReadyMs: readyAtMs - spawnAtMs } }
+      : {}),
   });
   writeFileSync(join(repDir, "result.json"), JSON.stringify(result, null, 2), "utf8");
   repSpan.end({ status: result.status });

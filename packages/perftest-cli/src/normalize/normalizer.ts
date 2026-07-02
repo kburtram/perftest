@@ -57,6 +57,11 @@ export interface NormalizeInputs {
   extraMetrics?: Metric[];
   /** Collector validations (availability warnings etc.). */
   extraValidations?: ValidationRecord[];
+  /**
+   * Orchestrator-clock timings (§11.2 official wall-clock plane): spawn→ready
+   * feeds the ext-first-launch scenario's startup metric.
+   */
+  orchestratorTimings?: { spawnToReadyMs: number };
 }
 
 /**
@@ -175,6 +180,11 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
 
   // --- Official wall-clock (only from real markers) -------------------------
   const officialEligible = inputs.passType === "measurement" && status === "passed";
+  // Scenarios may opt wallclock OUT of officialness (e.g. ext-first-launch,
+  // where the headline metric is the startup timer and the noop wallclock is
+  // meaningless). Default remains official.
+  const wallclockDeclared =
+    inputs.spec?.metrics?.find((m) => m.name === "scenario.wallclock")?.official ?? true;
   if (start && end) {
     const { valueMs, timePlane } = markerPairDuration(start, end);
     metrics.push({
@@ -184,12 +194,29 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
       component: "scenario",
       processRole: "boundary",
       source: "marker",
-      official: officialEligible,
+      official: officialEligible && wallclockDeclared,
       lowerIsBetter: true,
       traceId: inputs.traceId,
       startUnixNs: start.timestampUnixNs,
       endUnixNs: end.timestampUnixNs,
       tags: { timePlane },
+    });
+  }
+
+  // --- Orchestrator startup timing (§8 ext-first-launch, §11.2 plane 1) ------
+  // Official ONLY when the scenario declares vscode.startup.ready official.
+  if (inputs.orchestratorTimings) {
+    const declared = inputs.spec?.metrics?.find((m) => m.name === "vscode.startup.ready");
+    metrics.push({
+      name: "vscode.startup.ready",
+      value: Number(inputs.orchestratorTimings.spawnToReadyMs.toFixed(1)),
+      unit: "ms",
+      component: "vscode",
+      processRole: "boundary",
+      source: "manual",
+      official: (declared?.official ?? false) && officialEligible,
+      lowerIsBetter: true,
+      tags: { basis: "orchestrator spawn→driver ready (single clock)" },
     });
   }
 

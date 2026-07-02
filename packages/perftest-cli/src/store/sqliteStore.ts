@@ -542,6 +542,185 @@ export class PerfStore {
     }));
   }
 
+  /** Tag a run (before-fix / after-fix / PR#...). Stored in runs.notes. */
+  tagRun(runId: string, tag: string): void {
+    this.db.prepare("UPDATE runs SET notes = ? WHERE run_id = ?").run(tag, runId);
+  }
+
+  /**
+   * Per-run medians of one official metric across runs of a scenario —
+   * the cross-run trend series (passed, non-warmup reps; measurement passes).
+   */
+  trendSeries(
+    scenarioId: string,
+    metricName: string,
+    options: { lastN?: number; tag?: string; environmentHash?: string } = {},
+  ): Array<{
+    runId: string;
+    createdAtUnixNs: string;
+    environmentHash: string;
+    tag: string | null;
+    median: number;
+    samples: number;
+    productSha: string | null;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT r.run_id, r.created_at_unix_ns, r.environment_hash, r.notes, m.value,
+                (SELECT sha FROM run_repositories rr WHERE rr.run_id = r.run_id AND rr.repo = 'vscode-mssql') AS product_sha
+         FROM metrics m
+         JOIN runs r ON r.run_id = m.run_id
+         JOIN repetitions rep
+           ON rep.run_id = m.run_id AND rep.scenario_id = m.scenario_id
+          AND rep.rep_id = m.rep_id AND rep.attempt_id = m.attempt_id
+         WHERE m.scenario_id = ? AND m.name = ? AND m.official = 1
+           AND r.pass_type = 'measurement' AND rep.status = 'passed' AND rep.warmup = 0
+           ${options.tag ? "AND r.notes = ?" : ""}
+           ${options.environmentHash ? "AND r.environment_hash = ?" : ""}
+         ORDER BY r.created_at_unix_ns ASC`,
+      )
+      .all(
+        scenarioId,
+        metricName,
+        ...(options.tag ? [options.tag] : []),
+        ...(options.environmentHash ? [options.environmentHash] : []),
+      ) as Array<{
+      run_id: string;
+      created_at_unix_ns: string;
+      environment_hash: string;
+      notes: string | null;
+      value: number;
+      product_sha: string | null;
+    }>;
+    const byRun = new Map<string, { meta: (typeof rows)[0]; values: number[] }>();
+    for (const row of rows) {
+      const entry = byRun.get(row.run_id) ?? { meta: row, values: [] };
+      entry.values.push(row.value);
+      byRun.set(row.run_id, entry);
+    }
+    let series = [...byRun.values()].map(({ meta, values }) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      const median =
+        sorted.length % 2 === 1
+          ? sorted[(sorted.length - 1) / 2]!
+          : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2;
+      return {
+        runId: meta.run_id,
+        createdAtUnixNs: meta.created_at_unix_ns,
+        environmentHash: meta.environment_hash,
+        tag: meta.notes,
+        median,
+        samples: sorted.length,
+        productSha: meta.product_sha,
+      };
+    });
+    if (options.lastN && series.length > options.lastN) {
+      series = series.slice(series.length - options.lastN);
+    }
+    return series;
+  }
+
+  /** Pooled official samples from the last N green runs on one env hash. */
+  rollingBaselineSamples(
+    environmentHash: string,
+    lastN: number,
+    excludeRunId: string,
+  ): Array<{
+    scenarioId: string;
+    name: string;
+    component: string;
+    processRole: string;
+    unit: string;
+    value: number;
+    lowerIsBetter: boolean;
+  }> {
+    const runIds = (
+      this.db
+        .prepare(
+          `SELECT run_id FROM runs
+           WHERE environment_hash = ? AND pass_type = 'measurement'
+             AND status = 'passed' AND run_id <> ?
+           ORDER BY created_at_unix_ns DESC LIMIT ?`,
+        )
+        .all(environmentHash, excludeRunId, lastN) as Array<{ run_id: string }>
+    ).map((r) => r.run_id);
+    const samples: ReturnType<PerfStore["officialSamples"]> = [];
+    for (const runId of runIds) {
+      samples.push(...this.officialSamples(runId));
+    }
+    return samples;
+  }
+
+  listRuns(limit = 50): Array<{
+    runId: string;
+    createdAtUnixNs: string;
+    passType: string;
+    status: string;
+    environmentHash: string;
+    tag: string | null;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT run_id, created_at_unix_ns, pass_type, status, environment_hash, notes
+         FROM runs ORDER BY created_at_unix_ns DESC LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      run_id: string;
+      created_at_unix_ns: string;
+      pass_type: string;
+      status: string;
+      environment_hash: string;
+      notes: string | null;
+    }>;
+    return rows.map((r) => ({
+      runId: r.run_id,
+      createdAtUnixNs: r.created_at_unix_ns,
+      passType: r.pass_type,
+      status: r.status,
+      environmentHash: r.environment_hash,
+      tag: r.notes,
+    }));
+  }
+
+  listBaselines(): Array<{ name: string; scenarioId: string; runId: string; environmentHash: string }> {
+    const rows = this.db
+      .prepare(
+        "SELECT baseline_name, scenario_id, run_id, environment_hash FROM baselines ORDER BY baseline_name",
+      )
+      .all() as Array<{ baseline_name: string; scenario_id: string; run_id: string; environment_hash: string }>;
+    return rows.map((r) => ({
+      name: r.baseline_name,
+      scenarioId: r.scenario_id,
+      runId: r.run_id,
+      environmentHash: r.environment_hash,
+    }));
+  }
+
+  recentComparisons(limit = 20): Array<{
+    currentRunId: string;
+    baselineRunId: string;
+    status: string;
+    createdAtUnixNs: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT current_run_id, baseline_run_id, status, created_at_unix_ns
+         FROM comparisons ORDER BY created_at_unix_ns DESC LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      current_run_id: string;
+      baseline_run_id: string;
+      status: string;
+      created_at_unix_ns: string;
+    }>;
+    return rows.map((r) => ({
+      currentRunId: r.current_run_id,
+      baselineRunId: r.baseline_run_id,
+      status: r.status,
+      createdAtUnixNs: r.created_at_unix_ns,
+    }));
+  }
+
   /** Raw prepared access for read paths (reports/regression build on this). */
   query<T>(sql: string, params: unknown[] = []): T[] {
     return this.db.prepare(sql).all(...params) as T[];
