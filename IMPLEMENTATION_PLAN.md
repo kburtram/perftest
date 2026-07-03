@@ -379,43 +379,43 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
 > UX quality bar: match the mockups. Owner: iterate UX in versions; mockup = concept.
 
 ### M16 - Diagnostics substrate (extension-side, Stage A)
-- [ ] 16.1 src/diagnostics/core: envelope types (mssql.diag.event/1), TraceContext +
+- [x] 16.1 src/diagnostics/core: envelope types (mssql.diag.event/1), TraceContext +
       root-action correlation, Clock (epoch+monotonic), Sequence, BoundedEventQueue.
-- [ ] 16.2 classification/redaction: DataClassification, CapturePolicy (off/redacted/
+- [x] 16.2 classification/redaction: DataClassification, CapturePolicy (off/redacted/
       digest/full + never-secrets), redaction primitives (omit/redact/digest/truncate),
       ClassifiedValue rendering contract.
-- [ ] 16.3 DiagnosticsService + sinks: near-no-op disabled path; PerfModeSink (wraps the
+- [x] 16.3 DiagnosticsService + sinks: near-no-op disabled path; PerfModeSink (wraps the
       existing PERF_MODE marker path - harness behavior IDENTICAL), LiveTailSink (ring +
       subscriber + exact GapRecords), SessionDiagSink (JSONL segments + manifest;
       in-memory index v1, SQLite deferred - flagged).
-- [ ] 16.4 Perf.marker unification: single emission path routes to all sinks; harness
+- [x] 16.4 Perf.marker unification: single emission path routes to all sinks; harness
       scenario re-run proves zero regression.
-- [ ] 16.5 Deep instrumentation, high-pri areas: commands wrapper, connection lifecycle,
+- [x] 16.5 Deep instrumentation, high-pri areas: commands wrapper, connection lifecycle,
       query lifecycle (+cancel/error), OE expand/refresh, resultsGrid (webview bridge ->
       envelopes), JSON-RPC boundary spans in serviceclient (method, duration, corr),
       activation/startup.
-- [ ] 16.6 Settings (mssql.sessionDiag.*, mssql.debugConsole.*) + commands (enable/
+- [x] 16.6 Settings (mssql.sessionDiag.*, mssql.debugConsole.*) + commands (enable/
       disable/clear/export/openFolder/openDebugConsole) + capture-off zero-file test.
 - [ ] 16.7 Store query service (sessions/events/causeTree/metrics) + perf-run import
       adapter (markers.jsonl/result.json/sql-activity.jsonl -> envelopes).
 
 ### M17 - MSSQL Debug Console webview (Stage B)
-- [ ] 17.1 Host shell to mockup quality: 44px top bar (session selector, Live/History,
+- [x] 17.1 Host shell to mockup quality: 44px top bar (session selector, Live/History,
       search, capture chip, backfill, export), 210px left rail (COMMON/FEATURE PAGES/
       SESSION groups), provenance card, VS Code theme tokens, strict CSP, routing state.
-- [ ] 17.2 DebugConsoleWebviewController + typed protocol (listSources/queryEvents/
+- [x] 17.2 DebugConsoleWebviewController + typed protocol (listSources/queryEvents/
       getEvent/causeTree/subscribeLive+gaps/backfill/setCaptureMode/export/perfQuery).
-- [ ] 17.3 Overview page: KPI grid (defined queries, not ad hoc), recent user actions
+- [x] 17.3 Overview page: KPI grid (defined queries, not ad hoc), recent user actions
       (correlation roots, deep links), derived anomaly cards, sessions/imports list.
-- [ ] 17.4 Consolidated Trace: virtualized table, REAL filters, gap marker rows +
+- [x] 17.4 Consolidated Trace: virtualized table, REAL filters, gap marker rows +
       backfill states, detail tabs (Summary/Payload/Cause/Timeline/Privacy/Raw/Actions),
       classification-first payload rendering.
-- [ ] 17.5 Waterfall: lanes, timingClass-driven styles (solid/hatched/dotted),
+- [x] 17.5 Waterfall: lanes, timingClass-driven styles (solid/hatched/dotted),
       wall-clock decomposition strip, correlation lines, critical path panel,
       calibration note. Renderer factored for reuse.
-- [ ] 17.6 Perf & Sessions: import perf.db + run dirs; trend/distribution/A-B/soak
+- [x] 17.6 Perf & Sessions: import perf.db + run dirs; trend/distribution/A-B/soak
       panels (port Phase-3 chart math); official vs diagnostic labeling.
-- [ ] 17.7 Feature pages: SQL Activity, Connections, Query & Results, Object Explorer
+- [x] 17.7 Feature pages: SQL Activity, Connections, Query & Results, Object Explorer
       (proof cards); Exports + Settings; Completions + Replay Lab as honest gated stubs
       (plug-in seam proven; full completions migration later per owner).
 - [ ] 17.8 Fixture mode (prototype sample world as fixtures) + build wiring + E2E smoke.

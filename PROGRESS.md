@@ -790,3 +790,67 @@ DECISIONS ADOPTED (flagging per phase-4 prompt; owner can override):
 BUILD ORDER (per review doc slice plan): M16 substrate -> M17 shell+Trace+
 Overview+Waterfall (fixture mode + live) -> Perf&Sessions/feature pages ->
 M18 export/depth -> M19 acceptance.
+
+---
+
+## 2026-07-03 - Entry 20: Phase 4 chunk 1 LANDED - substrate + Debug Console
+
+vscode-mssql commit: unified diagnostics substrate + MSSQL Debug Console.
+
+SUBSTRATE (M16, src/diagnostics/):
+- sharedInterfaces/debugConsole.ts: DiagEvent envelope (mssql.diag.event/1),
+  classification/redaction contracts, capture policy, source/session models,
+  store query + waterfall + KPI/anomaly types, full webview RPC protocol.
+- redaction.ts: policy choke point - classify(raw, cls, policy) with
+  omit/redact/digest(salted)/tokenize/truncate; secrets/conn-strings NEVER
+  plain under any mode (type-level allowSecrets: false); unknown = sensitive.
+- diagnosticsCore.ts: singleton `diag` - seq/eventId, ambient+entity trace
+  context, span helper, sink routing (never throws, near-no-op when idle),
+  time-bounded full-capture elevation w/ auto-revert.
+- sinks.ts: PerfModeSink (EXACT legacy harness wire format), LiveTailSink
+  (ring + exact GapRecords on subscriber overflow), SessionDiagSink (JSONL
+  segment journal + manifest, batched non-blocking writes).
+- sessionStore.ts: source registry (live/local/perfRun), segment loader w/
+  in-memory index, filtered queries w/ gap interleaving, retention, clearAll.
+- analysis.ts: userActions (correlation roots), KPIs, derived anomalies,
+  causeTree, cross-process waterfall builder (timingClass-aware), SQL rows.
+- perfRunImport.ts: perf run dir -> events (markers+sql-activity); official
+  metric samples from result.json across perf-runs (trend feed).
+- perfTelemetry.ts REWRITTEN as facade over diag core: public API + PERF wire
+  preserved; ALL Phase 1-3 instrumentation now feeds the console for free.
+  PROVEN: query-10k-results 4/4 reps passed official through the new path.
+- serviceclient.ts: JSON-RPC boundary spans (rpc.<method> w/ duration) - the
+  dispatcher tier visible end to end.
+- diagnosticsManager.ts: settings-driven capture lifecycle, retention,
+  commands (enable/disable/elevate/clear/openFolder), status-bar chip.
+
+CONSOLE (M17, webviews/pages/DebugConsole/):
+- Design system (debugConsole.css): VS Code theme tokens, process palette
+  (ext teal/webview blue/STS purple/SQL green), 44px top bar, 210px rail.
+- Shell: session/source selector, Live|History, search, capture chip w/
+  elevation popover + countdown, backfill button, export, provenance card,
+  grouped nav (Common/Feature pages/Session).
+- Overview: KPI grid, recent user actions (correlation roots -> waterfall
+  deep links), derived anomaly cards, sources list, capture-off empty state.
+- Consolidated Trace: process-striped rows, real filters (process/feature/
+  status/search incl. digests), gap marker rows, detail tabs (Summary/
+  Payload/Cause/Privacy/Raw) w/ RedactedField as the ONLY sensitive renderer.
+- Waterfall: lanes, solid-vs-hatched timingClass styles, wall-clock
+  decomposition strip (honest per-lane-sums label), critical path panel,
+  calibration note, bar inspector.
+- Perf & Sessions: official-only per-run medians, trend SVG, run table (feeds
+  from mssql.debugConsole.perfRunsRoot or Import perf run).
+- SQL Activity / Connections / Query & Results / Object Explorer feature
+  pages; Exports (redacted JSONL v1); Settings; Completions + Replay Lab as
+  HONEST GATED stubs.
+- package.json: commands + settings (sessionDiag off by default) + bundle.
+
+REMAINING (next chunks): live E2E session walkthrough w/ owner, evidence
+bundle (zip+manifest+privacy report+validation), backfill-from-journal
+button wiring, capture-off zero-file unit test + redaction unit tests,
+completions page migration, deeper cause links (explicit causeEventId
+threading in feature code), STS2 gated source.
+
+SMOKE VERIFIED: debug-console-smoke scenario passed inside a real
+harness-launched VS Code (console constructs, bundle loads, no errors).
+16.7 (redaction/zero-capture unit tests) remains OPEN - next chunk.

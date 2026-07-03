@@ -812,6 +812,33 @@ register({
   },
 });
 
+// Phase-4 smoke: the Debug Console webview constructs inside a real VS Code
+// without errors (activation + controller + bundle load path).
+register({
+  implemented: true,
+  plannedMilestone: "M17",
+  spec: {
+    scenarioId: "debug-console-smoke",
+    displayName: "MSSQL Debug Console opens without errors",
+    tags: ["diagnostics", "webview"],
+    profileMode: "warmed",
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "command", command: "mssql.openDebugConsole", timeoutMs: 60000 },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql"] }],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
 export function listScenarios(): RegisteredScenario[] {
   return [...registry.values()];
 }

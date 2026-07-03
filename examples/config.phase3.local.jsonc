@@ -9,6 +9,7 @@
   "warmupRepetitions": 0,
   "scenarios": [
     "ext-first-launch",
+    "debug-console-smoke",
     "query-error-path",
     "cancel-running-query",
     "large-result-100k",
