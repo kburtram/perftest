@@ -854,3 +854,41 @@ threading in feature code), STS2 gated source.
 SMOKE VERIFIED: debug-console-smoke scenario passed inside a real
 harness-launched VS Code (console constructs, bundle loads, no errors).
 16.7 (redaction/zero-capture unit tests) remains OPEN - next chunk.
+
+---
+
+## 2026-07-03 - Entry 21: Phase 4 round 2 - owner live-usage feedback fixes
+
+Owner tested the console live. Root causes + fixes:
+1. ONLY EXTENSION DATA IN TRACE: webview mark bridge was PERF_MODE-gated;
+   now the handler registers always and enable is (re)sent whenever a diag
+   sink is active (console open / capture on), incl. a 20s poll covering
+   consoles opened after webviews loaded. STS visibility: rpc.* JSON-RPC
+   round-trip spans now lane under SQL Tools Service in the waterfall
+   (labeled "(round-trip)", honestly extension-measured) and render as
+   purple "STS rpc" pills in Trace.
+2. WATERFALL EMPTY: nothing created traceIds in normal use -> userActions()
+   had no roots. Added root-action auto-correlation in the core: root-begin
+   types (command.invoked, query.submit, connection.begin, oe.expand.begin)
+   open a trace inherited by subsequent traceless events (120s window,
+   explicit traceIds always win; honest sequential-IDE-usage assumption).
+   PERF wire unaffected (correlationId only written when explicitly passed).
+3. CAPTURE CHIP INERT: enable went through a settings round-trip; now
+   DiagnosticsManager.applyCaptureMode applies immediately (elevation also
+   auto-enables the store sink) and persists settings in background.
+4. HISTORY: new History page (Common group) - cross-session aggregates: KPI
+   row, per-action-label median trends across stored sessions (TrendChart),
+   stored-sessions table (click -> open that session in Trace). History
+   seg-control navigates there. Auto-capture = Session Diag store (existing).
+5. PERF & SESSIONS DEEP PASS: scenario browser (small-multiple cards w/
+   sparkline + latest median + delta%), per-run median trend w/ prior-runs
+   baseline band + step-change highlight + click-to-pick-candidate, latest
+   run histogram, A/B comparison (baseline/candidate selectors -> official
+   metric median DeltaBars), all-runs table incl. failed/diagnostic runs
+   (import no longer drops non-passed runs; parses real timestamps).
+6. FEATURE PAGES: occurrence views - Connections (begin->ready pairs, median/
+   p95/failures/sparkline), Query & Results (submit->complete pairs w/ rows/
+   rendered/error columns), OE (expand pairs w/ childCount + redacted
+   nodePath). Rows deep-link to the waterfall by correlation.
+New webview chart primitives: Sparkline/TrendChart(band)/Histogram/DeltaBars
+(charts.tsx, no deps, n-annotated, no smoothing).
