@@ -367,3 +367,70 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
 
 - Central/fleet aggregation, Bencher push, shared dashboards (§30).
 - `mcp-server-first-request` scenario (until MCP surface stabilizes).
+
+## PHASE 4 - In-product diagnostics + MSSQL Debug Console (M16-M19)
+
+> Specs: debug-docs/MSSQL_Debug_Console_Technical_Design.md (data model, store, privacy,
+> staging), debug-docs/MSSQL_Debug_Console_UX_Spec.md (pages, shell, components, copy),
+> debug-docs/MSSQL_Debug_Console_Prototype_Review_Codegen_Context.md (mockup caveats,
+> build order), mockups screen1-11.png + Claude Design handoff (offline HTML prototype).
+> Precedence when sources disagree: tech design > UX spec > review doc > screenshots > HTML.
+> Completions branch (C:\repos\test\completions\vscode-mssql) = reference only.
+> UX quality bar: match the mockups. Owner: iterate UX in versions; mockup = concept.
+
+### M16 - Diagnostics substrate (extension-side, Stage A)
+- [ ] 16.1 src/diagnostics/core: envelope types (mssql.diag.event/1), TraceContext +
+      root-action correlation, Clock (epoch+monotonic), Sequence, BoundedEventQueue.
+- [ ] 16.2 classification/redaction: DataClassification, CapturePolicy (off/redacted/
+      digest/full + never-secrets), redaction primitives (omit/redact/digest/truncate),
+      ClassifiedValue rendering contract.
+- [ ] 16.3 DiagnosticsService + sinks: near-no-op disabled path; PerfModeSink (wraps the
+      existing PERF_MODE marker path - harness behavior IDENTICAL), LiveTailSink (ring +
+      subscriber + exact GapRecords), SessionDiagSink (JSONL segments + manifest;
+      in-memory index v1, SQLite deferred - flagged).
+- [ ] 16.4 Perf.marker unification: single emission path routes to all sinks; harness
+      scenario re-run proves zero regression.
+- [ ] 16.5 Deep instrumentation, high-pri areas: commands wrapper, connection lifecycle,
+      query lifecycle (+cancel/error), OE expand/refresh, resultsGrid (webview bridge ->
+      envelopes), JSON-RPC boundary spans in serviceclient (method, duration, corr),
+      activation/startup.
+- [ ] 16.6 Settings (mssql.sessionDiag.*, mssql.debugConsole.*) + commands (enable/
+      disable/clear/export/openFolder/openDebugConsole) + capture-off zero-file test.
+- [ ] 16.7 Store query service (sessions/events/causeTree/metrics) + perf-run import
+      adapter (markers.jsonl/result.json/sql-activity.jsonl -> envelopes).
+
+### M17 - MSSQL Debug Console webview (Stage B)
+- [ ] 17.1 Host shell to mockup quality: 44px top bar (session selector, Live/History,
+      search, capture chip, backfill, export), 210px left rail (COMMON/FEATURE PAGES/
+      SESSION groups), provenance card, VS Code theme tokens, strict CSP, routing state.
+- [ ] 17.2 DebugConsoleWebviewController + typed protocol (listSources/queryEvents/
+      getEvent/causeTree/subscribeLive+gaps/backfill/setCaptureMode/export/perfQuery).
+- [ ] 17.3 Overview page: KPI grid (defined queries, not ad hoc), recent user actions
+      (correlation roots, deep links), derived anomaly cards, sessions/imports list.
+- [ ] 17.4 Consolidated Trace: virtualized table, REAL filters, gap marker rows +
+      backfill states, detail tabs (Summary/Payload/Cause/Timeline/Privacy/Raw/Actions),
+      classification-first payload rendering.
+- [ ] 17.5 Waterfall: lanes, timingClass-driven styles (solid/hatched/dotted),
+      wall-clock decomposition strip, correlation lines, critical path panel,
+      calibration note. Renderer factored for reuse.
+- [ ] 17.6 Perf & Sessions: import perf.db + run dirs; trend/distribution/A-B/soak
+      panels (port Phase-3 chart math); official vs diagnostic labeling.
+- [ ] 17.7 Feature pages: SQL Activity, Connections, Query & Results, Object Explorer
+      (proof cards); Exports + Settings; Completions + Replay Lab as honest gated stubs
+      (plug-in seam proven; full completions migration later per owner).
+- [ ] 17.8 Fixture mode (prototype sample world as fixtures) + build wiring + E2E smoke.
+
+### M18 - Cross-stack depth + export
+- [ ] 18.1 Live session E2E: connect/query/OE with console open -> trace + waterfall
+      render real cross-process action (exthost + webview + rpc spans).
+- [ ] 18.2 Evidence bundle export (zip: events + manifest + privacy report + validation)
+      + import path (read-only source).
+- [ ] 18.3 STS lanes from imported artifacts (sts2 journal/XEvents); STS-side live
+      capture + replay stay GATED (flagged states in UI).
+
+### M19 - Acceptance + docs
+- [ ] 19.1 Acceptance per tech design SS23: off-by-default zero capture; redacted capture
+      persists connect/query/OE across sessions; gaps exact+backfillable; console pages
+      render live + historical + imported perf runs; secrets never plaintext.
+- [ ] 19.2 Harness non-regression: one Phase-3 scenario re-run green after Perf bridge.
+- [ ] 19.3 docs/IN_PRODUCT_DIAGNOSTICS.md + PROGRESS + commits all repos.
