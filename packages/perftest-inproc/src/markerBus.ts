@@ -70,7 +70,23 @@ export class MarkerBus {
         return new Promise<BusMarker>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this.listeners.delete(listener);
-                reject(new Error(`Timed out after ${timeoutMs}ms waiting for marker '${name}'`));
+                // Timeout diagnostics: say what WAS observed so a missing
+                // marker is actionable, not a silent hang.
+                const tail = this.markers
+                    .slice(-5)
+                    .map((m) => m.name)
+                    .join(", ");
+                const sameName = this.markers.filter((m) => m.name === name).length;
+                const staleNote =
+                    sameName > 0 && afterUnixNs
+                        ? ` (${sameName} '${name}' marker(s) exist but predate the measured window — the marker likely cannot re-fire in this state)`
+                        : "";
+                reject(
+                    new Error(
+                        `Timed out after ${timeoutMs}ms waiting for marker '${name}'${staleNote}. ` +
+                            `Last observed markers: ${tail || "(none)"} · ${this.markers.length} total on the bus`,
+                    ),
+                );
             }, timeoutMs);
             const listener: Listener = (marker) => {
                 if (marker.name === name && attrsMatch(marker, attrs) && isFresh(marker, afterUnixNs)) {

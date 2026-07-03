@@ -33,6 +33,13 @@ export interface BuiltinScenario {
     tags: string[];
     /** Requires a live SQL connection (offered but blocked when none resolves). */
     needsSql: boolean;
+    /**
+     * false ⇒ this scenario cannot run honestly inside a live extension host
+     * (e.g. cold activation happens once per process). Listed for visibility,
+     * always skipped with `skipReason` — use the CLI harness instead.
+     */
+    inProcess?: boolean;
+    skipReason?: string;
     /** Rough single-rep cost hint for the UI (ms). */
     estMs: number;
     spec: ScenarioSpec;
@@ -96,35 +103,56 @@ export const BUILTIN_SCENARIOS: BuiltinScenario[] = [
     },
     {
         id: "selftest-activation",
-        title: "Extension activation",
+        title: "Extension activation (CLI only)",
         description:
-            "Focuses the Object Explorer view to activate the extension and waits for activate.end. Exercises the full extension → STS spawn → RPC handshake chain; the waterfall shows STS coming up.",
-        tags: ["activation", "extension", "sts"],
+            "Cold activation happens exactly once per VS Code process — and the extension is already active when the Debug Console is open, so mssql.activate.end can never re-fire here. Run `perftest run --scenario ext-normal-activation` for honest activation timing on a fresh instance.",
+        tags: ["activation", "extension", "cli-only"],
         needsSql: false,
-        estMs: 2500,
+        inProcess: false,
+        skipReason:
+            "activation is once-per-process and this instance is already activated — use the perftest CLI (ext-normal-activation) for cold activation timing",
+        estMs: 0,
+        metrics: [],
+        spec: {
+            scenarioId: "selftest-activation",
+            displayName: "Extension activation (CLI only)",
+            measure: {
+                start: { type: "beforeFirstAction" },
+                action: [],
+                end: { type: "afterLastAction" },
+                timeoutMs: 1000,
+            },
+        },
+    },
+    {
+        id: "selftest-intellisense-keywords",
+        title: "IntelliSense keyword completion",
+        description:
+            "Requests SQL completions on a fresh untitled document (no connection needed) and waits for the language service to answer with keyword suggestions — an honest STS language-service round-trip measured in-process.",
+        tags: ["intellisense", "language-service", "sts"],
+        needsSql: false,
+        estMs: 1500,
         metrics: [
             WALLCLOCK,
             {
-                name: "extension.activate",
-                official: true,
+                name: "intellisense.completion",
+                official: false,
                 lowerIsBetter: true,
-                beginMarker: "mssql.activate.begin",
-                endMarker: "mssql.activate.end",
+                beginMarker: "driver.completion.begin",
+                endMarker: "driver.completion.end",
             },
         ],
         spec: {
-            scenarioId: "selftest-activation",
-            displayName: "Extension activation",
+            scenarioId: "selftest-intellisense-keywords",
+            displayName: "IntelliSense keyword completion",
+            setup: [{ type: "openUntitledSql", content: "SEL" }],
             measure: {
                 start: { type: "beforeFirstAction" },
-                action: [{ type: "command", command: "objectExplorer.focus", timeoutMs: 300000 }],
-                end: { type: "waitForMarker", name: "mssql.activate.end" },
-                timeoutMs: 300000,
+                action: [{ type: "completionProbe", expect: "SELECT", timeoutMs: 30000 }],
+                end: { type: "afterLastAction" },
+                timeoutMs: 60000,
             },
-            success: [
-                { type: "markerSeen", name: "mssql.activate.end" },
-                { type: "noErrors", sources: ["automation", "vscode-mssql"] },
-            ],
+            success: [{ type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] }],
         },
     },
     {

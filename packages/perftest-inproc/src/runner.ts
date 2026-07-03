@@ -121,19 +121,24 @@ export class SelfTestRunner {
             if (this.cancelled) break;
             const scenario = runnable[s]!;
             const hasConnection = !!options.connectionProfiles?.["default"];
-            if (scenario.needsSql && !hasConnection) {
-                const reason = "needs a SQL connection — connect an editor or pick a config first";
+            const skipReason =
+                scenario.inProcess === false
+                    ? (scenario.skipReason ?? "cannot run inside a live extension host — use the CLI harness")
+                    : scenario.needsSql && !hasConnection
+                      ? "needs a SQL connection — pick a connection in the run dialog first"
+                      : undefined;
+            if (skipReason !== undefined) {
                 this.emit({
                     kind: "scenarioSkipped",
                     scenarioId: scenario.id,
                     title: scenario.title,
-                    reason,
+                    reason: skipReason,
                 });
                 const result: ScenarioResult = {
                     scenarioId: scenario.id,
                     title: scenario.title,
                     skipped: true,
-                    reason,
+                    reason: skipReason,
                     passed: 0,
                     failed: 0,
                 };
@@ -220,6 +225,21 @@ export class SelfTestRunner {
                 };
                 allReps.push(result);
                 this.emit({ kind: "repEnd", result, markers: repMarkers });
+
+                // Fail fast: when the FIRST rep times out waiting for a marker,
+                // later reps will hit the identical wall — burn no more time.
+                if (
+                    repId === 0 &&
+                    status === "failed" &&
+                    failureReason !== undefined &&
+                    /waiting for marker/.test(failureReason)
+                ) {
+                    this.emit({
+                        kind: "log",
+                        message: `[${scenario.id}] first rep timed out waiting for a marker — skipping the remaining ${totalRepsPerScenario - 1} rep(s) of this scenario (same outcome expected)`,
+                    });
+                    break;
+                }
             }
 
             const result: ScenarioResult = {
