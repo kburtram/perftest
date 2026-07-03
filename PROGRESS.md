@@ -924,3 +924,41 @@ Owner screenshots in C:\repos\test\screens. Fixes:
 PENDING (owner writing specs/mockups): full fit-and-finish inventory,
 completions-style linked-table History/Perf organization deep pass, richer
 per-event instrumentation inventory, waterfall correlation lines.
+
+## 2026-07-03 - Entry 23: Broad instrumentation - STS 3-level spans + dialog seam
+
+Owner ask: "getting much broader instrumentation coverage ... adding events for
+edit data, table designer, schema visualizer, all the dialogs. And in STS ...
+blocking off all the calls to SqlCommand, or when interacting with SMO or DacFx.
+And those calls into core dependencies would be a new level in waterfall ...
+within a process have multiple levels of events."
+
+Landed (committed both repos):
+- STS-side StsDiag emitter (Microsoft.SqlTools.Hosting/Utility/StsDiag.cs):
+  opt-in, gated on STS_DIAG_URL/STS_DIAG_TOKEN (loopback http://127.0.0.1 only),
+  bounded ConcurrentQueue(2000), batched fire-and-forget NDJSON over HTTP.
+  Multi-targets netstandard2.0 + net10.0 (#if for processId). Protocol metadata
+  ONLY - never SQL text/rows/connection strings.
+- THREE STS span levels = the "new waterfall level" (driver lane):
+  1. MessageDispatcher: sts.{dispatch|event}.{method} feature "rpc" per request.
+  2. Batch.cs: sts.sql.executeReader feature "sqlDriver" around ExecuteReader,
+     Complete(batchOrdinal/resultSets/rowCount) - counts only.
+  3. ObjectExplorerService: sts.smo.expand/refresh feature "sqlDriver" around
+     node Expand/Refresh, Complete(nodeType/childCount).
+- Extension ingest: stsDiagListener.ts loopback HTTP listener; started before
+  controller.activate() so the STS child inherits STS_DIAG_URL/STS_DIAG_TOKEN.
+  Classifies fields as diagnostic.metadata; emits process=sqlToolsService,
+  tags=[stsDiag], timingClass=epochAlignedDiagnostic (hatched cross-process bars).
+- WEBVIEW DIALOG SEAM: one span at webviewBaseController.onRequest covers ALL
+  dialogs/designers (Table Designer, Schema Designer, Edit Data, Connection
+  Dialog, Object Management, Schema Compare) - only when a diag sink is active.
+- Driver lane plumbing: analysis.ts routes sts.sql.*/sts.smo.* -> "driver" lane;
+  common.tsx driver label "SQL / SMO calls" + wire color; pagesCore LANE_ORDER.
+- serviceclient.ts RPC span carries ownerUri (classified source.path).
+- queryResultsGridView.tsx dataReceived mark.
+
+Verify: extension BUILD=0; STS build green; harness non-regression
+query-10k-results 4/4 passed official=true (no perf marker regression).
+NEXT: self-test feature (owner ask) - perftest as importable module + run-queue
+dialog in Debug view that runs a perftest in the CURRENT vscode process with
+live events into consolidated view/waterfall/history.
