@@ -962,3 +962,70 @@ query-10k-results 4/4 passed official=true (no perf marker regression).
 NEXT: self-test feature (owner ask) - perftest as importable module + run-queue
 dialog in Debug view that runs a perftest in the CURRENT vscode process with
 live events into consolidated view/waterfall/history.
+
+## 2026-07-03 - Entry 24: In-product SELF-TEST - run perftest in the live host
+
+Owner ask: "from inside the debug view we can run the perftest functionality on
+a set of tests and then see all the activity from those tests directly in the UI
+in real-time ... make the perftest cli available also as an npm module that
+mssql imports as a relative module ... the self-test controls the current vscode
+instance and runs the tests directly in that process ... test history updates
+... consolidated view and waterfall have all those events ... dialog can expose
+perftest options not from the config ... run queue could be a dialog launched
+from one of the other views."
+
+ARCHITECTURE (single source of truth = the live diagnostics stream):
+  product perfMark ─┐
+  engine emitMarker ─┼─▶ host diag.emit ─▶ diag sink TAP ─▶ runner.deliverMarker ─▶ wait bus
+The runner's wait bus is a pure PROJECTION of the same stream the Debug Console
+renders, so running scenarios in-process lights up the consolidated trace and
+waterfall for free - no separate event path.
+
+LANDED (committed - perftest + vscode-mssql):
+- NEW package @mssqlperf/inproc (packages/perftest-inproc): self-contained (only
+  `vscode` external), so mssql imports it via a relative path to the built dist.
+  * scenarioEngine.ts = the orchestrated driver's step engine adapted for
+    in-process use (adds openUntitledSql + cooperative cancellation); identical
+    step semantics, drives product commands + getControllerForTests.
+  * markerBus.ts (wait bus), metrics.ts (honest duration derivation - absent not
+    fabricated when a begin/end marker is missing), scenarios.ts (7 built-ins),
+    runner.ts (SelfTestRunner: scenario x rep loop + progress event stream +
+    deliverMarker pump).
+  * Built-ins: connection-free (noop, synthetic-delay, activation, debug-console)
+    exercise the full extension->STS->webview span chain; needsSql ones use
+    PORTABLE sql (sys.all_objects) + untitled docs so they need only a
+    connection, not the PerfHarness/PerfCatalog fixtures.
+- vscode-mssql diagnostics/selfTest/selfTestService.ts: wires the runner to diag
+  (tap + engine-marker re-emit), resolves a "default" connection best-effort from
+  the ACTIVE EDITOR's live connection (password passed to the in-proc engine,
+  never logged/persisted), persists results in the standard perf-run layout
+  (summary.json + scenarios/<id>/reps/<rep>/result.json + markers.jsonl) so the
+  Perf & History pages pick them up with NO import step, and streams progress.
+- RPC: DcListSelfTestScenarios / DcRunSelfTest / DcCancelSelfTest +
+  DcSelfTestProgress notification. State captured once in DcProvider; a run
+  ending bumps dataVersion so Perf & History auto-refresh.
+- UI: SelfTestDialog modal (new .dc-modal* CSS) - scenario checklist with
+  needs-SQL badges, reps/warmup inputs, opt-in capture elevation (default OFF -
+  privacy-first), live progress log + completion bar, local-only privacy note.
+  Launched from a "Run self-test" button on the Perf page (+ empty-state CTA).
+
+PRIVACY: capture stays at the current mode unless the user opts into elevation
+(auto-reverts, 10min). Metrics are counts/durations (diagnostic.metadata, always
+plain). No SQL text or rows persisted. Local only.
+
+VERIFY: @mssqlperf/inproc tsc build clean; full perftest workspace build green
+(contracts+cli+inproc+driver); mssql extension BUILD=0 (typecheck resolves the
+relative .d.ts; esbuild bundles the out-of-repo dist - confirmed
+SelfTestRunner/selftest-noop present in dist/extension.js, dialog+modal css in
+dist/views/debugConsole.*). Headless runner smoke (scratchpad/selftest-smoke.js,
+stubs vscode): noop 2p/0f, synthetic-delay wallclock ~251/254ms (real timing),
+query-1k correctly skipped without a connection, deriveMetrics exact (55ms/30ms).
+
+BUILD-ORDER NOTE: inproc dist/ is gitignored; `npm run build` in perftest must
+run before the mssql build (produces the dist the relative import resolves).
+
+NOT YET (honest gaps / follow-ups): live end-to-end in the real webview UI needs
+the owner to click Run (can't drive the webview headless here); config-FILE
+selection + custom test JS not wired (built-ins only, which owner said is fine);
+SQL scenarios need an already-active connection (no in-dialog connection picker
+yet); soak/loop built-ins not exposed in the self-test set.
