@@ -434,3 +434,75 @@ their claims from product markers (windowing proven TRIGGERED, never assumed).
       render live + historical + imported perf runs; secrets never plaintext.
 - [ ] 19.2 Harness non-regression: one Phase-3 scenario re-run green after Perf bridge.
 - [ ] 19.3 docs/IN_PRODUCT_DIAGNOSTICS.md + PROGRESS + commits all repos.
+
+## Phase 4b — Perf Test History refactor + self-test hardening + rich diagnostics (M20)
+
+> Source: C:\repos\test\CODEGEN_PROMPT_Perf_Test_History_Refactor.md +
+> debug-docs handoff 2 (Perf Test History spec + pth-*.png mocks) + owner asks
+> (UX tightening to Completions/DevTools patterns, self-test error surfacing +
+> attach results to the live console, deeper instrumentation, reliable tests).
+
+### Current implementation map (Stage 0 inventory)
+- Perf & Sessions UI: `webviews/pages/DebugConsole/pagesPerf.tsx` (PerfPage) —
+  loads DcGetPerfSummary which calls `perfRunImport.importPerfMetrics` = eager
+  full scan of EVERY run's EVERY rep result.json on page open. Does not scale.
+- History data: `diagnostics/perfRunImport.ts` (scan), `sessionStore.ts`
+  (session segments), sqlite store exists only in perftest CLI (better-sqlite3,
+  native — NOT loadable in the extension host; electron ABI mismatch).
+- Self-test: `diagnostics/selfTest/selfTestService.ts` + @mssqlperf/inproc.
+  Connection = active-editor only (too implicit). Activation scenario waits for
+  mssql.activate.end which can NEVER re-fire in-process → 300s hang/rep.
+- Waterfall: `diagnostics/analysis.ts` buildWaterfall; viewer self-noise BUG:
+  webviewBaseController wraps EVERY webview request in a diag span including
+  the Debug Console's own dc/* polling; spans join the active root trace via
+  resolveSpanTrace → scenario traces keep extending with getWaterfall/
+  listTraces calls after completion.
+- Activation markers unbalanced on failure (extension.ts throws between
+  begin/end → no end marker).
+
+### M20 checklist
+- [ ] 20.1 Waterfall span lifecycle + viewer self-noise fix: debugConsole webview
+      spans classified viewerInternal + own viewer trace (never join root
+      traces); store/analysis exclude viewerInternal by default with explicit
+      include toggle in Trace filters; completed traces have stable end.
+- [ ] 20.2 Self-test activation fix: activation marker balanced on failure path;
+      in-proc catalog marks cold-activation as CLI-only (honest skip, no hang);
+      marker-wait timeouts carry diagnostics (expected marker, last-seen tail);
+      scenario aborts remaining reps after a first-rep marker timeout.
+- [ ] 20.3 Self-test connection selection: active (robust, not editor-focus-
+      bound), saved profile (ConnectionStore.readAllConnections + lookupPassword),
+      env-var connection string (never persisted/logged), none. Provenance
+      records mode + redacted label only. Fail early with actionable reasons.
+- [ ] 20.4 Self-test results attach + error surfacing: completed run auto-
+      registers as a console source (trace/waterfall drill-in), runEnd links,
+      failure reasons with step context in the dialog log.
+- [ ] 20.5 Perf history data layer: sharedInterfaces/perfHistory.ts (types+RPC),
+      provider abstraction, directory provider with incremental index cache
+      (.dc-history-index.json), lazy scenario details/artifacts, chunked
+      background indexing with progress; source registry (default dir, open
+      directory, bundle=run-dir read-only, sqlite honest preview/unsupported).
+- [ ] 20.6 Perf Test History UI: Runs Summary tab (KPIs, regression callout,
+      trend, suite health, needs-attention, sources) + Run Analysis tab
+      (source command bar, virtualized runs table, filter rail, scenario
+      aggregate table with grouping, linked charts rail, lazy bottom tabs:
+      Submetrics/Waterfall/SQL Activity/Artifacts/Validation/All Data Dump).
+      Replaces PerfPage; resizable panes; sticky headers.
+- [ ] 20.7 Rich diagnostics collection (COLLECT_ALL_THE_DATA intent): setting
+      mssql.debugConsole.richCollection + env MSSQL_COLLECT_ALL_THE_DATA +
+      self-test toggle; extension-host enrichment (event-loop delay, CPU deltas,
+      heap/RSS) as bounded counters + span perf blocks; DiagEvent.perf field;
+      off ⇒ zero cost; never elevates capture policy.
+- [ ] 20.8 Deeper instrumentation: cancellation lifecycle markers, connection
+      failure classification, activation failure marker, grid window counters
+      already present — verify visible end-to-end in waterfall/history.
+- [ ] 20.9 Shell UX tightening: collapsible left nav (icon rail), single-row
+      toolbars (no wrap; horizontal overflow), 100%-fill panels attached to
+      splitters on Waterfall/Trace/History pages, filter rail collapse.
+- [ ] 20.10 Tests: extension unit tests (redaction hard rules M16.7, viewer-
+      noise exclusion + stable waterfall end, directory provider index/query/
+      group/aggregate + corrupt-run tolerance + incremental reindex, conn-string
+      parser redaction); inproc vitest (bus freshness, metric derivation,
+      runner skip/cancel/timeout-abort); synthetic large-history (1k+ runs)
+      index perf measurement recorded in PROGRESS.
+- [ ] 20.11 Verification: all repos build green; harness non-regression
+      (query-10k-results); debug-console-smoke; PROGRESS entries; commits.
