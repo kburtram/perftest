@@ -276,13 +276,16 @@ export const BUILTIN_SCENARIOS: BuiltinScenario[] = [
         spec: {
             scenarioId: "selftest-oe-expand-databases",
             displayName: "Object Explorer: expand Databases",
+            // Surface the OE view once so the tree is initialized; the expand
+            // itself uses the awaited expandNode API (view-independent).
+            setup: [{ type: "command", command: "objectExplorer.focus", timeoutMs: 30000 }],
             measure: {
                 start: { type: "beforeFirstAction" },
                 action: [
-                    { type: "oeExpand", oePath: ["Databases"], profile: "default", timeoutMs: 120000 },
+                    { type: "oeExpand", oePath: ["Databases"], profile: "default", timeoutMs: 60000 },
                 ],
                 end: { type: "afterLastAction" },
-                timeoutMs: 180000,
+                timeoutMs: 90000,
             },
             success: [{ type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] }],
         },

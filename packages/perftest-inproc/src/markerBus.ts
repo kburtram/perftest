@@ -55,20 +55,35 @@ export class MarkerBus {
     /**
      * Resolve when a matching marker is (or was) observed. Pass `afterUnixNs`
      * for measured-interval end waits so a stale marker from before
-     * scenario.start can never satisfy the wait.
+     * scenario.start can never satisfy the wait. `isCancelled` makes the wait
+     * interruptible: user cancellation must never sit behind a long timeout.
      */
     wait(
         name: string,
         attrs: Record<string, unknown> | undefined,
         timeoutMs: number,
         afterUnixNs?: string,
+        isCancelled?: () => boolean,
     ): Promise<BusMarker> {
         const existing = this.find(name, attrs, afterUnixNs);
         if (existing) {
             return Promise.resolve(existing);
         }
         return new Promise<BusMarker>((resolve, reject) => {
+            let cancelPoll: ReturnType<typeof setInterval> | undefined;
+            if (isCancelled) {
+                cancelPoll = setInterval(() => {
+                    if (isCancelled()) {
+                        if (cancelPoll) clearInterval(cancelPoll);
+                        clearTimeout(timer);
+                        this.listeners.delete(listener);
+                        reject(new Error("cancelled by user"));
+                    }
+                }, 200);
+                cancelPoll.unref?.();
+            }
             const timer = setTimeout(() => {
+                if (cancelPoll) clearInterval(cancelPoll);
                 this.listeners.delete(listener);
                 // Timeout diagnostics: say what WAS observed so a missing
                 // marker is actionable, not a silent hang.
@@ -90,6 +105,7 @@ export class MarkerBus {
             }, timeoutMs);
             const listener: Listener = (marker) => {
                 if (marker.name === name && attrsMatch(marker, attrs) && isFresh(marker, afterUnixNs)) {
+                    if (cancelPoll) clearInterval(cancelPoll);
                     clearTimeout(timer);
                     this.listeners.delete(listener);
                     resolve(marker);

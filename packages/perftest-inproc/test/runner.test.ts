@@ -173,6 +173,62 @@ describe("SelfTestRunner policies", () => {
         expect(delayReps).toHaveLength(1);
     });
 
+    test("cancel interrupts an IN-FLIGHT marker wait within ~a second", async () => {
+        const waiting: BuiltinScenario = {
+            id: "test-cancel-wait",
+            title: "waits forever unless cancelled",
+            description: "",
+            tags: [],
+            needsSql: false,
+            estMs: 10,
+            metrics: [{ name: "scenario.wallclock", official: true }],
+            spec: {
+                scenarioId: "test-cancel-wait",
+                displayName: "t",
+                measure: {
+                    start: { type: "beforeFirstAction" },
+                    action: [{ type: "noop" }],
+                    // 60s timeout: only cancellation can end this quickly.
+                    end: { type: "waitForMarker", name: "never.emitted", timeoutMs: 60000 } as never,
+                    timeoutMs: 60000,
+                },
+            },
+        };
+        const { runner } = runnerFor([waiting], { reps: 3 });
+        setTimeout(() => runner.cancel(), 150);
+        const started = Date.now();
+        const result = await runner.run();
+        expect(Date.now() - started).toBeLessThan(3000);
+        expect(result.reps[0].status).toBe("skipped");
+        expect(result.reps[0].failureReason).toBe("cancelled");
+    });
+
+    test("first-rep failure of ANY kind aborts the scenario's remaining reps", async () => {
+        const broken: BuiltinScenario = {
+            id: "test-broken-step",
+            title: "step throws immediately",
+            description: "",
+            tags: [],
+            needsSql: false,
+            estMs: 10,
+            metrics: [{ name: "scenario.wallclock", official: true }],
+            spec: {
+                scenarioId: "test-broken-step",
+                displayName: "t",
+                measure: {
+                    start: { type: "beforeFirstAction" },
+                    action: [{ type: "definitely-not-a-step" }],
+                    end: { type: "afterLastAction" },
+                    timeoutMs: 5000,
+                },
+            },
+        };
+        const { runner } = runnerFor([broken], { reps: 4 });
+        const result = await runner.run();
+        expect(result.reps.filter((r) => r.scenarioId === "test-broken-step")).toHaveLength(1);
+        expect(result.reps[0].failureReason).toContain("Unknown step type");
+    });
+
     test("catalog sanity: every builtin has metrics or an honest skip", () => {
         for (const scenario of BUILTIN_SCENARIOS) {
             if (scenario.inProcess === false) {

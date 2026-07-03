@@ -226,17 +226,13 @@ export class SelfTestRunner {
                 allReps.push(result);
                 this.emit({ kind: "repEnd", result, markers: repMarkers });
 
-                // Fail fast: when the FIRST rep times out waiting for a marker,
-                // later reps will hit the identical wall — burn no more time.
-                if (
-                    repId === 0 &&
-                    status === "failed" &&
-                    failureReason !== undefined &&
-                    /waiting for marker/.test(failureReason)
-                ) {
+                // Fail fast: when the FIRST rep fails, later reps almost always
+                // hit the identical wall — record the failure once and move to
+                // the next scenario instead of burning minutes per rep.
+                if (repId === 0 && status === "failed") {
                     this.emit({
                         kind: "log",
-                        message: `[${scenario.id}] first rep timed out waiting for a marker — skipping the remaining ${totalRepsPerScenario - 1} rep(s) of this scenario (same outcome expected)`,
+                        message: `[${scenario.id}] first rep failed — skipping the remaining ${totalRepsPerScenario - 1} rep(s) of this scenario (same outcome expected)`,
                     });
                     break;
                 }

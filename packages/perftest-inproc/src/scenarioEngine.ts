@@ -146,6 +146,31 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, what: string): P
     });
 }
 
+/** Cancellable sleep: wakes early (rejecting) when the run is cancelled. */
+function cancellableSleep(ms: number, ctx: EngineContext): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        const started = Date.now();
+        const tick = setInterval(() => {
+            if (ctx.isCancelled?.()) {
+                clearInterval(tick);
+                reject(new ScenarioCancelledError());
+            } else if (Date.now() - started >= ms) {
+                clearInterval(tick);
+                resolve();
+            }
+        }, Math.min(200, ms));
+        tick.unref?.();
+    });
+}
+
+/** Map "cancelled by user" wait rejections onto the cancellation error type. */
+function mapCancelled(error: unknown): Error {
+    if (error instanceof Error && /cancelled by user/.test(error.message)) {
+        return new ScenarioCancelledError();
+    }
+    return error instanceof Error ? error : new Error(String(error));
+}
+
 export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promise<ScenarioRunResult> {
     const steps: StepOutcome[] = [];
     const successChecks: StepOutcome[] = [];
@@ -187,12 +212,17 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
             if (spec.measure.end.type === "waitForMarker" && spec.measure.end.name) {
                 // Freshness guard: only a marker emitted at/after scenario.start
                 // can end the measured interval — stale startup markers can't.
-                await ctx.bus.wait(
-                    spec.measure.end.name,
-                    spec.measure.end.attrs,
-                    spec.measure.timeoutMs,
-                    measureStartUnixNs,
-                );
+                await ctx.bus
+                    .wait(
+                        spec.measure.end.name,
+                        spec.measure.end.attrs,
+                        spec.measure.timeoutMs,
+                        measureStartUnixNs,
+                        ctx.isCancelled,
+                    )
+                    .catch((error: unknown) => {
+                        throw mapCancelled(error);
+                    });
                 ctx.emitMarker("scenario.end", "instant", {
                     scenarioId: spec.scenarioId,
                     endBasis: spec.measure.end.name,
@@ -379,7 +409,7 @@ async function executeStep(
             return;
         case "syntheticDelay":
             // A real elapsed cost inside the measured window, honestly measured.
-            await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, step.ms ?? 0));
+            await cancellableSleep(step.ms ?? 0, ctx);
             return;
         case "command":
         case "waitForCommandCompletion": {
@@ -427,7 +457,11 @@ async function executeStep(
             if (!step.name) {
                 throw new Error("waitForMarker step missing marker name");
             }
-            await ctx.bus.wait(step.name, step.attrs, timeoutMs, afterUnixNs);
+            await ctx.bus
+                .wait(step.name, step.attrs, timeoutMs, afterUnixNs, ctx.isCancelled)
+                .catch((error: unknown) => {
+                    throw mapCancelled(error);
+                });
             return;
         }
         case "mssqlConnect": {
@@ -557,7 +591,7 @@ async function executeStep(
                         `completion did not include '${expect}' within ${timeoutMs}ms (${attempt} attempts, last ${list?.items?.length ?? 0} suggestions)`,
                     );
                 }
-                await new Promise((r) => setTimeout(r, 2000));
+                await cancellableSleep(2000, ctx);
             }
         }
         default:
@@ -591,10 +625,43 @@ function assertProbe(assertion: string, fields: Record<string, number>): void {
     }
 }
 
+interface OeNode {
+    label?: unknown;
+    nodePath?: string;
+}
+
+interface OeProviderSeam {
+    createSession(credentials: unknown): Promise<
+        | {
+              sessionId?: string;
+              errorMessage?: string;
+              connectionNode?: OeNode;
+          }
+        | undefined
+    >;
+    /**
+     * Awaits the full expand round-trip and returns the children directly —
+     * unlike getChildren, this does NOT depend on the OE tree view being
+     * visible to consume refresh callbacks (the old getChildren + "Loading…"
+     * polling hung forever when the tree was hidden behind the console).
+     */
+    expandNode(node: OeNode, sessionId: string): Promise<OeNode[] | undefined>;
+    /** Disconnects and removes the session node (no prompt with false). */
+    removeNode?(node: OeNode, showUserConfirmationPrompt?: boolean): Promise<void>;
+}
+
+function oeLabel(node: OeNode): string {
+    return typeof node.label === "string"
+        ? node.label
+        : ((node.label as { label?: string })?.label ?? "");
+}
+
 /**
  * Expand an Object Explorer path (labels from the server root) through the
- * product's REAL tree provider — the same getChildren path the tree UI uses,
- * so the product's mssql.oe.expand markers fire.
+ * product's REAL OE service — createSession then awaited expandNode hops, so
+ * the product's mssql.oe.expand markers fire and results are deterministic
+ * regardless of tree-view visibility. The session is removed afterwards so
+ * repeated reps never accumulate orphaned sessions/connections.
  */
 async function oeExpand(path: string[], profileName: string, ctx: EngineContext): Promise<void> {
     const profile = ctx.connectionProfiles?.[profileName];
@@ -602,19 +669,7 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
         throw new Error(`No connection profile '${profileName}' for oeExpand`);
     }
     const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
-        | {
-              _objectExplorerProvider?: {
-                  createSession(credentials: unknown): Promise<
-                      | {
-                            sessionId?: string;
-                            errorMessage?: string;
-                            connectionNode?: { label?: unknown; nodePath?: string };
-                        }
-                      | undefined
-                  >;
-                  getChildren(element?: unknown): Promise<Array<{ label?: unknown; nodePath?: string }> | undefined>;
-              };
-          }
+        | { _objectExplorerProvider?: OeProviderSeam }
         | undefined;
     const provider = controller?._objectExplorerProvider;
     if (!provider) {
@@ -635,64 +690,48 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
         profileName: `selftest-oe-${Date.now()}`,
     };
     const session = await provider.createSession(credentials);
-    if (!session || session.errorMessage) {
-        throw new Error(`OE session failed: ${session?.errorMessage ?? "no session"}`);
+    if (!session?.sessionId || session.errorMessage) {
+        throw new Error(`OE session failed: ${session?.errorMessage ?? "no session id returned"}`);
     }
-    let current: { label?: unknown; nodePath?: string } | undefined = session.connectionNode;
-    if (!current) {
-        const nodes = (await provider.getChildren(undefined)) ?? [];
-        current = nodes[nodes.length - 1];
+    const connectionNode = session.connectionNode;
+    if (!connectionNode) {
+        throw new Error("OE session has no connection node");
     }
-    if (!current) {
-        throw new Error("OE has no connection node after session creation");
-    }
-
-    const walkDeadline = Date.now() + 280000;
-    const expandSettled = async (
-        node: { label?: unknown; nodePath?: string },
-    ): Promise<Array<{ label?: unknown; nodePath?: string }>> => {
-        const isLoading = (list: Array<{ label?: unknown }>): boolean =>
-            list.length === 1 &&
-            String(
-                typeof list[0]!.label === "string"
-                    ? list[0]!.label
-                    : ((list[0]!.label as { label?: string })?.label ?? ""),
-            ).startsWith("Loading");
-        let afterNs = (BigInt(Date.now()) * 1000000n).toString();
-        let children = (await provider.getChildren(node)) ?? [];
-        while (isLoading(children)) {
-            const remaining = walkDeadline - Date.now();
-            if (remaining <= 0) {
-                throw new Error(`OE expand of '${node.nodePath ?? "?"}' did not settle in time`);
+    try {
+        let current: OeNode = connectionNode;
+        for (const label of [...path, undefined]) {
+            if (ctx.isCancelled?.()) {
+                throw new ScenarioCancelledError();
             }
-            const marker = await ctx.bus.wait(
-                "mssql.oe.expand.end",
-                undefined,
-                Math.min(remaining, 120000),
-                afterNs,
+            const children = (await provider.expandNode(current, session.sessionId)) ?? [];
+            if (label === undefined) {
+                // Final hop: the measured expansion itself. Empty is legal
+                // (e.g. an empty folder) — the expand completed either way.
+                ctx.log(
+                    `oeExpand: '${oeLabel(current) || current.nodePath}' returned ${children.length} node(s)`,
+                );
+                return;
+            }
+            const next = children.find(
+                (child) => oeLabel(child) === label || oeLabel(child).startsWith(label),
             );
-            afterNs = marker.timestampUnixNs;
-            children = (await provider.getChildren(node)) ?? [];
+            if (!next) {
+                const available = children.map(oeLabel).filter(Boolean).slice(0, 12).join(", ");
+                throw new Error(
+                    `OE node '${label}' not found under '${oeLabel(current) || "root"}' (children: ${available || "(none)"})`,
+                );
+            }
+            current = next;
         }
-        return children;
-    };
-
-    for (const label of path) {
-        const children = await expandSettled(current);
-        const next = children.find((c) => {
-            const l = typeof c.label === "string" ? c.label : (c.label as { label?: string })?.label;
-            return l === label || (l ?? "").startsWith(label);
-        });
-        if (!next) {
-            const available = children
-                .map((c) => (typeof c.label === "string" ? c.label : (c.label as { label?: string })?.label))
-                .slice(0, 12)
-                .join(", ");
-            throw new Error(`OE node '${label}' not found (children: ${available})`);
+    } finally {
+        // Session cleanup is best-effort but important: leaking one OE session
+        // + server connection per rep degrades later reps and runs.
+        try {
+            await provider.removeNode?.(connectionNode, false);
+        } catch {
+            ctx.log("oeExpand: session cleanup failed (non-fatal)");
         }
-        current = next;
     }
-    await expandSettled(current);
 }
 
 /** Disconnect the active editor's connection via the product's test seam. */
