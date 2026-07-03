@@ -892,3 +892,35 @@ Owner tested the console live. Root causes + fixes:
    nodePath). Rows deep-link to the waterfall by correlation.
 New webview chart primitives: Sparkline/TrendChart(band)/Histogram/DeltaBars
 (charts.tsx, no deps, n-annotated, no smoothing).
+
+---
+
+## 2026-07-03 - Entry 22: Phase 4 round 3 - screenshot feedback fixes
+
+Owner screenshots in C:\repos\test\screens. Fixes:
+1. WATERFALL MISSING RPC CHILDREN (waterfall-nochildren.png): startSpan()
+   minted its own trace instead of joining the active root action ->
+   resolveSpanTrace(): explicit > ambient > fresh root window > new. RPC
+   round-trips now land in the action trace and the STS lane.
+2. WATERFALL ONE-ROW PILEUP: per-lane row packing (greedy interval packing
+   into sub-rows, lane height grows, xN count in the label) + in-bar labels
+   on wide bars.
+3. STS FILTER BUG (consolidate1.png): store query treats process filter
+   "sqlToolsService" as also matching feature==="rpc" rows (they render as
+   "STS rpc").
+4. RICHER RPC DETAIL: spans now carry ownerUri (classified source.path);
+   method already in type. More per-feature payloads to come from owner's
+   event inventory.
+5. WEBVIEW SPARSE: added mssql.resultsGrid.dataReceived mark (summaries
+   arrive pre-paint) - gap to renderComplete = grid render cost.
+6. PERF PAGE DROPDOWN BREAKAGE (run2.png): scenario browser now always keyed
+   on scenario.wallclock (stable while metric changes); metric dropdown lists
+   ONLY metrics recorded for the selected scenario (with run counts) and
+   auto-falls back; A/B + trend hidden with an honest note when no data;
+   stale baseline/candidate cleared; runs-table rows click->A/B candidate;
+   delta% display clamped (noop +47169% -> >+999%).
+7. RESIZABLE UX: react-resizable-panels (same as owner's completions view)
+   for the Trace split; full-height panels + focus-colored resize handle.
+PENDING (owner writing specs/mockups): full fit-and-finish inventory,
+completions-style linked-table History/Perf organization deep pass, richer
+per-event instrumentation inventory, waterfall correlation lines.
