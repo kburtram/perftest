@@ -1029,3 +1029,90 @@ the owner to click Run (can't drive the webview headless here); config-FILE
 selection + custom test JS not wired (built-ins only, which owner said is fine);
 SQL scenarios need an already-active connection (no in-dialog connection picker
 yet); soak/loop built-ins not exposed in the self-test set.
+
+## 2026-07-03 - Entry 25: M20 - Perf Test History refactor + self-test hardening
+
+Owner ask (CODEGEN_PROMPT_Perf_Test_History_Refactor.md + chat): scalable Perf
+Test History UX per handoff-2 spec/mocks, self-test connection selection, fix
+the activation-marker hang, fix the waterfall stuck-span/self-noise bug, rich
+diagnostics mode, deeper instrumentation, Completions/DevTools UX patterns
+(collapsible nav, one-row toolbars, full-height panels), reliable tests.
+
+ROOT CAUSES FOUND + FIXED:
+1. WATERFALL STUCK SPANS / VIEWER SELF-NOISE (Stage 7): webviewBaseController
+   wrapped EVERY webview request in a diag span INCLUDING the Debug Console's
+   own dc/* polling; those spans joined the active root trace via
+   resolveSpanTrace AND were pushed back to the console via the live tail,
+   re-rendering it and issuing more RPCs - a self-sustaining feedback loop that
+   extended completed scenario timelines forever. Fix: debugConsole spans are
+   tagged viewerInternal on their own viewer trace; LiveTailSink drops them
+   (breaks the loop at the source); store queries + all analysis exclude them
+   by default with an explicit "viewer internals" Trace toggle. Completed
+   traces now have a FIXED end (unit-tested: rebuild 5x, end never moves).
+2. SELF-TEST ACTIVATION HANG (Stage 5): the in-proc activation scenario waited
+   300s/rep for mssql.activate.end - a marker that can NEVER re-fire because
+   the extension is already active when the console is open. Fix: activation
+   marked CLI-only (honest skip + pointer to ext-normal-activation);
+   selftest-intellisense-keywords added as the in-proc STS round-trip instead;
+   marker-wait timeouts now carry diagnostics (expected marker, stale-marker
+   note, last-seen tail); first-rep marker timeout aborts remaining reps;
+   extension.ts activation begin/end markers stay balanced on failure paths.
+
+LANDED (perftest + vscode-mssql, committed):
+- M20.3/20.4 self-test: connection modes active (ALL connected editors, not
+  focus-bound) / saved profile (ConnectionStore + credential-store password;
+  AzureMFA honestly unsupported) / env-var connection string (parsed in-host,
+  never displayed/logged/persisted; quoted-value parser unit-tested) / none.
+  Early actionable failures; provenance = mode + server/db label only.
+  Completed runs auto-attach as a console source with waterfall/trace links;
+  rep failures render step-context reasons in the dialog log.
+- M20.5 data layer: sharedInterfaces/perfHistory.ts (Ph* RPC), directory
+  provider with incremental .dc-history-index.json (fingerprint change
+  detection, chunked scans, corrupt-run tolerance), source registry (default
+  dir / Open Directory / Import Bundle read-only / SQLite honest
+  preview-unsupported via magic sniff), per-rep lazy artifacts (waterfall from
+  markers.jsonl, SQL activity, size-capped dumps), Runs Summary aggregates.
+- M20.6 UI: Perf Test History page replaces PerfPage (nav: "Perf Test
+  History"; session trends stay as "Session History"). Runs Summary (KPIs,
+  latest-slower callout, trend, suite health, needs-attention, sources) +
+  Run Analysis (source command bar, VIRTUALIZED runs table, collapsible filter
+  rail, scenario aggregate table with grouping + filter chips, linked charts,
+  lazy bottom tabs: Submetrics/Waterfall/SQL/Artifacts/Validation/Dump).
+  WaterfallView extracted for shared use. Resizable panes throughout.
+- M20.7 rich diagnostics (COLLECT_ALL_THE_DATA intent): richCollection.ts -
+  event-loop delay percentiles, CPU deltas, heap/RSS counters (2s cadence) +
+  per-span heap deltas via DiagEvent.perf. Gates: richCollection setting /
+  MSSQL_COLLECT_ALL_THE_DATA=1 / self-test toggle (window-scoped). Off = zero
+  cost. Never elevates capture policy.
+- M20.8 instrumentation: cancel lifecycle (cancelRequested -> cancelled |
+  cancelFailed), mssql.connection.failed paired with begin in waterfall
+  (errorNumber only, no message text).
+- M20.9 shell UX: collapsible left nav (icon rail, persisted), one-row
+  toolbars w/ horizontal overflow, full-height panels attached to splitters.
+- RESILIENCE FIX my tests caught: the static relative import of the inproc
+  dist broke the tsc out/ tree (one extra dir level) and took down every unit
+  test touching extension.ts. Now inprocLoader.ts resolves the module at
+  RUNTIME by walking up from __dirname (works from dist/, out/, any layout)
+  with type-only static imports; missing/unbuilt perftest repo = honest
+  "build perftest first" error in the dialog instead of a module-graph crash.
+
+VERIFY:
+- inproc vitest: 10/10 (bus freshness + timeout diagnostics, metric honesty,
+  CLI-only/no-SQL skips, fail-fast, cancellation, catalog sanity).
+- extension unit suite (vscode-test): 3258 passing / 2 failing -> my suiteFor
+  ordering bug (soak-before-query) FIXED; copilotChatEntry hook timeout is
+  pre-existing/unrelated (untouched since #21773) - re-run pending below.
+- SCALE MEASUREMENT (Stage 1 target): synthetic 1,000-run history cold index
+  3,564ms, warm cached query 25ms. Real perf-runs dir: 64 runs cold 364ms,
+  warm 12ms. Page open never parses artifacts (index-only).
+- Harness non-regression: query-10k-results 4/4 passed official=true.
+- Builds: perftest workspace green; extension BUILD=0 (extension+webviews).
+
+KNOWN LIMITATIONS / DEFERRED: SQLite browsing in-product = honest preview
+(native driver ABI; use CLI history or directory source); Import Bundle =
+read-only run DIRECTORY (zip support needs a zip dep); Renderer/Memory/CPU
+bottom tabs appear as artifact kinds when CLI collectors produce them (badges
++ artifact rows now; dedicated chart tabs later); run label editing, export
+selection, env-mismatch warnings on compare, keyboard nav polish.
+NEW settings/env: mssql.debugConsole.richCollection (default false),
+MSSQL_COLLECT_ALL_THE_DATA=1, MSSQL_PERFTEST_CONNECTION_STRING (self-test).
