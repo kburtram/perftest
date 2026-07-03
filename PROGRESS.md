@@ -759,3 +759,34 @@ repo root: PERFTEST_PHASE_4_INPRODUCT_DIAGNOSTICS.md, VISION_NORTH_STAR.md,
 CLAUDE_DESIGN_INPRODUCT_DIAGNOSTICS_BRIEF.md, STS2_VISION_ALIGNMENT.md,
 "MSSQL for VS Code Completions Event Instrumentation.pdf". Owner will add
 mockups. M14 renderers (charts.ts/htmlShell.ts) were factored for reuse.
+
+---
+
+## 2026-07-02 - Entry 19: PHASE 4 BEGINS - MSSQL Debug Console
+
+Owner supplied full specs: debug-docs/{Technical_Design, UX_Spec, Prototype_Review}
++ 11 mockups + Claude Design offline HTML prototype. Mockups studied (screen1
+Overview cockpit, screen2 Waterfall w/ decomposition strip + critical path,
+screen3 Trace w/ gap row + cause tree). Plan committed as M16-M19.
+
+DECISIONS ADOPTED (flagging per phase-4 prompt; owner can override):
+1. PRIVACY DEFAULTS: sessionDiag.enabled=false (off by default), captureMode
+   default "redacted" when enabled, local-only, never uploaded, secrets/conn
+   strings NEVER persisted (hard rule, not a setting). Elevation time-bounded.
+2. SHIP SURFACE: console behind mssql.debugConsole.enabled (default true in
+   dev; packaging decision deferred). All experimental flags default false.
+3. STORE: JSONL segment journal + manifest per session; in-memory index at
+   open instead of SQLite for v1 (native dep in shipping extension is a real
+   packaging decision; StoreQueryService interface is SQLite-ready). FLAGGED.
+4. STS-SIDE capture + replay-drive: GATED per tech design SS18 (sts2 hardening
+   prerequisites); UI shows honest blocked states. Imported artifacts OK now.
+5. COMPLETIONS/REPLAY pages: gated stubs first (plug-in seam proven); full
+   completions migration is a later chunk (owner: "plug in as a feature-
+   specific view later"). Replay Lab UI lands with completions adapter later.
+6. Emission unification: Perf.marker becomes one path into the diagnostics
+   core; PerfModeSink preserves the exact harness wire behavior (verified by
+   re-running a Phase-3 scenario in M19.2).
+
+BUILD ORDER (per review doc slice plan): M16 substrate -> M17 shell+Trace+
+Overview+Waterfall (fixture mode + live) -> Perf&Sessions/feature pages ->
+M18 export/depth -> M19 acceptance.
