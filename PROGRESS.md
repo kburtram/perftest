@@ -1099,9 +1099,12 @@ LANDED (perftest + vscode-mssql, committed):
 VERIFY:
 - inproc vitest: 10/10 (bus freshness + timeout diagnostics, metric honesty,
   CLI-only/no-SQL skips, fail-fast, cancellation, catalog sanity).
-- extension unit suite (vscode-test): 3258 passing / 2 failing -> my suiteFor
-  ordering bug (soak-before-query) FIXED; copilotChatEntry hook timeout is
-  pre-existing/unrelated (untouched since #21773) - re-run pending below.
+- extension unit suite (vscode-test): first run 3258 passing / 2 failing ->
+  my suiteFor ordering bug (soak-before-query) FIXED; copilotChatEntry hook
+  timeout confirmed as pre-existing load flake (passed on re-run). FINAL:
+  3262 passing / 0 failing / 12 pending (pre-existing skips).
+- debug-console-smoke in a real VS Code (new page + runtime loader): passed
+  (7.4ms open, no errors).
 - SCALE MEASUREMENT (Stage 1 target): synthetic 1,000-run history cold index
   3,564ms, warm cached query 25ms. Real perf-runs dir: 64 runs cold 364ms,
   warm 12ms. Page open never parses artifacts (index-only).
