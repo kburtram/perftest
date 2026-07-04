@@ -49,6 +49,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `sts.sql.*` | spanFamily | — | — | sqlDriver | sqlToolsService | epochAligned | no |  … |
 | `sts.smo.*` | spanFamily | — | — | objectExplorer | sqlToolsService | epochAligned | no |  … |
 | `sts.dacfx.*` | spanFamily | — | — | dacfx | sqlToolsService | epochAligned | no |  … |
+| `import.linesSkipped` | event | instant | — | harness | system | sameProcessMonotonic | no | skipped:structuralMetadata, reason:safeEnum |
 
 ## Derived metric names
 

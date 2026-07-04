@@ -13,7 +13,9 @@
       "phase": "begin",
       "pairsWith": "mssql.activate.end",
       "feature": "activation",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -25,7 +27,9 @@
       "phase": "end",
       "pairsWith": "mssql.activate.begin",
       "feature": "activation",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -36,10 +40,14 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "shell",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "commandId": "structuralMetadata" },
+      "attrs": {
+        "commandId": "structuralMetadata"
+      },
       "attrsComplete": false,
       "notes": "Root-action anchor for traces; not a timing endpoint by itself."
     },
@@ -49,7 +57,9 @@
       "phase": "begin",
       "pairsWith": "mssql.connection.ready",
       "feature": "connection",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -61,7 +71,9 @@
       "phase": "end",
       "pairsWith": "mssql.connection.begin",
       "feature": "connection",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -72,10 +84,14 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "connection",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "reason": "safeEnum" },
+      "attrs": {
+        "reason": "safeEnum"
+      },
       "attrsComplete": false,
       "notes": "Failure instant — invalidates the connection pair, never a fabricated duration."
     },
@@ -85,7 +101,9 @@
       "phase": "begin",
       "pairsWith": "mssql.query.complete",
       "feature": "query",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -97,10 +115,15 @@
       "phase": "end",
       "pairsWith": "mssql.query.submit",
       "feature": "query",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "rowCount": "structuralMetadata", "hasError": "structuralMetadata" },
+      "attrs": {
+        "rowCount": "structuralMetadata",
+        "hasError": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -108,7 +131,9 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "query",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -119,7 +144,9 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "query",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -130,10 +157,14 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "query",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "reason": "safeEnum" },
+      "attrs": {
+        "reason": "safeEnum"
+      },
       "attrsComplete": false
     },
     {
@@ -142,7 +173,9 @@
       "phase": "begin",
       "pairsWith": "mssql.resultsGrid.windowFetch.end",
       "feature": "resultsGrid",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -154,10 +187,15 @@
       "phase": "end",
       "pairsWith": "mssql.resultsGrid.windowFetch.begin",
       "feature": "resultsGrid",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "rowStart": "structuralMetadata", "rowCount": "structuralMetadata" },
+      "attrs": {
+        "rowStart": "structuralMetadata",
+        "rowCount": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -165,7 +203,9 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "resultsGrid",
-      "processRoles": ["webview"],
+      "processRoles": [
+        "webview"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -176,10 +216,14 @@
       "kind": "webviewMark",
       "phase": "instant",
       "feature": "resultsGrid",
-      "processRoles": ["webview"],
+      "processRoles": [
+        "webview"
+      ],
       "timingClass": "epochAligned",
       "measurementEligible": true,
-      "attrs": { "rowCount": "structuralMetadata" },
+      "attrs": {
+        "rowCount": "structuralMetadata"
+      },
       "attrsComplete": false,
       "notes": "Cross-process endpoint (webview paint after extension-host submit). Measurement-eligible via the harness's calibrated clock model ONLY (perftest calibrates webview clocks per run); epoch-aligned/diagnostic everywhere else."
     },
@@ -189,7 +233,9 @@
       "phase": "begin",
       "pairsWith": "mssql.sts.spawn.end",
       "feature": "stsLifecycle",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -201,7 +247,9 @@
       "phase": "end",
       "pairsWith": "mssql.sts.spawn.begin",
       "feature": "stsLifecycle",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -212,7 +260,9 @@
       "kind": "marker",
       "phase": "instant",
       "feature": "stsLifecycle",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -223,10 +273,14 @@
       "kind": "event",
       "phase": "instant",
       "feature": "stsLifecycle",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "pid": "structuralMetadata" },
+      "attrs": {
+        "pid": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -235,7 +289,9 @@
       "phase": "begin",
       "pairsWith": "mssql.oe.expand.end",
       "feature": "objectExplorer",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -247,10 +303,15 @@
       "phase": "end",
       "pairsWith": "mssql.oe.expand.begin",
       "feature": "objectExplorer",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "childCount": "structuralMetadata", "nodeType": "structuralMetadata" },
+      "attrs": {
+        "childCount": "structuralMetadata",
+        "nodeType": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -259,10 +320,14 @@
       "phase": "begin",
       "pairsWith": "mssql.tableDesigner.init.end",
       "feature": "tableDesigner",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "isEdit": "structuralMetadata" },
+      "attrs": {
+        "isEdit": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -271,10 +336,15 @@
       "phase": "end",
       "pairsWith": "mssql.tableDesigner.init.begin",
       "feature": "tableDesigner",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "error": "structuralMetadata", "reason": "safeEnum" },
+      "attrs": {
+        "error": "structuralMetadata",
+        "reason": "safeEnum"
+      },
       "attrsComplete": false
     },
     {
@@ -283,7 +353,9 @@
       "phase": "begin",
       "pairsWith": "mssql.tableDesigner.publish.end",
       "feature": "tableDesigner",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -295,10 +367,15 @@
       "phase": "end",
       "pairsWith": "mssql.tableDesigner.publish.begin",
       "feature": "tableDesigner",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "error": "structuralMetadata", "reason": "safeEnum" },
+      "attrs": {
+        "error": "structuralMetadata",
+        "reason": "safeEnum"
+      },
       "attrsComplete": false
     },
     {
@@ -307,7 +384,9 @@
       "phase": "begin",
       "pairsWith": "mssql.schemaDesigner.init.end",
       "feature": "schemaDesigner",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -319,10 +398,16 @@
       "phase": "end",
       "pairsWith": "mssql.schemaDesigner.init.begin",
       "feature": "schemaDesigner",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "tableCount": "structuralMetadata", "error": "structuralMetadata", "reason": "safeEnum" },
+      "attrs": {
+        "tableCount": "structuralMetadata",
+        "error": "structuralMetadata",
+        "reason": "safeEnum"
+      },
       "attrsComplete": false
     },
     {
@@ -331,7 +416,9 @@
       "phase": "begin",
       "pairsWith": "mssql.schemaCompare.compare.end",
       "feature": "schemaCompare",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
       "attrs": {},
@@ -343,10 +430,15 @@
       "phase": "end",
       "pairsWith": "mssql.schemaCompare.compare.begin",
       "feature": "schemaCompare",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "differences": "structuralMetadata", "error": "structuralMetadata" },
+      "attrs": {
+        "differences": "structuralMetadata",
+        "error": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -355,10 +447,15 @@
       "phase": "begin",
       "pairsWith": "scenario.end",
       "feature": "harness",
-      "processRoles": ["harness", "extensionHost"],
+      "processRoles": [
+        "harness",
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "scenarioId": "structuralMetadata" },
+      "attrs": {
+        "scenarioId": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
@@ -367,10 +464,15 @@
       "phase": "end",
       "pairsWith": "scenario.start",
       "feature": "harness",
-      "processRoles": ["harness", "extensionHost"],
+      "processRoles": [
+        "harness",
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": true,
-      "attrs": { "status": "safeEnum" },
+      "attrs": {
+        "status": "safeEnum"
+      },
       "attrsComplete": false
     },
     {
@@ -378,7 +480,9 @@
       "kind": "richMetric",
       "phase": "instant",
       "feature": "diagnostics",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {
@@ -396,10 +500,14 @@
       "kind": "event",
       "phase": "instant",
       "feature": "diagnostics",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "captureMode": "safeEnum" },
+      "attrs": {
+        "captureMode": "safeEnum"
+      },
       "attrsComplete": false
     },
     {
@@ -407,7 +515,9 @@
       "kind": "event",
       "phase": "instant",
       "feature": "diagnostics",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -418,10 +528,14 @@
       "kind": "event",
       "phase": "instant",
       "feature": "diagnostics",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "durationMinutes": "structuralMetadata" },
+      "attrs": {
+        "durationMinutes": "structuralMetadata"
+      },
       "attrsComplete": false,
       "notes": "Elevation reason is user free text — classified identifierSensitive and stored only in the local audit record, never forwarded."
     },
@@ -430,7 +544,9 @@
       "kind": "event",
       "phase": "instant",
       "feature": "diagnostics",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -441,17 +557,25 @@
       "kind": "event",
       "phase": "instant",
       "feature": "selfTest",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
-      "attrs": { "runStatus": "safeEnum", "passed": "structuralMetadata", "failed": "structuralMetadata" },
+      "attrs": {
+        "runStatus": "safeEnum",
+        "passed": "structuralMetadata",
+        "failed": "structuralMetadata"
+      },
       "attrsComplete": false
     },
     {
       "prefix": "rpc.",
       "kind": "spanFamily",
       "feature": "rpc",
-      "processRoles": ["extensionHost"],
+      "processRoles": [
+        "extensionHost"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -462,7 +586,10 @@
       "prefix": "webview.",
       "kind": "spanFamily",
       "feature": "webviewRpc",
-      "processRoles": ["extensionHost", "webview"],
+      "processRoles": [
+        "extensionHost",
+        "webview"
+      ],
       "timingClass": "sameProcessMonotonic",
       "measurementEligible": false,
       "attrs": {},
@@ -473,7 +600,9 @@
       "prefix": "sts.dispatch.",
       "kind": "spanFamily",
       "feature": "stsDispatcher",
-      "processRoles": ["sqlToolsService"],
+      "processRoles": [
+        "sqlToolsService"
+      ],
       "timingClass": "epochAligned",
       "measurementEligible": false,
       "attrs": {},
@@ -484,7 +613,9 @@
       "prefix": "sts.sql.",
       "kind": "spanFamily",
       "feature": "sqlDriver",
-      "processRoles": ["sqlToolsService"],
+      "processRoles": [
+        "sqlToolsService"
+      ],
       "timingClass": "epochAligned",
       "measurementEligible": false,
       "attrs": {},
@@ -495,7 +626,9 @@
       "prefix": "sts.smo.",
       "kind": "spanFamily",
       "feature": "objectExplorer",
-      "processRoles": ["sqlToolsService"],
+      "processRoles": [
+        "sqlToolsService"
+      ],
       "timingClass": "epochAligned",
       "measurementEligible": false,
       "attrs": {},
@@ -506,21 +639,89 @@
       "prefix": "sts.dacfx.",
       "kind": "spanFamily",
       "feature": "dacfx",
-      "processRoles": ["sqlToolsService"],
+      "processRoles": [
+        "sqlToolsService"
+      ],
       "timingClass": "epochAligned",
       "measurementEligible": false,
       "attrs": {},
       "attrsComplete": false,
       "notes": "DacFxService operations (sts.dacfx.<OperationType>) AND designer DesignServices work (sts.dacfx.tableDesigner.*, sts.dacfx.schemaDesigner.*)."
+    },
+    {
+      "name": "import.linesSkipped",
+      "kind": "event",
+      "phase": "instant",
+      "feature": "harness",
+      "processRoles": [
+        "system"
+      ],
+      "timingClass": "sameProcessMonotonic",
+      "measurementEligible": false,
+      "attrs": {
+        "skipped": "structuralMetadata",
+        "reason": "safeEnum"
+      },
+      "attrsComplete": true,
+      "notes": "Synthetic import-loss record: how many markers.jsonl lines were refused (malformed/oversized) so imported traces never silently under-report."
     }
   ],
   "metrics": [
-    { "name": "scenario.wallclock", "feature": "harness", "derivedFrom": ["scenario.start", "scenario.end"] },
-    { "name": "mssql.connection", "feature": "connection", "derivedFrom": ["mssql.connection.begin", "mssql.connection.ready"] },
-    { "name": "mssql.query.toComplete", "feature": "query", "derivedFrom": ["mssql.query.submit", "mssql.query.complete"] },
-    { "name": "mssql.query.toRender", "feature": "resultsGrid", "derivedFrom": ["mssql.query.submit", "mssql.resultsGrid.renderComplete"] },
-    { "name": "mssql.oe.expand", "feature": "objectExplorer", "derivedFrom": ["mssql.oe.expand.begin", "mssql.oe.expand.end"] },
-    { "name": "mssql.tableDesigner.init", "feature": "tableDesigner", "derivedFrom": ["mssql.tableDesigner.init.begin", "mssql.tableDesigner.init.end"] },
-    { "name": "mssql.schemaDesigner.init", "feature": "schemaDesigner", "derivedFrom": ["mssql.schemaDesigner.init.begin", "mssql.schemaDesigner.init.end"] }
+    {
+      "name": "scenario.wallclock",
+      "feature": "harness",
+      "derivedFrom": [
+        "scenario.start",
+        "scenario.end"
+      ]
+    },
+    {
+      "name": "mssql.connection",
+      "feature": "connection",
+      "derivedFrom": [
+        "mssql.connection.begin",
+        "mssql.connection.ready"
+      ]
+    },
+    {
+      "name": "mssql.query.toComplete",
+      "feature": "query",
+      "derivedFrom": [
+        "mssql.query.submit",
+        "mssql.query.complete"
+      ]
+    },
+    {
+      "name": "mssql.query.toRender",
+      "feature": "resultsGrid",
+      "derivedFrom": [
+        "mssql.query.submit",
+        "mssql.resultsGrid.renderComplete"
+      ]
+    },
+    {
+      "name": "mssql.oe.expand",
+      "feature": "objectExplorer",
+      "derivedFrom": [
+        "mssql.oe.expand.begin",
+        "mssql.oe.expand.end"
+      ]
+    },
+    {
+      "name": "mssql.tableDesigner.init",
+      "feature": "tableDesigner",
+      "derivedFrom": [
+        "mssql.tableDesigner.init.begin",
+        "mssql.tableDesigner.init.end"
+      ]
+    },
+    {
+      "name": "mssql.schemaDesigner.init",
+      "feature": "schemaDesigner",
+      "derivedFrom": [
+        "mssql.schemaDesigner.init.begin",
+        "mssql.schemaDesigner.init.end"
+      ]
+    }
   ]
 }

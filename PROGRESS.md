@@ -1338,3 +1338,36 @@ paths one contract, inproc package, run-dir layout, history both ways),
 chain), 06-sts2-and-next (envelope-seam alignment, gated features, done/
 deferred, next-round seams). perftest/docs/README.md gained a pointer
 section (inproc package + console + hub).
+
+## 2026-07-04 - Entry 33: CHUNK 2 - Trust the evidence (durability + safety)
+
+- STORE: manifests gain sizeBytes + EXACT droppedRanges (never a bare count);
+  validateStore() integrity check (missing segments, line-count vs manifest,
+  partial trailing line, boundary seq); size retention via new setting
+  mssql.sessionDiag.maxTotalMB (512 default, oldest closed evicted first).
+- GAPS: live-tail gap records carry firstAvailableSeq (exact resync point);
+  NEW dc/backfillGap recovers dropped ranges from the session store journal
+  and merges into the live view (running/succeeded/partial/failed honest
+  states); TopBar backfill button now actually backfills.
+- SINK HEALTH: DiagnosticSink.health() self-reports on all three sinks
+  (PerfMode dropped/queued; LiveTail ring/pending/droppedTotal/gaps;
+  SessionDiag failed+detail/buffered/bytes/dropped); dc/getHealth RPC;
+  Settings page Diagnostics health card (sink rows + store integrity).
+  SessionDiagSink failure now carries the error detail - degraded, visible.
+- UNTRUSTED IMPORTS: provider.repDir/containedPath refuse webview-supplied
+  ids escaping the source root (dump summary path too - honest 'refused'
+  text); markers.jsonl import caps line size (512KB), validates shape,
+  and emits a synthetic import.linesSkipped warning event (registered in
+  the contract registry) so imports never silently under-report.
+- PROVENANCE: PerfScenarioDetails.runProvenance {sourceKind, readOnly
+  (bundles), passType, environmentHash, runStatus, importWarnings} rendered
+  at the top of the Validation tab - bad provenance looks visibly suspect.
+- PRIVACY CANARIES: new suite pushes sentinel password/connstring/token/
+  sql/row/provider values through classifyPayload (digest/redacted/full),
+  the SessionDiagSink on-disk journal, and the PerfModeSink wire queue.
+  Hard rule proven: secrets NEVER plaintext, even under full capture.
+  Plus store-integrity clean/truncated round-trip.
+
+VERIFY: builds green; extension suite 3278 passing (+6: 5 canary + 1
+containment) / 1 known copilot flake; contracts 18/18 (import.linesSkipped
+registered + re-vendored); gate 4/4 official; smoke 16.7ms.
