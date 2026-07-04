@@ -1413,3 +1413,33 @@ backpressure/health, provenance panels, privacy canary corpus.
 VERIFY: builds green; extension suite 3278 passing (+6: 5 canary + 1
 containment) / 1 known copilot flake; contracts 18/18 (import.linesSkipped
 registered + re-vendored); gate 4/4 official; smoke 16.7ms.
+
+## 2026-07-04 - Entry 36: PHASE 1 WRAP - pre-branch stabilization for Query Studio
+
+Owner is branching to build Query Studio (SSMS-parity editor on STS2;
+designs in C:\repos\test\ssms-query-docs). Executed the pre-branch wrap:
+
+ASSESSMENT (what Query Studio consumes -> what must precede the branch):
+- STS2 v2 wire contract is the data plane. CHECKED: every method the
+  adapter design (doc 03 sec 8.2) expects EXISTS in CONTRACT.md; one naming
+  reconciliation recorded for AD-1 (design's v2/session.setCapture is
+  v2/diagnostics.setCapture); diagnostics.health/state available as extras.
+  NO wire-contract changes needed pre-branch.
+- STS2 hardening: the next-steps P0 items (10-14) already LANDED as review
+  waves R001-R047 on the sts2 tree (barriers/replay/mailboxes/capture/
+  cancel/isolation). BLOCKERS.md: none.
+- Observability contracts: queryStudio.* markers are ADDITIVE post-branch
+  (register->generate->re-vendor); frozen vs additive split written down.
+
+NEW PRE-BRANCH STABILIZER: vendor-sync guard test in observability-contracts
+(regenerates from the live registry and compares SEMANTICALLY against the
+vendored copy in vscode-mssql - prettier's whitespace/key-quoting/trailing-
+comma transforms normalized away; any content drift fails). Caught nothing
+semantic (formatting only) - now locked for the branch split.
+
+DOCS: observability-docs/07-phase2-query-studio-branch-guide.md (what Phase 2
+builds on, AD-1 contract findings, frozen-vs-additive rules, deferred backlog
+incl. XEvents MVP/heap snapshots/zip import/SQLite source/Replay Lab/CI
+ladder, and the branch mechanics); README + 06 statuses updated.
+
+VERIFY (pre-branch sweep): (below)
