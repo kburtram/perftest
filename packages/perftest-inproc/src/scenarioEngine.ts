@@ -752,7 +752,9 @@ async function createOeSession(
 
 /**
  * Walk to the profile's Database node (server-level session → Databases →
- * profile.database or the first user database). Designers need a real
+ * profile.database or the first user database). System databases (master,
+ * msdb, …) live inside the "System Databases" folder, so the search descends
+ * into it when the target isn't at the top level. Designers need a real
  * Database TreeNodeInfo (schema designer reads node.metadata.name).
  */
 async function findDatabaseNode(handle: OeSessionHandle, database?: string): Promise<OeNode> {
@@ -766,9 +768,27 @@ async function findDatabaseNode(handle: OeSessionHandle, database?: string): Pro
     }
     const databases =
         (await handle.provider.expandNode(databasesFolder, handle.sessionId)) ?? [];
-    const target = database
+    const systemFolder = databases.find((c) => oeLabel(c).startsWith("System Databases"));
+    const isFolder = (node: OeNode) => oeLabel(node).startsWith("System Databases");
+    let target = database
         ? databases.find((c) => oeLabel(c) === database)
-        : databases.find((c) => !oeLabel(c).startsWith("System Databases"));
+        : databases.find((c) => !isFolder(c));
+    // master/msdb/model/tempdb live under the System Databases folder.
+    if (!target && systemFolder) {
+        const systemDatabases =
+            (await handle.provider.expandNode(systemFolder, handle.sessionId)) ?? [];
+        target = database
+            ? systemDatabases.find((c) => oeLabel(c) === database)
+            : systemDatabases[0];
+        if (target) {
+            return target;
+        }
+        if (database) {
+            throw new Error(
+                `database '${database}' not found (top level: ${databases.map(oeLabel).slice(0, 10).join(", ")}; system: ${systemDatabases.map(oeLabel).slice(0, 8).join(", ")})`,
+            );
+        }
+    }
     if (!target) {
         throw new Error(
             `database ${database ?? "(first user database)"} not found (have: ${databases.map(oeLabel).slice(0, 10).join(", ")})`,
