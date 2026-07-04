@@ -26,6 +26,19 @@ the milestone that ships the feature it covers.
 | [SOAK_AND_STRESS.md](SOAK_AND_STRESS.md) | Loop scenarios, leak/reliability analysis, verdict honesty | M10 |
 | [INVESTIGATION_DIFF.md](INVESTIGATION_DIFF.md) | A/B what-changed diffs (SQL activity, cross-signal metrics) | M11 |
 
+## Related: the in-product surface and the observability hub
+
+The MSSQL Debug Console (in `vscode-mssql`) is the in-product companion to
+this harness: it browses the same run-directory contract (Perf Test History),
+runs the same scenario shapes in-place (self-test via
+`packages/perftest-inproc`), and receives forwarded `rpc.*`/`webview.*`/`sts.*`
+diagnostic spans inside PERF_MODE runs (additive to the marker contract;
+never official). Cross-cutting documentation for all three workstreams
+(console, harness, sts2) lives in **`../../observability-docs/`** —
+architecture, instrumentation catalog, integration contract, and test
+inventory. The `perftest-inproc` package (scenario engine, marker bus,
+runner, self-test catalog) ships in this repo under `packages/`.
+
 ## System in one paragraph
 
 The `perftest` CLI loads a schema-validated config, runs environment preflight,

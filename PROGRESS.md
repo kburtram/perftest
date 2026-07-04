@@ -1324,3 +1324,17 @@ documented copilotChatEntry flake; debug-console-smoke passed (8.1ms).
 
 VERIFY: builds green (STS + extension); unit suite 3269 passing / 1 failing
 = documented copilot flake; smoke 13.6ms; harness 4/4 official.
+
+## 2026-07-03 - Entry 31: Observability documentation hub
+
+Created C:\repos\test\observability-docs\ pulling the three workstreams
+together as one "deep observability retrofit": README (map), 01-architecture
+(unified event pipeline, correlation, timing honesty, privacy, stores),
+02-debug-console (module/RPC/webview/settings implementation reference),
+03-instrumentation-reference (full marker/span catalog incl. exact STS span
+names, gating, add-more recipes), 04-perftest-integration (two execution
+paths one contract, inproc package, run-dir layout, history both ways),
+05-testing (inventory, reliability playbook, known flake, verification
+chain), 06-sts2-and-next (envelope-seam alignment, gated features, done/
+deferred, next-round seams). perftest/docs/README.md gained a pointer
+section (inproc package + console + hub).
