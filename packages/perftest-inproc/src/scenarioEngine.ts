@@ -32,8 +32,16 @@ export interface ScenarioStep {
     profile?: string;
     /** oeExpand: node labels from the server root, e.g. ["Databases","PerfCatalog","Tables"]. */
     oePath?: string[];
+    /**
+     * oeExpand: create the OE session at SERVER level (database:"") so the
+     * root has the Databases folder — a database-scoped connection roots at
+     * database folders (Tables, Views, …) and 'Databases' would not exist.
+     */
+    oeServerLevel?: boolean;
     /** completionProbe: a suggestion label that must be present. */
     expect?: string;
+    /** designerOpen: which designer to launch against the profile's database. */
+    designer?: "tableDesigner" | "schemaDesigner";
     /** syntheticDelay: milliseconds of real elapsed cost inside the window. */
     ms?: number;
     /** openUntitledSql / windowFetchCheck payloads. */
@@ -116,6 +124,11 @@ export interface EngineContext {
     applicationName?: string;
     /** Cooperative cancellation: steps between waits check this. */
     isCancelled?: () => boolean;
+    /**
+     * Register cleanup that must run after the scenario finishes (including
+     * failure paths) — e.g. OE sessions a designer needed while initializing.
+     */
+    deferCleanup?: (cleanup: () => Promise<void>) => void;
 }
 
 const DEFAULT_STEP_TIMEOUT_MS = 30000;
@@ -174,6 +187,22 @@ function mapCancelled(error: unknown): Error {
 export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promise<ScenarioRunResult> {
     const steps: StepOutcome[] = [];
     const successChecks: StepOutcome[] = [];
+    // Deferred cleanups (OE sessions etc.) run after cleanup steps, even when
+    // the scenario failed or was cancelled.
+    const deferred: Array<() => Promise<void>> = [];
+    ctx.deferCleanup = (cleanup) => {
+        deferred.push(cleanup);
+    };
+    const runDeferred = async (): Promise<void> => {
+        while (deferred.length > 0) {
+            const cleanup = deferred.pop()!;
+            try {
+                await cleanup();
+            } catch {
+                ctx.log("deferred cleanup failed (non-fatal)");
+            }
+        }
+    };
 
     const runSteps = async (list: ScenarioStep[] | undefined, phase: string): Promise<void> => {
         for (const step of list ?? []) {
@@ -262,6 +291,8 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
         const stepName = error instanceof ScenarioStepError ? error.step : undefined;
         const reason = error instanceof Error ? error.message : String(error);
         return { steps, successChecks, failure: { reason, ...(stepName ? { step: stepName } : {}) } };
+    } finally {
+        await runDeferred();
     }
 }
 
@@ -526,10 +557,17 @@ async function executeStep(
                 throw new Error("oeExpand step requires oePath (node labels from the server root)");
             }
             await withTimeout(
-                oeExpand(step.oePath, step.profile ?? "default", ctx),
+                oeExpand(step.oePath, step.profile ?? "default", ctx, step.oeServerLevel === true),
                 timeoutMs,
                 `oeExpand(${step.oePath.join("/")})`,
             );
+            return;
+        }
+        case "designerOpen": {
+            if (step.designer !== "tableDesigner" && step.designer !== "schemaDesigner") {
+                throw new Error("designerOpen step requires designer: tableDesigner|schemaDesigner");
+            }
+            await designerOpen(step.designer, step.profile ?? "default", ctx, timeoutMs);
             return;
         }
         case "windowFetchCheck": {
@@ -656,17 +694,22 @@ function oeLabel(node: OeNode): string {
         : ((node.label as { label?: string })?.label ?? "");
 }
 
-/**
- * Expand an Object Explorer path (labels from the server root) through the
- * product's REAL OE service — createSession then awaited expandNode hops, so
- * the product's mssql.oe.expand markers fire and results are deterministic
- * regardless of tree-view visibility. The session is removed afterwards so
- * repeated reps never accumulate orphaned sessions/connections.
- */
-async function oeExpand(path: string[], profileName: string, ctx: EngineContext): Promise<void> {
+interface OeSessionHandle {
+    provider: OeProviderSeam;
+    sessionId: string;
+    connectionNode: OeNode;
+    dispose: () => Promise<void>;
+}
+
+/** Create an OE session for the profile; caller owns dispose(). */
+async function createOeSession(
+    profileName: string,
+    ctx: EngineContext,
+    serverLevel: boolean,
+): Promise<OeSessionHandle> {
     const profile = ctx.connectionProfiles?.[profileName];
     if (!profile) {
-        throw new Error(`No connection profile '${profileName}' for oeExpand`);
+        throw new Error(`No connection profile '${profileName}' for Object Explorer`);
     }
     const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
         | { _objectExplorerProvider?: OeProviderSeam }
@@ -677,7 +720,7 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
     }
     const credentials: Record<string, unknown> = {
         server: profile.server,
-        database: profile.database ?? "",
+        database: serverLevel ? "" : (profile.database ?? ""),
         authenticationType: profile.authenticationType,
         user: profile.user ?? "",
         password: profile.password ?? "",
@@ -697,13 +740,64 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
     if (!connectionNode) {
         throw new Error("OE session has no connection node");
     }
+    return {
+        provider,
+        sessionId: session.sessionId,
+        connectionNode,
+        dispose: async () => {
+            await provider.removeNode?.(connectionNode, false);
+        },
+    };
+}
+
+/**
+ * Walk to the profile's Database node (server-level session → Databases →
+ * profile.database or the first user database). Designers need a real
+ * Database TreeNodeInfo (schema designer reads node.metadata.name).
+ */
+async function findDatabaseNode(handle: OeSessionHandle, database?: string): Promise<OeNode> {
+    const rootChildren =
+        (await handle.provider.expandNode(handle.connectionNode, handle.sessionId)) ?? [];
+    const databasesFolder = rootChildren.find((c) => oeLabel(c).startsWith("Databases"));
+    if (!databasesFolder) {
+        throw new Error(
+            `no Databases folder under the connection (children: ${rootChildren.map(oeLabel).slice(0, 10).join(", ")})`,
+        );
+    }
+    const databases =
+        (await handle.provider.expandNode(databasesFolder, handle.sessionId)) ?? [];
+    const target = database
+        ? databases.find((c) => oeLabel(c) === database)
+        : databases.find((c) => !oeLabel(c).startsWith("System Databases"));
+    if (!target) {
+        throw new Error(
+            `database ${database ?? "(first user database)"} not found (have: ${databases.map(oeLabel).slice(0, 10).join(", ")})`,
+        );
+    }
+    return target;
+}
+
+/**
+ * Expand an Object Explorer path (labels from the server root) through the
+ * product's REAL OE service — createSession then awaited expandNode hops, so
+ * the product's mssql.oe.expand markers fire and results are deterministic
+ * regardless of tree-view visibility. The session is removed afterwards so
+ * repeated reps never accumulate orphaned sessions/connections.
+ */
+async function oeExpand(
+    path: string[],
+    profileName: string,
+    ctx: EngineContext,
+    serverLevel = false,
+): Promise<void> {
+    const handle = await createOeSession(profileName, ctx, serverLevel);
     try {
-        let current: OeNode = connectionNode;
+        let current: OeNode = handle.connectionNode;
         for (const label of [...path, undefined]) {
             if (ctx.isCancelled?.()) {
                 throw new ScenarioCancelledError();
             }
-            const children = (await provider.expandNode(current, session.sessionId)) ?? [];
+            const children = (await handle.provider.expandNode(current, handle.sessionId)) ?? [];
             if (label === undefined) {
                 // Final hop: the measured expansion itself. Empty is legal
                 // (e.g. an empty folder) — the expand completed either way.
@@ -727,11 +821,40 @@ async function oeExpand(path: string[], profileName: string, ctx: EngineContext)
         // Session cleanup is best-effort but important: leaking one OE session
         // + server connection per rep degrades later reps and runs.
         try {
-            await provider.removeNode?.(connectionNode, false);
+            await handle.dispose();
         } catch {
             ctx.log("oeExpand: session cleanup failed (non-fatal)");
         }
     }
+}
+
+/**
+ * Launch a designer (Table Designer via mssql.newTable, Schema Designer via
+ * mssql.schemaDesigner) against the profile's database node — the same
+ * TreeNodeInfo path the OE context menu uses, so the product's designer init
+ * markers fire. The OE session stays alive until the scenario finishes
+ * (deferred cleanup) because the designer reads the node during init.
+ */
+async function designerOpen(
+    designer: "tableDesigner" | "schemaDesigner",
+    profileName: string,
+    ctx: EngineContext,
+    timeoutMs: number,
+): Promise<void> {
+    const profile = ctx.connectionProfiles?.[profileName];
+    const handle = await createOeSession(profileName, ctx, true);
+    ctx.deferCleanup?.(() => handle.dispose());
+    const databaseNode = await withTimeout(
+        findDatabaseNode(handle, profile?.database || undefined),
+        timeoutMs,
+        "designerOpen: locate database node",
+    );
+    const command = designer === "tableDesigner" ? "mssql.newTable" : "mssql.schemaDesigner";
+    await withTimeout(
+        Promise.resolve(vscode.commands.executeCommand(command, databaseNode)),
+        timeoutMs,
+        `designerOpen: ${command}`,
+    );
 }
 
 /** Disconnect the active editor's connection via the product's test seam. */

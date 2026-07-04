@@ -282,7 +282,15 @@ export const BUILTIN_SCENARIOS: BuiltinScenario[] = [
             measure: {
                 start: { type: "beforeFirstAction" },
                 action: [
-                    { type: "oeExpand", oePath: ["Databases"], profile: "default", timeoutMs: 60000 },
+                    {
+                        type: "oeExpand",
+                        oePath: ["Databases"],
+                        profile: "default",
+                        // Server-level session: a database-scoped connection
+                        // roots at Tables/Views/… and has no Databases folder.
+                        oeServerLevel: true,
+                        timeoutMs: 60000,
+                    },
                 ],
                 end: { type: "afterLastAction" },
                 timeoutMs: 90000,
@@ -291,6 +299,77 @@ export const BUILTIN_SCENARIOS: BuiltinScenario[] = [
         },
     },
 ];
+
+BUILTIN_SCENARIOS.push(
+    {
+        id: "selftest-table-designer",
+        title: "Table Designer: open (new table)",
+        description:
+            "Opens the Table Designer for a new table on the connected database via the real OE node path and waits for designer initialization (STS initializeTableDesigner round-trip). The waterfall shows webview + RPC + STS lanes for the designer.",
+        tags: ["table-designer", "designer", "webview", "sts"],
+        needsSql: true,
+        estMs: 5000,
+        metrics: [
+            WALLCLOCK,
+            {
+                name: "mssql.tableDesigner.init",
+                official: false,
+                lowerIsBetter: true,
+                beginMarker: "mssql.tableDesigner.init.begin",
+                endMarker: "mssql.tableDesigner.init.end",
+            },
+        ],
+        spec: {
+            scenarioId: "selftest-table-designer",
+            displayName: "Table Designer: open (new table)",
+            measure: {
+                start: { type: "beforeFirstAction" },
+                action: [{ type: "designerOpen", designer: "tableDesigner", timeoutMs: 60000 }],
+                end: { type: "waitForMarker", name: "mssql.tableDesigner.init.end" },
+                timeoutMs: 90000,
+            },
+            success: [
+                { type: "markerSeen", name: "mssql.tableDesigner.init.end" },
+                { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+            ],
+            cleanup: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
+        },
+    },
+    {
+        id: "selftest-schema-designer",
+        title: "Schema Designer: open",
+        description:
+            "Opens the Schema Designer (schema visualizer) for the connected database via the real OE node path and waits for the schema session to initialize (model load). Exercises the DacFx-backed schema model path end to end.",
+        tags: ["schema-designer", "designer", "webview", "sts", "dacfx"],
+        needsSql: true,
+        estMs: 8000,
+        metrics: [
+            WALLCLOCK,
+            {
+                name: "mssql.schemaDesigner.init",
+                official: false,
+                lowerIsBetter: true,
+                beginMarker: "mssql.schemaDesigner.init.begin",
+                endMarker: "mssql.schemaDesigner.init.end",
+            },
+        ],
+        spec: {
+            scenarioId: "selftest-schema-designer",
+            displayName: "Schema Designer: open",
+            measure: {
+                start: { type: "beforeFirstAction" },
+                action: [{ type: "designerOpen", designer: "schemaDesigner", timeoutMs: 60000 }],
+                end: { type: "waitForMarker", name: "mssql.schemaDesigner.init.end" },
+                timeoutMs: 120000,
+            },
+            success: [
+                { type: "markerSeen", name: "mssql.schemaDesigner.init.end" },
+                { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+            ],
+            cleanup: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
+        },
+    },
+);
 
 export function builtinScenario(id: string): BuiltinScenario | undefined {
     return BUILTIN_SCENARIOS.find((s) => s.id === id);
