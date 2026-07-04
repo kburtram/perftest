@@ -1168,3 +1168,57 @@ times out under host load; fails ~50% across runs regardless of these changes
 - failed run2, passed run3, failed run4; Copilot-owned, flagged for follow-up,
 not churned here); builds green (extension+webviews); debug-console-smoke
 passed in a real VS Code (9.3ms).
+
+## 2026-07-04 - Entry 27: Iteration - STS/designer visibility, live-capture UX, layout
+
+Owner notes (10 items + general "fix these categories everywhere"):
+
+1. AUTO-CAPTURE (item 1): mssql.sessionDiag.storePath setting (configurable
+   local trace store, restart to apply); sessionDiag.enabled description now
+   states the startup-to-shutdown always-on behavior. Sessions browsable in
+   Session History as before.
+2. DESIGNER + DACFX INSTRUMENTATION (item 2 + "more STS visibility" +
+   "doing-scenario blocks with no sublanes"):
+   - Extension: tableDesigner init/publish markers (w/ failure reasons),
+     schemaDesigner init markers (tableCount), schemaCompare compare markers.
+   - STS: sts.dacfx.<OperationType> spans at the single ExecuteOperation seam
+     (export/import/extract/deploy/generate-script/plan) + sts.sql.connectionOpen
+     span around the physical SqlConnection.Open.
+   - HARNESS WIRE: PerfModeSink now forwards rpc/webview/sts diag spans
+     additively (viewer-internal excluded, tagged diag) and importPerfRep lifts
+     durationMs attrs into bars -> CLI waterfalls get real cross-process
+     sublane detail. Unit-tested (forwarding + exclusions).
+   - Self-test scenarios: selftest-table-designer + selftest-schema-designer
+     open the real designers via a Database TreeNodeInfo (server-level OE
+     session -> Databases -> profile db/first user db), measured to init.end;
+     engine gained designerOpen step + deferCleanup (sessions disposed even on
+     failure/cancel). CLI-registry designer scenarios deferred (driver engine
+     port) - recorded as follow-up.
+3. TRACE LIVE-CAPTURE UX (item 3, completions-style): pause/resume (view
+   freezes, collection continues), clear w/ show-all undo (seq watermark),
+   auto-scroll toggle, filter expressions dur>1000 / dur<2s / proc:sts /
+   feat:x / status:error / type:x / text via shared pure parser (invalid
+   tokens surfaced); EventQuery+store duration filters. Fill-space: dc-page is
+   flex column + all split panels flex-fill - no dead space under tables.
+4/5. ONE-ROW TOOLBARS + KPIs EVERYWHERE: top bar, page toolbars, Perf Test
+   History header/command bar all nowrap + horizontal scroll w/ min/max
+   control widths; KPI strips one row, scrollable, fixed card widths.
+6. OE SCENARIO ROBUSTNESS: root-caused - the OE session inherited the
+   connection's DATABASE scope so the root had Tables/Views (no Databases
+   folder). oeExpand supports oeServerLevel sessions; scenario uses it.
+   (Explains owner's "passed on rerun": different connection selected.)
+8. HISTORY TABLES NORMAL-TABLE BEHAVIOR: table-layout fixed + explicit column
+   widths (no reflow while virtualized rows scroll), single-height rows,
+   artifact badges collapse to +N w/ hover.
+9. DIAGNOSTICS VISIBILITY: new Diagnostics bottom tab in Perf Test History -
+   per-rep rich counter series (heap/RSS/event-loop/CPU trends) + spans ranked
+   by heap delta, lazily from markers.jsonl; self-test tap persists perf
+   blocks as perf_ attrs; honest empty state when a run wasn't collected rich.
+10. GROUP DRILL-DOWN: group-by rows selectable; selection browses the group's
+   member scenarios in the bottom pane (aggregate KPIs right), drilling a
+   member opens normal tabs.
+
+VERIFY: inproc vitest 12/12; extension unit suite 3268 passing (+10 new:
+filter expressions, store duration filters, span forwarding) / 1 failing =
+documented pre-existing copilotChatEntry flake; STS ServiceLayer build green;
+extension full build green; harness non-regression 4/4 official=true WITH span forwarding active in the wire (gate undisturbed); console smoke passed (9.4ms).
