@@ -61,7 +61,16 @@ export interface CdpDiagnostics {
   rendererProfile?: boolean;
 }
 
+export type DiagnosticRecipe = "light" | "ui-rendering" | "service" | "sql" | "memory" | "full";
+
 export interface DiagnosticsConfig {
+  /**
+   * Named collector preset (peer-review recipes). Expanded at config load;
+   * explicit flags below OVERRIDE the recipe defaults. Heavy recipes belong
+   * in diagnostic passes — a warning fires when one runs in a measurement
+   * pass (collector metrics stay diagnostic-only regardless).
+   */
+  recipe?: DiagnosticRecipe;
   markers?: boolean;
   processSampler?: boolean;
   otel?: OtelMode;

@@ -59,8 +59,65 @@ export function loadConfig(configPath: string): LoadedConfig {
   }
 
   const config = data as PerfConfig;
+  expandDiagnosticRecipe(config);
   const runId = !config.runId || config.runId === "auto" ? newRunId() : config.runId;
   const configHash = "sha256:" + createHash("sha256").update(rawText, "utf8").digest("hex");
 
   return { config, runId, configHash, configPath, rawText };
+}
+
+/**
+ * Named collector presets ("which question is this run asking?"). Recipe
+ * values are DEFAULTS — explicit diagnostics flags in the config win. Heavy
+ * recipes are meant for diagnostic passes; running one in a measurement pass
+ * warns loudly (collector metrics remain diagnostic-only regardless — the
+ * eligibility rules make that structural, not conventional).
+ */
+const DIAGNOSTIC_RECIPES: Record<string, Partial<PerfConfig["diagnostics"]>> = {
+  // Did it regress, and which process grew?
+  light: { markers: true, processSampler: true },
+  // Was this UI / rendering / event-loop bound?
+  "ui-rendering": {
+    markers: true,
+    processSampler: true,
+    cdp: { extHostProfile: true, rendererTrace: true },
+  },
+  // Was this STS, DacFx, SMO, SqlClient, or dispatcher bound?
+  service: { markers: true, processSampler: true, dotnetCounters: true, dotnetTrace: true },
+  // Did SQL round-trips, reads, or waits change?
+  sql: { markers: true, processSampler: true, sqlServerXEvents: true },
+  // What memory grew? (heap snapshots are a recorded follow-up)
+  memory: { markers: true, processSampler: true, dotnetCounters: true },
+  // The big lantern.
+  full: {
+    markers: true,
+    processSampler: true,
+    cdp: { extHostProfile: true, rendererTrace: true },
+    dotnetCounters: true,
+    dotnetTrace: true,
+    sqlServerXEvents: true,
+  },
+};
+
+const HEAVY_RECIPES = new Set(["ui-rendering", "service", "sql", "memory", "full"]);
+
+function expandDiagnosticRecipe(config: PerfConfig): void {
+  const recipe = config.diagnostics?.recipe;
+  if (!recipe) {
+    return;
+  }
+  const preset = DIAGNOSTIC_RECIPES[recipe];
+  if (!preset) {
+    throw new ConfigError(`Unknown diagnostics recipe '${recipe}'`, [
+    `known recipes: ${Object.keys(DIAGNOSTIC_RECIPES).join(", ")}`,
+    ]);
+  }
+  // Preset first, explicit flags override.
+  config.diagnostics = { ...preset, ...config.diagnostics };
+  if (HEAVY_RECIPES.has(recipe) && config.passType === "measurement") {
+    process.stderr.write(
+      `WARNING: diagnostics recipe '${recipe}' in a MEASUREMENT pass — collector overhead can perturb official numbers. Prefer --pass diagnostic for heavy recipes.
+`,
+    );
+  }
 }

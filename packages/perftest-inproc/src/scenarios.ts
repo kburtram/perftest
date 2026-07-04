@@ -42,6 +42,13 @@ export interface BuiltinScenario {
     skipReason?: string;
     /** Rough single-rep cost hint for the UI (ms). */
     estMs: number;
+    /**
+     * Graduation level (shared lifecycle with the CLI registry). In-product
+     * runs are exploratory-environment by definition; maturity here describes
+     * the SCENARIO, not the run: a ciGating scenario run in-product still
+     * yields exploratory metrics.
+     */
+    maturity?: "exploratory" | "diagnostic" | "measurementCandidate" | "ciGating";
     spec: ScenarioSpec;
     metrics: MetricDef[];
 }
@@ -303,6 +310,7 @@ export const BUILTIN_SCENARIOS: BuiltinScenario[] = [
 BUILTIN_SCENARIOS.push(
     {
         id: "selftest-table-designer",
+        maturity: "diagnostic",
         title: "Table Designer: open (new table)",
         description:
             "Opens the Table Designer for a new table on the connected database via the real OE node path and waits for designer initialization (STS initializeTableDesigner round-trip). The waterfall shows webview + RPC + STS lanes for the designer.",
@@ -337,6 +345,7 @@ BUILTIN_SCENARIOS.push(
     },
     {
         id: "selftest-schema-designer",
+        maturity: "diagnostic",
         title: "Schema Designer: open",
         description:
             "Opens the Schema Designer (schema visualizer) for the connected database via the real OE node path and waits for the schema session to initialize (model load). Exercises the DacFx-backed schema model path end to end.",

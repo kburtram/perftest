@@ -6,11 +6,29 @@
 
 import type { ScenarioSpec } from "@mssqlperf/contracts";
 
+export type ScenarioMaturity =
+  | "exploratory"
+  | "diagnostic"
+  | "measurementCandidate"
+  | "ciGating"
+  | "releaseGate";
+
 export interface RegisteredScenario {
   spec: ScenarioSpec;
   /** Milestone in which the scenario becomes runnable end-to-end. */
   implemented: boolean;
   plannedMilestone: string;
+  /**
+   * Graduation level (peer-review scenario lifecycle). Defaults:
+   * implemented scenarios are measurementCandidate until explicitly
+   * promoted; unimplemented ones are exploratory. Promotion to ciGating
+   * requires baseline history + variance evidence, not enthusiasm.
+   */
+  maturity?: ScenarioMaturity;
+}
+
+export function scenarioMaturity(entry: RegisteredScenario): ScenarioMaturity {
+  return entry.maturity ?? (entry.implemented ? "measurementCandidate" : "exploratory");
 }
 
 const registry = new Map<string, RegisteredScenario>();
@@ -146,6 +164,7 @@ register({
 register({
   implemented: true, // M4': query markers + webview render-complete bridge
   plannedMilestone: "M4",
+  maturity: "ciGating", // the proven non-regression gate
   spec: {
     scenarioId: "query-10k-results",
     displayName: "Run query with 10000 result rows",
@@ -835,6 +854,98 @@ register({
     cleanup: CLEANUP_EXPLORER,
     metrics: [
       { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Designers (Chunk 4: CLI port of the in-proc designerOpen semantics).
+// Metric names + marker pairs are IDENTICAL to the self-test catalog so a
+// designer scenario graduates from local reproduction to CLI without a
+// semantic rewrite. Diagnostic maturity until baseline history exists.
+// ---------------------------------------------------------------------------
+
+register({
+  implemented: true, // C4: driver designerOpen step + STS DacFx designer spans
+  plannedMilestone: "C4",
+  maturity: "diagnostic",
+  spec: {
+    scenarioId: "table-designer-open",
+    displayName: "Table Designer: open (new table)",
+    tags: ["designer", "dacfx", "webview"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "designerOpen", designer: "tableDesigner", profile: "default", timeoutMs: 120000 },
+        { type: "waitForMarker", name: "mssql.tableDesigner.init.end", timeoutMs: 120000 },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.tableDesigner.init.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "mssql.tableDesigner.init",
+        source: "marker",
+        official: true,
+        lowerIsBetter: true,
+        beginMarker: "mssql.tableDesigner.init.begin",
+        endMarker: "mssql.tableDesigner.init.end",
+        component: "tableDesigner",
+      },
+    ],
+  },
+});
+
+register({
+  implemented: true, // C4
+  plannedMilestone: "C4",
+  maturity: "diagnostic",
+  spec: {
+    scenarioId: "schema-designer-open",
+    displayName: "Schema Designer: open",
+    tags: ["designer", "dacfx", "webview"],
+    profileMode: "warmed",
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: ACTIVATE_STEPS,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "designerOpen",
+          designer: "schemaDesigner",
+          profile: "default",
+          timeoutMs: 180000,
+        },
+        { type: "waitForMarker", name: "mssql.schemaDesigner.init.end", timeoutMs: 180000 },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.schemaDesigner.init.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "mssql.schemaDesigner.init",
+        source: "marker",
+        official: true,
+        lowerIsBetter: true,
+        beginMarker: "mssql.schemaDesigner.init.begin",
+        endMarker: "mssql.schemaDesigner.init.end",
+        component: "schemaDesigner",
+      },
     ],
   },
 });

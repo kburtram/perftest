@@ -220,6 +220,17 @@ export type ScenarioStep =
   | { type: "objectExplorerProbe"; name?: string; assert?: string; timeoutMs?: number }
   /** Expand an OE path (labels from the server root) via the real tree provider. */
   | { type: "oeExpand"; oePath: string[]; profile?: string; timeoutMs?: number }
+  /**
+   * Open a designer (Table Designer / Schema Designer) against the profile's
+   * database via a server-level OE session + the product's designer command —
+   * the same semantics as the in-product self-test's designerOpen step.
+   */
+  | {
+      type: "designerOpen";
+      designer: "tableDesigner" | "schemaDesigner";
+      profile?: string;
+      timeoutMs?: number;
+    }
   /** Invoke the completion provider at the cursor; `expect` must be suggested. */
   | { type: "completionProbe"; expect?: string; timeoutMs?: number }
   /** Fetch a row window via the real product path; verify offset correctness. */

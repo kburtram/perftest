@@ -97,6 +97,12 @@ export interface EngineContext {
   connectionProfiles?: Record<string, ConnectionProfileSpec>;
   /** SQL Application Name for this rep — the XEvents correlation key (M8). */
   applicationName?: string;
+  /**
+   * Register cleanup that must run even when the scenario fails mid-step
+   * (OE sessions a designer needed while initializing). Ported from the
+   * in-proc engine so both hosts share cleanup semantics.
+   */
+  deferCleanup?: (cleanup: () => Promise<void>) => void;
 }
 
 const DEFAULT_STEP_TIMEOUT_MS = 30000;
@@ -123,6 +129,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, what: string): P
 export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promise<ScenarioRunResult> {
   const steps: StepOutcome[] = [];
   const successChecks: StepOutcome[] = [];
+  const deferred: Array<() => Promise<void>> = [];
+  ctx.deferCleanup = (cleanup) => deferred.push(cleanup);
 
   const runSteps = async (list: ScenarioStep[] | undefined, phase: string): Promise<void> => {
     for (const step of list ?? []) {
@@ -215,6 +223,16 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
     const stepName = error instanceof ScenarioStepError ? error.step : undefined;
     const reason = error instanceof Error ? error.message : String(error);
     return { steps, successChecks, failure: { reason, ...(stepName ? { step: stepName } : {}) } };
+  } finally {
+    // Deferred cleanups run even on failure — sessions must never leak
+    // into the next rep (and never fail the rep themselves).
+    for (const cleanup of deferred.reverse()) {
+      try {
+        await cleanup();
+      } catch {
+        // best effort
+      }
+    }
   }
 }
 
@@ -480,6 +498,18 @@ async function executeStep(
         oeExpand(step.oePath, step.profile ?? "default", ctx),
         timeoutMs,
         `oeExpand(${step.oePath.join("/")})`,
+      );
+      return;
+    }
+    case "designerOpen": {
+      const designer = (step as { designer?: string }).designer;
+      if (designer !== "tableDesigner" && designer !== "schemaDesigner") {
+        throw new Error("designerOpen step requires designer: tableDesigner|schemaDesigner");
+      }
+      await withTimeout(
+        designerOpen(designer, step.profile ?? "default", ctx, timeoutMs),
+        timeoutMs,
+        `designerOpen(${designer})`,
       );
       return;
     }
@@ -779,6 +809,108 @@ async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext):
   if (!ok) {
     throw new Error(`connectionManager.connect returned false for server ${profile.server}`);
   }
+}
+
+// --- designerOpen (ported from the in-proc engine: shared semantics) --------
+
+interface DriverOeNode {
+  label?: unknown;
+  nodePath?: string;
+}
+
+interface DriverOeSeam {
+  createSession(credentials: unknown): Promise<
+    { sessionId?: string; errorMessage?: string; connectionNode?: DriverOeNode } | undefined
+  >;
+  /** Awaited expand round-trip — view-independent (no Loading… polling). */
+  expandNode(node: DriverOeNode, sessionId: string): Promise<DriverOeNode[] | undefined>;
+  removeNode?(node: DriverOeNode, showUserConfirmationPrompt?: boolean): Promise<void>;
+}
+
+function driverOeLabel(node: DriverOeNode): string {
+  return typeof node.label === "string"
+    ? node.label
+    : String((node.label as { label?: string })?.label ?? "");
+}
+
+async function designerOpen(
+  designer: "tableDesigner" | "schemaDesigner",
+  profileName: string,
+  ctx: EngineContext,
+  timeoutMs: number,
+): Promise<void> {
+  const profile = ctx.connectionProfiles?.[profileName];
+  if (!profile) {
+    throw new Error(`No connection profile '${profileName}' for designerOpen`);
+  }
+  const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
+    | { _objectExplorerProvider?: DriverOeSeam }
+    | undefined;
+  const provider = controller?._objectExplorerProvider;
+  if (!provider) {
+    throw new Error("object explorer provider unavailable");
+  }
+  // Server-level session: the Databases folder only exists at server scope.
+  const session = await provider.createSession({
+    server: profile.server,
+    database: "",
+    authenticationType: profile.authenticationType,
+    user: profile.user ?? "",
+    password: profile.password ?? "",
+    savePassword: false,
+    encrypt: profile.encrypt ?? "Optional",
+    trustServerCertificate: profile.trustServerCertificate ?? false,
+    applicationName: ctx.applicationName ?? "vscode-mssql-perf",
+    connectTimeout: 30,
+    commandTimeout: 30,
+    profileName: `perf-designer-${Date.now()}`,
+  });
+  if (!session?.sessionId || session.errorMessage) {
+    throw new Error(`OE session failed: ${session?.errorMessage ?? "no session id returned"}`);
+  }
+  const connectionNode = session.connectionNode;
+  if (!connectionNode) {
+    throw new Error("OE session has no connection node");
+  }
+  ctx.deferCleanup?.(async () => {
+    await provider.removeNode?.(connectionNode, false);
+  });
+  // Walk to the target database node (System Databases folder searched too).
+  const rootChildren = (await provider.expandNode(connectionNode, session.sessionId)) ?? [];
+  const databasesFolder = rootChildren.find((c) => driverOeLabel(c).startsWith("Databases"));
+  if (!databasesFolder) {
+    throw new Error(
+      `no Databases folder under the connection (children: ${rootChildren.map(driverOeLabel).slice(0, 10).join(", ")})`,
+    );
+  }
+  const databases = (await provider.expandNode(databasesFolder, session.sessionId)) ?? [];
+  const wanted = profile.database || undefined;
+  const isSystemFolder = (n: DriverOeNode) => driverOeLabel(n).startsWith("System Databases");
+  let target = wanted
+    ? databases.find((c) => driverOeLabel(c) === wanted)
+    : databases.find((c) => !isSystemFolder(c));
+  if (!target) {
+    const systemFolder = databases.find(isSystemFolder);
+    if (systemFolder) {
+      const systemDatabases =
+        (await provider.expandNode(systemFolder, session.sessionId)) ?? [];
+      target = wanted
+        ? systemDatabases.find((c) => driverOeLabel(c) === wanted)
+        : systemDatabases[0];
+    }
+  }
+  if (!target) {
+    throw new Error(
+      `database ${wanted ?? "(first user database)"} not found (have: ${databases.map(driverOeLabel).slice(0, 10).join(", ")})`,
+    );
+  }
+  const command = designer === "tableDesigner" ? "mssql.newTable" : "mssql.schemaDesigner";
+  ctx.log(`opening ${designer} against ${driverOeLabel(target)}`);
+  await withTimeout(
+    Promise.resolve(vscode.commands.executeCommand(command, target)),
+    timeoutMs,
+    `designerOpen: ${command}`,
+  );
 }
 
 async function evaluateCriterion(
