@@ -1222,3 +1222,43 @@ VERIFY: inproc vitest 12/12; extension unit suite 3268 passing (+10 new:
 filter expressions, store duration filters, span forwarding) / 1 failing =
 documented pre-existing copilotChatEntry flake; STS ServiceLayer build green;
 extension full build green; harness non-regression 4/4 official=true WITH span forwarding active in the wire (gate undisturbed); console smoke passed (9.4ms).
+
+## 2026-07-04 - Entry 28: Owner iteration - toolbar semantics, Perfetto waterfall, run hygiene
+
+Owner notes (10 items):
+1. TOPBAR: Live/History toggle REMOVED (live now derives from the selected
+   source - Current session = live, anything else = historical; a small
+   "live" dot shows next to the picker). Duplicate "MSSQL Debug Console"
+   toolbar text removed (icon + tooltip only; tab title carries the name).
+2. TRACE CONTROLS GATED: Pause/Clear/auto-scroll disabled with honest
+   tooltips for pre-recorded sources; pause/clear reset on source switch.
+3+9. WATERFALL: Perfetto-style viewport on the existing DIV renderer (no
+   custom control): wheel zooms at cursor, W/S zoom + A/D pan, drag-to-pan
+   with click suppression, Esc/double-click/button reset, window-duration
+   readout, bar labels appear as zoom widens bars, offscreen bars culled,
+   "Zoom to bar" in the inspector. NEW "Event details" master/detail table
+   under the main Waterfall page (start offset / lane / event / duration /
+   timing / status; click = select + inspect, double-click = zoom to bar) -
+   answers "you can't tell what anything is when bars are small" and makes
+   the root-window grouping visible (runQuery length = query + grid browsing
+   windowFetches joining the same action trace).
+4. RUN DELETE: Actions column in the runs table; PhDeleteRun RPC with modal
+   confirm (destructive), provider removes the run dir + evicts/persists the
+   index, rejects path tricks (unit-tested incl. reload survival). Writable
+   directory sources only (bundles read-only).
+5. TREND -> ROW: clicking a Runs Summary trend point already drilled into
+   Run Analysis; the runs table now scrolls the focused run into view (works
+   with the virtualized window) - click outlier, land on row, delete.
+6. SHIFT-CLICK: contiguous range selection between anchor and clicked row;
+   ctrl-click multiselect unchanged; runs table is user-select:none so shift
+   never highlights text.
+7. STATUS BAR: self-test indicator now priority -1000 (right-most among
+   right-aligned items) so it stays put while items churn during a run.
+8. MASTER NOT FOUND: findDatabaseNode descends into the "System Databases"
+   folder when the target database isn't top-level (master/msdb/model/
+   tempdb); error message now lists both levels.
+
+VERIFY: inproc vitest 12/12; extension unit suite 3269 passing (+1 new
+deleteRun test incl. path-trick rejection + cache-reload survival) / 1
+failing = documented copilotChatEntry flake; builds green (extension +
+webviews + inproc); debug-console-smoke passed (9.2ms).
