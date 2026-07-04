@@ -1442,4 +1442,17 @@ builds on, AD-1 contract findings, frozen-vs-additive rules, deferred backlog
 incl. XEvents MVP/heap snapshots/zip import/SQLite source/Replay Lab/CI
 ladder, and the branch mechanics); README + 06 statuses updated.
 
-VERIFY (pre-branch sweep): (below)
+VERIFY (pre-branch sweep, all executed):
+- STS2 verify.sh --quick: GREEN, all 11 gates (build w/ warnings-as-errors,
+  unit+multiplexer+architecture, scenario corpus, Sqlite contract tests,
+  replay verify, 200-seed simulator, secret canaries, generated docs,
+  legacy diff budget, legacy exe build, E2E v1+v2). Caught + fixed two
+  pre-branch issues: net472 StsDiag build (System.Net.Http ref +
+  Environment.ProcessId fallback) and the legacy-diff-budget calibration
+  (sanctioned-seam allowlist w/ recorded reasons, D-0013 - gate stays
+  full-strength for unlisted paths).
+- vscode-mssql suite 3280 passing / 1 known copilot flake.
+- perftest: obs-contracts 27/27 (incl NEW vendor-sync guard),
+  perf-contracts 14/14, cli 44/44, inproc 12/12; gate 4/4 official;
+  smoke green.
+- All three repos committed clean on their current branches.
