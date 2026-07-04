@@ -1298,3 +1298,29 @@ Owner items:
 
 VERIFY: builds green; extension unit suite 3269 passing / 1 failing =
 documented copilotChatEntry flake; debug-console-smoke passed (8.1ms).
+
+## 2026-07-04 - Entry 30: DacFx designer spans + activation-time capture
+
+1. DACFX GAP (owner: "no DacFx events in Table Designer"): correct — the
+   sts.dacfx.* spans wrapped DacFxService.ExecuteOperation (bacpac/dacpac/
+   deploy), but designers use SEPARATE STS services with DacFx DesignServices
+   inside. Instrumented at the actual work sites (driver lane):
+   TableDesignerService initialize/processEdit/publish/generateScript/
+   previewReport; SchemaDesignerService createSession/generateScript/publish.
+   STS build green.
+2. STARTUP CAPTURE (owner: "flag to start collection at activation"): the
+   flag IS mssql.sessionDiag.enabled — but DiagnosticsManager was constructed
+   at the END of activation so activation-era events fired sink-less and were
+   dropped. Manager + console registration now run FIRST (before
+   activate.begin); the console seeds its live source from this session's
+   persisted store on open (flush + seq-dedupe) so startup data shows without
+   a restart.
+3. PATHS CLARIFIED (in final reply): sessionDiag.storePath = continuous
+   session trace journals (Session History; default globalStorage/
+   ms-mssql.mssql/session-diag; mssql.sessionDiag.openStorageFolder opens
+   it). debugConsole.perfRunsRoot = discrete perf RUN directories
+   (harness/self-test results; Perf Test History; default globalStorage/
+   self-test-runs). Different data families.
+
+VERIFY: builds green (STS + extension); unit suite 3269 passing / 1 failing
+= documented copilot flake; smoke 13.6ms; harness 4/4 official.
