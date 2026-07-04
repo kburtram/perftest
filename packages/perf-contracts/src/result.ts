@@ -62,6 +62,23 @@ export interface Derivation {
   limitations?: string[];
 }
 
+/**
+ * Structured eligibility decision (Shared Observability Contract). Splits the
+ * overloaded `official` into explicit trust labels with a machine-assembled
+ * reason. Mirrors @mssqlperf/observability-contracts MetricEligibility.
+ */
+export interface MetricEligibility {
+  measurementEligible: boolean;
+  ciGatingEligible: boolean;
+  exploratory: boolean;
+  diagnosticOnly: boolean;
+  timePlane: "monotonic" | "epoch" | "calibrated" | "derived";
+  source: string;
+  passType: PassType;
+  environment: "controlledHarness" | "interactiveHost" | "unknown";
+  reason: string;
+}
+
 export interface Metric {
   name: string;
   value: number;
@@ -73,8 +90,11 @@ export interface Metric {
    * Official metrics feed regression gating. They may come only from markers
    * or explicit product timers, in a measurement pass, on a passed rep
    * (design §12.2). Everything else must be official: false.
+   * `official` remains the gate flag; `eligibility` carries the full decision.
    */
   official: boolean;
+  /** Structured trust labels + reason (additive; absent in older results). */
+  eligibility?: MetricEligibility;
   lowerIsBetter: boolean;
   aggregation?: string;
   traceId?: string;

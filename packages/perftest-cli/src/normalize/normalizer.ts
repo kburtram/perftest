@@ -26,6 +26,7 @@ import type {
   ScenarioSpec,
 } from "@mssqlperf/contracts";
 import { validateResult } from "@mssqlperf/contracts";
+import { deriveEligibility } from "@mssqlperf/observability-contracts";
 import type { CalibrationResult, ScenarioOutcome } from "../control/controlServer";
 import {
   analyzeSoak,
@@ -63,6 +64,17 @@ export interface NormalizeInputs {
    */
   orchestratorTimings?: { spawnToReadyMs: number };
 }
+
+/** Metric sources produced by diagnostic collectors — never measurement. */
+const COLLECTOR_SOURCES = new Set([
+  "sqlServerXEvents",
+  "sqlStatistics",
+  "processSampler",
+  "dotnetCounters",
+  "dotnetTrace",
+  "cdp",
+  "etw",
+]);
 
 /**
  * Duration between two markers, honest about the timing plane: same-process
@@ -376,6 +388,43 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
         ],
       },
     });
+  }
+
+  // Stamp the structured eligibility decision on every metric (Shared
+  // Observability Contract). The CLI harness is the controlled environment;
+  // collectors and epoch-plane durations come out diagnostic-only by rule,
+  // not by convention. `official` stays authoritative for the gate — the
+  // consistency between the two is asserted by contract tests.
+  for (let i = 0; i < metrics.length; i++) {
+    const metric = metrics[i];
+    if (!metric) {
+      continue;
+    }
+    const timePlane =
+      (metric.tags?.timePlane as "monotonic" | "epoch" | undefined) ??
+      (metric.source === "derived" ? "derived" : "monotonic");
+    const eligibility = deriveEligibility({
+      source: metric.source,
+      passType: inputs.passType,
+      environment: "controlledHarness",
+      timePlane,
+      repStatus: status,
+      richCollection: false,
+      fromCollector: COLLECTOR_SOURCES.has(metric.source),
+      hasDerivation: metric.derivation !== undefined,
+    });
+    metrics[i] = { ...metric, eligibility };
+    // Legacy flag vs structured decision disagreement is surfaced, never
+    // silent — e.g. a declared-official metric whose markers landed on the
+    // epoch plane. The gate keeps `official` for now; the warning is the
+    // honest record that the number's trust label says otherwise.
+    if (metric.official && !eligibility.measurementEligible) {
+      validations.push({
+        name: `eligibility:${metric.name}`,
+        status: "warning",
+        message: `official flag set but eligibility says diagnostic-only (${eligibility.reason})`,
+      });
+    }
   }
 
   const result: PerfResult = {

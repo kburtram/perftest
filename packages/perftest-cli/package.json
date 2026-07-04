@@ -18,7 +18,8 @@
     "better-sqlite3": "^12.4.1",
     "commander": "^14.0.0",
     "jsonc-parser": "^3.3.1",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@mssqlperf/observability-contracts": "0.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
