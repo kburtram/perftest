@@ -1119,3 +1119,52 @@ bottom tabs appear as artifact kinds when CLI collectors produce them (badges
 selection, env-mismatch warnings on compare, keyboard nav polish.
 NEW settings/env: mssql.debugConsole.richCollection (default false),
 MSSQL_COLLECT_ALL_THE_DATA=1, MSSQL_PERFTEST_CONNECTION_STRING (self-test).
+
+## 2026-07-04 - Entry 26: Self-test reliability deep dive (owner live-run feedback)
+
+Owner ran the self-test: 6/7 scenarios green, OE expand hung ("did not settle
+in time") and kept burning reps; Cancel did nothing; no visibility while
+editors covered the console; live runs froze/blanked the other pages
+(screens/self-run-hung.png, screens/all-blanks.png).
+
+ROOT CAUSES FOUND + FIXED:
+1. OE EXPAND HANG: the engine's getChildren + "Loading..." polling depends on
+   the OE TREE VIEW consuming refresh callbacks - with the tree hidden behind
+   the console, children never repopulate. Rewritten on the product's awaited
+   expandNode(node, sessionId) API (resolves with children directly,
+   view-independent) + session cleanup via removeNode(no-prompt) so reps stop
+   leaking OE sessions/connections; OE view focused once in setup; 60s step
+   timeout; children-snapshot diagnostics on failure.
+2. CANCEL INERT: cancellation only checked between steps while waits blocked
+   up to 120s. MarkerBus.wait now takes an isCancelled poll (200ms);
+   syntheticDelay/completionProbe sleeps cancellable; oeExpand checks between
+   hops. Cancel lands within ~1s (unit-tested: interrupts a 60s wait <3s).
+   Dialog shows "Cancelling..." feedback; service logs the request instantly.
+3. REP BURN: fail-fast generalized - ANY first-rep failure skips the
+   scenario's remaining reps (was marker-timeouts only, so "did not settle"
+   burned 4x minutes).
+4. RUNS TABLE BLANKED ("0 of 0" vs 67 indexed): rescan() early-returned
+   UNDEFINED when a scan was in flight, so cold awaits served an empty index.
+   Now returns the SHARED in-flight promise. Background refreshes debounced
+   (>=5s); webview dataVersion throttled to 1/s (live pushes every ~120ms were
+   re-querying every visible page -> the freeze).
+
+NEW STATUS EXPERIENCE:
+- Status bar during runs: $(record) "MSSQL Self-Test 12/28" live counter +
+  current scenario tooltip + cancelling state + pass/fail flash (12s);
+  click = open console. Console auto-reveals to foreground on run end/error.
+- Dialog becomes a status console while running: pulsing on-air indicator,
+  RUNNING/CANCELLING/PASSED/FAILED, scenario i/n + reps n/m counters, ticking
+  elapsed clock, progress bar, full-width history-style tabs: Log (smart
+  stick-to-bottom) | Reps (per-rep wallclock + failure reasons) | Scenarios
+  (state/passed/failed/notes). 1150px/88vh with flex-fill tables; config
+  collapses during runs, "New run..." returns. (Owner may supply a richer
+  mockup later - this is the interim uplift.)
+
+VERIFY: inproc vitest 12/12 (new: cancel interrupts in-flight wait, first-rep
+any-failure abort); extension unit suite 3259 passing / 1 failing =
+copilotChatEntry hook timeout, PRE-EXISTING flake (sync require hook that only
+times out under host load; fails ~50% across runs regardless of these changes
+- failed run2, passed run3, failed run4; Copilot-owned, flagged for follow-up,
+not churned here); builds green (extension+webviews); debug-console-smoke
+passed in a real VS Code (9.3ms).
