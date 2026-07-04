@@ -50,6 +50,21 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `sts.smo.*` | spanFamily | — | — | objectExplorer | sqlToolsService | epochAligned | no |  … |
 | `sts.dacfx.*` | spanFamily | — | — | dacfx | sqlToolsService | epochAligned | no |  … |
 | `import.linesSkipped` | event | instant | — | harness | system | sameProcessMonotonic | no | skipped:structuralMetadata, reason:safeEnum |
+| `mssql.queryStudio.open.begin` | marker | begin | `mssql.queryStudio.open.end` | queryStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.queryStudio.open.end` | marker | end | `mssql.queryStudio.open.begin` | queryStudio | extensionHost | sameProcessMonotonic | yes | fromCache:structuralMetadata, monacoMs:structuralMetadata … |
+| `mssql.queryStudio.connect.begin` | marker | begin | `mssql.queryStudio.connect.ready` | queryStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.queryStudio.connect.ready` | marker | end | `mssql.queryStudio.connect.begin` | queryStudio | extensionHost | sameProcessMonotonic | yes | backend:structuralMetadata, authKind:safeEnum, encrypted:structuralMetadata, metadataSession:structuralMetadata, error:structuralMetadata, reason:safeEnum … |
+| `mssql.queryStudio.query.submit` | marker | begin | `mssql.queryStudio.query.complete` | queryStudio | extensionHost | sameProcessMonotonic | yes | scope:safeEnum, batchCount:structuralMetadata, selection:structuralMetadata … |
+| `mssql.queryStudio.query.complete` | marker | end | `mssql.queryStudio.query.submit` | queryStudio | extensionHost | sameProcessMonotonic | yes | batches:structuralMetadata, resultSets:structuralMetadata, rows:structuralMetadata, errors:structuralMetadata, canceled:structuralMetadata, partial:structuralMetadata, bytes:structuralMetadata … |
+| `mssql.queryStudio.query.firstResult` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | msFromSubmit:structuralMetadata … |
+| `mssql.queryStudio.resultsRendered` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes | rows:structuralMetadata, resultSets:structuralMetadata, partial:structuralMetadata, fromSpill:structuralMetadata … |
+| `mssql.queryStudio.rows.windowFetch.begin` | marker | begin | `mssql.queryStudio.rows.windowFetch.end` | queryStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.queryStudio.rows.windowFetch.end` | marker | end | `mssql.queryStudio.rows.windowFetch.begin` | queryStudio | extensionHost | sameProcessMonotonic | yes | resultSetId:structuralMetadata, start:structuralMetadata, count:structuralMetadata, fromSpill:structuralMetadata … |
+| `mssql.queryStudio.cancel` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | msToAck:structuralMetadata, msToTerminal:structuralMetadata … |
+| `queryStudio.sync.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
+| `queryStudio.lsp.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
+| `sqlDataPlane.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
+| `rpc.v2.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
 
 ## Derived metric names
 
@@ -62,6 +77,10 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.oe.expand` | objectExplorer | `mssql.oe.expand.begin` → `mssql.oe.expand.end` |
 | `mssql.tableDesigner.init` | tableDesigner | `mssql.tableDesigner.init.begin` → `mssql.tableDesigner.init.end` |
 | `mssql.schemaDesigner.init` | schemaDesigner | `mssql.schemaDesigner.init.begin` → `mssql.schemaDesigner.init.end` |
+| `mssql.queryStudio.open` | queryStudio | `mssql.queryStudio.open.begin` → `mssql.queryStudio.open.end` |
+| `mssql.queryStudio.connect` | queryStudio | `mssql.queryStudio.connect.begin` → `mssql.queryStudio.connect.ready` |
+| `mssql.queryStudio.query.toComplete` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.complete` |
+| `mssql.queryStudio.query.toRender` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.resultsRendered` |
 
 ## Field classifications
 
