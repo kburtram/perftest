@@ -1262,3 +1262,39 @@ VERIFY: inproc vitest 12/12; extension unit suite 3269 passing (+1 new
 deleteRun test incl. path-trick rejection + cache-reload survival) / 1
 failing = documented copilotChatEntry flake; builds green (extension +
 webviews + inproc); debug-console-smoke passed (9.2ms).
+
+## 2026-07-04 - Entry 29: Waterfall native-scroll zoom, packed layouts, prompt hygiene
+
+Owner items:
+1. WATERFALL SCROLLBAR (screens: zoomed window w/ dead scrollbar): zooming now
+   grows the track content to zoom x 100% width, so the NATIVE horizontal
+   scrollbar expands with zoom and always pans correctly. Lane labels moved to
+   a fixed column OUTSIDE the horizontal scroller (bars can never render into
+   the label area; tracks overflow:hidden clip). Time axis shows the VISIBLE
+   window and updates on scroll/zoom (rAF-throttled). Wheel zoom preserves the
+   time under the cursor via post-render scrollLeft restore; W/S + A/D +
+   drag-pan + Esc/dbl-click reset kept; zoom capped so content stays under the
+   browser's max element width (~1.5M px).
+2. WATERFALL PAGE LAYOUT: packed splitter grid per waterfall-layout.png - top
+   content (decomposition + zoom hint bar), then a 2-row grid filling ALL
+   remaining space: row 1 = chart | inspector + critical path (h-splitter),
+   row 2 (full width, v-splitter) = Event details table. No outer document
+   scrollbars; everything internal-scrolls. History tab keeps the compact
+   embedded layout (no table) with the same zoom internals.
+3. TABLE DESIGNER RESTORE PROMPT (after-tabledesigner.png): the modal
+   "Table Designer has been closed. Would you like to restore it?" is
+   suppressed for designers opened from self-test OE sessions, detected by the
+   connectionProfile applicationName prefix (vscode-mssql-selftest) - a
+   precisely-scoped seam, normal users unaffected. BONUS: viewerInternal
+   events (webview.debugConsole.*) are now excluded from the self-test tap so
+   they no longer pollute rep markers/Diagnostics (visible in owner's
+   perf-history-layout.png span table).
+4. PERF HISTORY COLLAPSIBLE REGIONS (perf-history-layout.png crowding): the
+   source bar + runs table collapse to a single toolbar row ("⌄ Runs" caret,
+   compact source select + counts + selection summary), and the bottom detail
+   tabs collapse to just the tab strip (clicking any tab re-expands). Middle
+   workbench unchanged; everything still splitter-resizable when expanded.
+   (PanelGroup remounts per layout combo so sizes stay sane.)
+
+VERIFY: builds green; extension unit suite 3269 passing / 1 failing =
+documented copilotChatEntry flake; debug-console-smoke passed (8.1ms).
