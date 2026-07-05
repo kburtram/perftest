@@ -447,6 +447,38 @@ async function executeStep(
       await withTimeout(mssqlDisconnect(ctx), timeoutMs, "mssqlDisconnect");
       return;
     }
+    case "queryStudioConnect": {
+      const profileName = step.profile ?? "default";
+      const profile = ctx.connectionProfiles?.[profileName];
+      if (!profile) {
+        throw new Error(
+          `No connection profile '${profileName}' was provided by the orchestrator`,
+        );
+      }
+      await withTimeout(
+        queryStudioConnect(profile, ctx, timeoutMs),
+        timeoutMs,
+        `queryStudioConnect(${profileName})`,
+      );
+      return;
+    }
+    case "queryStudioExecute": {
+      // The seam dispatches and returns immediately ({started}); completion
+      // flows through the product's own markers (query.complete /
+      // resultsRendered), which the measure end condition waits on.
+      const result = (await withTimeout(
+        Promise.resolve(vscode.commands.executeCommand("mssql.perf.queryStudioExecute", {})),
+        timeoutMs,
+        "mssql.perf.queryStudioExecute",
+      )) as { error?: string; started?: boolean; reason?: string } | undefined;
+      if (result?.error) {
+        throw new Error(`queryStudioExecute failed: ${result.error}`);
+      }
+      if (result?.started === false) {
+        throw new Error(`queryStudioExecute did not start: ${result.reason ?? "unknown reason"}`);
+      }
+      return;
+    }
     case "webviewProbe": {
       // Live results-grid state via the perf-only product API.
       const state = (await vscode.commands.executeCommand("mssql.perf.gridState")) as {
@@ -759,6 +791,144 @@ async function mssqlDisconnect(ctx: EngineContext): Promise<void> {
   }
 }
 
+/** STS encrypt values arrive as "true"/"false" from connection strings. */
+function normalizeEncrypt(encrypt: string | undefined): string {
+  if (encrypt === undefined) return "Optional";
+  const lowered = encrypt.toLowerCase();
+  return lowered === "true" ? "Mandatory" : lowered === "false" ? "Optional" : encrypt;
+}
+
+/**
+ * Query Studio connect through the PERF_MODE product seams:
+ * 1. Write the orchestrator's profile as the ONLY saved connection
+ *    (mssql.perf.setConfig → mssql.connections) so the product's
+ *    exactly-one-saved-profile auto-pick engages headlessly. groupId ROOT is
+ *    created by the product during activation (which precedes this step).
+ * 2. SqlLogin only: seed the credential store through the product's own
+ *    connectionStore seam so the saved profile's password resolves — the
+ *    password is never written to settings.
+ * 3. Retry mssql.perf.queryStudioConnect until { connected: true }: the
+ *    custom editor's document model resolves asynchronously after openWith,
+ *    so early calls honestly report "no live Query Studio model".
+ */
+async function queryStudioConnect(
+  profile: ConnectionProfileSpec,
+  ctx: EngineContext,
+  timeoutMs: number,
+): Promise<void> {
+  const savedProfile: Record<string, unknown> = {
+    id: "perf-querystudio-default",
+    groupId: "ROOT",
+    profileName: "perf-querystudio-default",
+    server: profile.server,
+    database: profile.database ?? "",
+    authenticationType: profile.authenticationType,
+    user: profile.user ?? "",
+    password: "",
+    savePassword: profile.password !== undefined && profile.password !== "",
+    encrypt: normalizeEncrypt(profile.encrypt),
+    trustServerCertificate: profile.trustServerCertificate ?? false,
+  };
+  const applied = (await vscode.commands.executeCommand(
+    "mssql.perf.setConfig",
+    "mssql.connections",
+    [savedProfile],
+  )) as { applied?: boolean } | undefined;
+  if (applied?.applied !== true) {
+    throw new Error("mssql.perf.setConfig(mssql.connections) did not apply (PERF_MODE off?)");
+  }
+  if (savedProfile["savePassword"] === true) {
+    const controller = (await vscode.commands.executeCommand("mssql.getControllerForTests")) as
+      | {
+          connectionManager?: {
+            connectionStore?: {
+              saveProfilePasswordIfNeeded(profile: unknown): Promise<boolean>;
+            };
+          };
+        }
+      | undefined;
+    const store = controller?.connectionManager?.connectionStore;
+    if (!store?.saveProfilePasswordIfNeeded) {
+      throw new Error("connectionStore seam unavailable — cannot seed the SqlLogin credential");
+    }
+    const saved = await store.saveProfilePasswordIfNeeded({
+      ...savedProfile,
+      password: profile.password,
+    });
+    if (!saved) {
+      throw new Error("credential store refused the SqlLogin password for the saved profile");
+    }
+  }
+  ctx.log(`queryStudioConnect: saved profile targets ${profile.server}`);
+
+  // Inner deadline fires BEFORE the caller's withTimeout so the diagnostic
+  // last-response detail reaches the rep record instead of a bare timeout.
+  const deadline = Date.now() + Math.max(timeoutMs - 2000, 5000);
+  let last: { connected?: boolean; error?: string } | undefined;
+  for (;;) {
+    last = (await vscode.commands.executeCommand("mssql.perf.queryStudioConnect")) as
+      | { connected?: boolean; error?: string }
+      | undefined;
+    if (last?.connected === true) {
+      break;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `queryStudioConnect did not reach connected:true within ${timeoutMs}ms ` +
+          `(last response: ${JSON.stringify(last ?? null)})`,
+      );
+    }
+    await new Promise<void>((resolveRetry) => setTimeout(resolveRetry, 750));
+  }
+
+  // Readiness preflight: the product's post-connect SPID probe briefly holds
+  // the session's ONE query slot ("one active query per STS2 session"); a
+  // human never races it, the driver would. Run an unmeasured trivial query
+  // and retry until the session executes cleanly, so the MEASURED execute
+  // can never hit Busy. Failures here are honest setup failures.
+  let lastDetail = "";
+  for (;;) {
+    const exec = (await vscode.commands.executeCommand("mssql.perf.queryStudioExecute", {
+      text: "SELECT 1;",
+    })) as { error?: string; started?: boolean; reason?: string } | undefined;
+    if (exec?.started === true) {
+      const state = await queryStudioTerminalState(deadline);
+      if (state?.phase === "succeeded" && (state.errorCount ?? 0) === 0) {
+        ctx.log("queryStudioConnect: session preflight succeeded");
+        return;
+      }
+      lastDetail = JSON.stringify(state ?? null);
+    } else {
+      lastDetail = JSON.stringify(exec ?? null);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `queryStudio session preflight did not succeed within ${timeoutMs}ms (last: ${lastDetail})`,
+      );
+    }
+    await new Promise<void>((resolveRetry) => setTimeout(resolveRetry, 500));
+  }
+}
+
+/** Poll the perf state probe until the execution phase leaves executing. */
+async function queryStudioTerminalState(
+  deadline: number,
+): Promise<{ phase?: string; errorCount?: number; error?: string } | undefined> {
+  for (;;) {
+    const state = (await vscode.commands.executeCommand("mssql.perf.queryStudioState")) as
+      | { phase?: string; errorCount?: number; error?: string }
+      | undefined;
+    const phase = state?.phase;
+    if (phase && phase !== "executing" && phase !== "cancelRequested") {
+      return state;
+    }
+    if (Date.now() >= deadline) {
+      return state;
+    }
+    await new Promise<void>((resolveRetry) => setTimeout(resolveRetry, 250));
+  }
+}
+
 async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -774,14 +944,7 @@ async function mssqlConnect(profile: ConnectionProfileSpec, ctx: EngineContext):
   if (!controller?.connectionManager) {
     throw new Error("mssql.getControllerForTests returned no controller (is ms-mssql.mssql active?)");
   }
-  const encrypt =
-    profile.encrypt !== undefined
-      ? profile.encrypt.toLowerCase() === "true"
-        ? "Mandatory"
-        : profile.encrypt.toLowerCase() === "false"
-          ? "Optional"
-          : profile.encrypt
-      : "Optional";
+  const encrypt = normalizeEncrypt(profile.encrypt);
   const credentials: Record<string, unknown> = {
     server: profile.server,
     database: profile.database ?? "",

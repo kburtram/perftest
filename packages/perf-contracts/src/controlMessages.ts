@@ -250,6 +250,20 @@ export type ScenarioStep =
   /** Disconnect the active editor's connection via the product test seam. */
   | { type: "mssqlDisconnect"; timeoutMs?: number }
   /**
+   * Query Studio connect (PERF_MODE seam): write the orchestrator-provided
+   * profile as the ONLY saved connection (mssql.connections via
+   * mssql.perf.setConfig) so the product's exactly-one-saved-profile
+   * auto-pick engages, then drive mssql.perf.queryStudioConnect until it
+   * reports { connected: true } (brief retries while the custom editor's
+   * document model resolves).
+   */
+  | { type: "queryStudioConnect"; profile?: string; timeoutMs?: number }
+  /**
+   * Execute the live Query Studio document's text through the PERF_MODE-only
+   * mssql.perf.queryStudioExecute seam (backing document text by default).
+   */
+  | { type: "queryStudioExecute"; timeoutMs?: number }
+  /**
    * Deliberate busy-delay INSIDE a measured window. Exists solely so the
    * regression gate can be proven against a real slowdown (design §32 M6
    * acceptance). Never use in a product scenario — semantic waits only.
@@ -304,6 +318,14 @@ export interface ScenarioSpec {
   tags?: string[];
   profileMode?: "fresh" | "warmed" | "reuse";
   workspace?: string;
+  /**
+   * Settings merged into the profile's User/settings.json BEFORE VS Code
+   * launches. For settings that must exist at ACTIVATION time (e.g.
+   * mssql.sqlDataPlane.enabled adds --enable-sts2 to the STS spawn args —
+   * a post-activation mssql.perf.setConfig flip is too late). Runtime-only
+   * toggles should keep using the setConfig step instead.
+   */
+  userSettings?: Record<string, unknown>;
   loop?: ScenarioLoopSpec;
   sql?: {
     database?: string;
@@ -330,6 +352,14 @@ export interface ScenarioSpec {
     endMarker?: string;
     component?: string;
     processRole?: string;
+    /**
+     * Restrict marker-pair derivation to markers inside the measured window
+     * (scenario.start … scenario.end). For scenarios whose SETUP emits the
+     * same product markers as the measured action (e.g. the Query Studio
+     * session preflight runs an unmeasured query first) — without this the
+     * pair search would honestly-but-wrongly time the setup pair.
+     */
+    withinMeasuredWindow?: boolean;
   }>;
   timeouts?: {
     readinessMs?: number;

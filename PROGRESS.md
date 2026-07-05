@@ -1515,3 +1515,73 @@ VERIFY (pre-branch sweep, all executed):
   perf-contracts 14/14, cli 44/44, inproc 12/12; gate 4/4 official;
   smoke green.
 - All three repos committed clean on their current branches.
+
+## 2026-07-05 - Entry 37: B7.7 - querystudio-query-10k scenario + head-to-head command
+
+The Query Studio twin of the classic gate, VERIFIED LIVE, plus a cross-scenario
+comparison command. vscode-mssql untouched (rides the PERF_MODE seams from
+0f4032d90).
+
+SCENARIO querystudio-query-10k (exploratory): SAME fixture
+(queries/select-10000.sql), SAME provisioned SQL server as query-10k-results,
+measured through the QS data plane. Setup opens the fixture via
+mssql.queryStudio.openActive (custom editor), driver step queryStudioConnect
+writes the provisioned profile as the ONLY saved connection
+(mssql.perf.setConfig -> mssql.connections, id+groupId ROOT; SqlLogin passwords
+seeded via the product's connectionStore seam, never settings) so the product's
+exactly-one-profile auto-pick engages, then retries mssql.perf.queryStudioConnect
+to {connected:true}. Measured window = queryStudioExecute ->
+waitForMarker mssql.queryStudio.resultsRendered (rows:10000-guarded). Success
+proof mirrors the classic gate: query.complete rows==10000 AND
+resultsRendered rows==10000. wallclock official (driver plane);
+mssql.queryStudio.query.toComplete/toRender derived (registry pairs) diagnostic.
+
+THREE REAL FAILURES FOUND BY BRING-UP (each fixed at the honest layer):
+1. STS SPAWNED WITHOUT --enable-sts2: serviceclient only appends the flag when
+   mssql.sqlDataPlane.enabled is true AT ACTIVATION - a post-activation
+   setConfig flip is too late, and v2/session.open then hangs forever (no v2
+   dispatcher). Fix: ScenarioSpec.userSettings - the pipeline merge-writes
+   declared settings into the profile's User/settings.json BEFORE launch.
+   setConfig stays for runtime-only toggles.
+2. SPID-PROBE SLOT RACE: sts2 sessions allow ONE active query; the product's
+   post-connect background SELECT @@SPID holds it for a moment. A human never
+   races it - the driver did (submit 4ms after ready), and the measured execute
+   died Busy in 67ms. Fix: queryStudioConnect ends with an UNMEASURED session
+   preflight (SELECT 1 via the execute seam, retried until phase==succeeded).
+3. PREFLIGHT MARKER POLLUTION: the preflight emits the same product marker
+   family as the measured run, so the normalizer's first-end pairing would have
+   timed the preflight. Fix: metric spec withinMeasuredWindow (opt-in) scopes
+   pair derivation to scenario.start..scenario.end; measure end waits on
+   resultsRendered attrs rows:10000 so the preflight's 1-row render can never
+   end the window (webview epoch skew makes freshness alone insufficient).
+
+VERIFIED LIVE (run 2026-07-05T09-19-17Z_8d46bf90, exit 0): 1/1 passed,
+wallclock 550.9ms official, toComplete 5.6ms monotonic, toRender 167.0ms epoch,
+both 10000-row proofs green. Gate NON-REGRESSION (run
+2026-07-05T09-20-40Z_8be85bfa, exit 0, WITH the normalizer window-scoping
+change active): query-10k-results 4/4 passed official, steady reps 1133-1169ms.
+
+HEAD-TO-HEAD COMMAND: perftest head-to-head [--baseline-scenario --candidate-
+scenario --db --out --json --open] (defaults: query-10k-results vs
+querystudio-query-10k). Each side = the scenario's most recent measurement run
+with official samples from passed non-warmup reps. Console table + HTML in the
+shared htmlShell design system: official medians/p95/rep counts, signed delta
+bars, and a PHASE table mapping marker pairs that share SEMANTICS across
+differently-named families (submit->complete, submit->render) w/ time-plane
+notes. Explicitly NON-GATING; honest notes for env-hash mismatch, one-sided
+metrics, mixed planes; exit 6 when a side has no qualifying run. Real-store
+sample: QS wallclock -52.8% vs classic (n=1 vs 3, env hashes differ - noted);
+submit->complete 274.0 -> 5.6ms; submit->render 368.0 -> 167.0ms. The 5.6ms
+toComplete is the product's own marker (sts2 plane completes before rendering
+work) - flagged for interpretation care, not adjusted.
+
+VERIFY: obs-contracts 27/27 (parity test covers the new registry pairs),
+perf-contracts 14/14, cli 57/57 (+13: headToHead selection/phases/honesty/
+renderers, scenario registration vs registry, normalizer window scoping),
+inproc 12/12. New docs section in docs/CLI.md. examples/config.phase3 lists
+the scenario.
+
+DEFERRED (recorded, not hidden): multi-rep QS baseline history (n=1 so far -
+exploratory stands); SqlLogin credential-seeding path untested live (this
+box provisions Integrated); querystudio-open still flips settings via
+setConfig (works - late registration - left unchurned).

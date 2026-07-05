@@ -75,6 +75,18 @@ A/B investigation: the official gate plus non-gating what-changed analysis
 (SQL-activity delta headline, cross-signal metric deltas, git context).
 Writes `investigation.json` + `investigation.html` beside the candidate run.
 
+### `perftest head-to-head [--baseline-scenario <id>] [--candidate-scenario <id>]`
+
+Cross-SCENARIO comparison (default: `query-10k-results` vs
+`querystudio-query-10k`): each side is its scenario's most recent
+measurement run with official samples from passed non-warmup reps.
+Console table + self-contained HTML (`--out`, `--json`, `--open`):
+official medians/p95/rep counts, signed delta bars, and a phase breakdown
+mapping marker pairs that share SEMANTICS across differently-named metric
+families (submit→complete, submit→render), with time-plane caveats.
+Explicitly **non-gating** — different code paths, separately-selected runs.
+Exit 6 when either scenario has no qualifying run.
+
 ### `perftest trend --scenario <id> [--metric <name>] [--last N] [--tag <t>]`
 
 Cross-run time-series of an official metric: per-run medians, prior-runs

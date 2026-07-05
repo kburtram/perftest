@@ -11,6 +11,7 @@
     "ext-first-launch",
     "debug-console-smoke",
     "querystudio-open",
+    "querystudio-query-10k",
     "query-error-path",
     "cancel-running-query",
     "large-result-100k",

@@ -175,6 +175,46 @@ describe("normalizeRep", () => {
     ).toBe("warning");
   });
 
+  it("withinMeasuredWindow scopes pair derivation past identical setup markers", () => {
+    const spec: ScenarioSpec = {
+      scenarioId: "test-scenario",
+      displayName: "t",
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: [],
+        end: { type: "afterLastAction" },
+        timeoutMs: 1000,
+      },
+      metrics: [
+        {
+          name: "mssql.queryStudio.query.toComplete",
+          source: "marker",
+          official: false,
+          beginMarker: "mssql.queryStudio.query.submit",
+          endMarker: "mssql.queryStudio.query.complete",
+          withinMeasuredWindow: true,
+        },
+      ],
+    };
+    const result = normalizeRep(
+      baseInputs({
+        spec,
+        markers: [
+          // Setup preflight emits the SAME marker family before the window.
+          marker("mssql.queryStudio.query.submit", { monotonicNs: "100000000", phase: "begin" }),
+          marker("mssql.queryStudio.query.complete", { monotonicNs: "105000000", phase: "end" }),
+          marker("scenario.start", { monotonicNs: "1000000000" }),
+          marker("mssql.queryStudio.query.submit", { monotonicNs: "1010000000", phase: "begin" }),
+          marker("mssql.queryStudio.query.complete", { monotonicNs: "1510000000", phase: "end" }),
+          marker("scenario.end", { monotonicNs: "1600000000" }),
+        ],
+      }),
+    );
+    const toComplete = result.metrics.find((m) => m.name === "mssql.queryStudio.query.toComplete");
+    // The measured pair (500ms), never the 5ms setup preflight pair.
+    expect(toComplete?.value).toBeCloseTo(500);
+  });
+
   it("infrastructure error => invalid with the error recorded", () => {
     const result = normalizeRep(
       baseInputs({

@@ -496,6 +496,72 @@ program
   );
 
 program
+  .command("head-to-head")
+  .description(
+    "Compare two SCENARIOS head-to-head (default: query-10k-results vs querystudio-query-10k) " +
+      "using each scenario's most recent official-passing run. Non-gating investigation view.",
+  )
+  .option("--baseline-scenario <id>", "baseline scenario id", "query-10k-results")
+  .option("--candidate-scenario <id>", "candidate scenario id", "querystudio-query-10k")
+  .option("--db <path>", "database path", "./perf.db")
+  .option("--out <file>", "output HTML path (default head-to-head-<base>-vs-<cand>.html)")
+  .option("--json", "emit the full report as JSON")
+  .option("--open", "open the HTML report when done")
+  .action(
+    async (opts: {
+      baselineScenario: string;
+      candidateScenario: string;
+      db: string;
+      out?: string;
+      json?: boolean;
+      open?: boolean;
+    }) => {
+      const store = PerfStore.open(opts.db, logger.child("store"));
+      try {
+        const { headToHead, renderHeadToHeadConsole, HeadToHeadError } =
+          require("./regression/headToHead") as typeof import("./regression/headToHead");
+        let report;
+        try {
+          report = headToHead(store, logger.child("headToHead"), {
+            baselineScenario: opts.baselineScenario,
+            candidateScenario: opts.candidateScenario,
+          });
+        } catch (error) {
+          if (error instanceof HeadToHeadError) {
+            process.stderr.write(`${error.message}\n`);
+            exit(ExitCode.insufficientSamples);
+          }
+          throw error;
+        }
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+        } else {
+          process.stdout.write(renderHeadToHeadConsole(report) + "\n");
+        }
+        const { renderHeadToHeadHtml } = require("./report/headToHeadReport") as
+          typeof import("./report/headToHeadReport");
+        const { writeFileSync } = await import("node:fs");
+        const outPath = resolve(
+          opts.out ??
+            `head-to-head-${opts.baselineScenario}-vs-${opts.candidateScenario}.html`.replace(
+              /[^a-z0-9.\-]/gi,
+              "_",
+            ),
+        );
+        writeFileSync(outPath, renderHeadToHeadHtml(report), "utf8");
+        process.stdout.write(`Head-to-head report: ${outPath}\n`);
+        if (opts.open) {
+          const { exec } = await import("node:child_process");
+          exec(`start "" "${outPath}"`, { windowsHide: true });
+        }
+        exit(ExitCode.ok);
+      } finally {
+        store.close();
+      }
+    },
+  );
+
+program
   .command("trend")
   .description("Cross-run trend of an official metric with step-change attribution")
   .requiredOption("--scenario <id>")

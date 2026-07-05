@@ -918,6 +918,97 @@ register({
   },
 });
 
+// Query Studio 10k-row query — the head-to-head counterpart of the classic
+// query-10k-results gate: SAME fixture document (queries/select-10000.sql),
+// SAME provisioned SQL server, measured through the Query Studio data plane.
+// The preview gates are PRE-SEEDED into the profile's settings.json (not
+// flipped via setConfig): mssql.sqlDataPlane.enabled must be true when the
+// extension ACTIVATES so serviceclient spawns STS with --enable-sts2 — the
+// v2 lane the QS session rides. Setup opens the fixture in the QS custom
+// editor, then drives the PERF_MODE connect seam (the driver writes the
+// provisioned profile as the ONLY saved connection so the product's
+// exactly-one-profile auto-pick engages). scenario.wallclock stays the
+// driver-plane official metric; the product metric is the registry-derived
+// mssql.queryStudio.query.toRender (submit → resultsRendered, epoch plane —
+// diagnostic like its classic twin).
+register({
+  implemented: true, // B7.7: driver queryStudioConnect/Execute steps + QS perf seams
+  plannedMilestone: "QS-M2",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-query-10k",
+    displayName: "Query Studio: run query with 10000 result rows",
+    tags: ["querystudio", "query", "results-grid", "webview"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.queryStudio.enabled": true,
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "openDocument", path: "queries/select-10000.sql" },
+      { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+      { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+      { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "queryStudioExecute", timeoutMs: 120000 }],
+      // rows-guarded: the connect step's unmeasured session preflight renders
+      // its own (1-row) results — only the real 10k render ends the window.
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 10000 },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      // Success proof from two independent sources (mirrors query-10k-results):
+      // the extension host saw 10k rows complete AND the webview rendered 10k.
+      { type: "markerSeen", name: "mssql.queryStudio.query.complete", attrs: { rows: 10000 } },
+      { type: "markerSeen", name: "mssql.queryStudio.resultsRendered", attrs: { rows: 10000 } },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      // withinMeasuredWindow: the setup preflight emits the same product
+      // marker family — only the measured pair may be timed.
+      {
+        name: "mssql.queryStudio.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.query.complete",
+        component: "queryStudio",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+      {
+        name: "mssql.queryStudio.query.toRender",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.resultsRendered",
+        component: "queryStudio",
+        processRole: "boundary",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Designers (Chunk 4: CLI port of the in-proc designerOpen semantics).
 // Metric names + marker pairs are IDENTICAL to the self-test catalog so a

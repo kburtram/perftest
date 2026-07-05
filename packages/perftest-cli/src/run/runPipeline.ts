@@ -568,6 +568,35 @@ async function executeRep(
       });
     }
   }
+  // Scenario-declared user settings must exist BEFORE launch: activation-time
+  // consumers (e.g. serviceclient appends --enable-sts2 to the STS spawn args
+  // when mssql.sqlDataPlane.enabled is true) never see a post-activation
+  // setConfig flip. Merge-write so runtime writes from earlier reps (saved
+  // connections, setConfig flips) survive in warmed profiles.
+  if (spec.userSettings && Object.keys(spec.userSettings).length > 0) {
+    const settingsDir = join(userDataDir, "User");
+    const settingsPath = join(settingsDir, "settings.json");
+    mkdirSync(settingsDir, { recursive: true });
+    let existing: Record<string, unknown> = {};
+    if (existsSync(settingsPath)) {
+      try {
+        existing = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+      } catch {
+        // unreadable settings are replaced — the harness profile is disposable
+      }
+    }
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...existing, ...spec.userSettings }, null, 2),
+      "utf8",
+    );
+    logger.info("rep.userSettingsSeeded", undefined, {
+      scenarioId: spec.scenarioId,
+      repId,
+      keys: Object.keys(spec.userSettings),
+    });
+  }
+
   const launchSpec = { args: [...(inputs.config.vscode.extraArgs ?? [])], env: {} as Record<string, string> };
   for (const collector of collectors) {
     await collectorHook(collectorCtx.logger, collector, "preLaunch", () =>

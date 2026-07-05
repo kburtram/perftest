@@ -233,18 +233,29 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
   }
 
   // --- Declared marker-pair metrics (design §7 scenario metric definitions) --
+  // withinMeasuredWindow scopes the pair search to scenario.start…scenario.end
+  // (declared per metric): scenarios whose SETUP emits the same product
+  // markers as the measured action (e.g. Query Studio's unmeasured session
+  // preflight) must not have the setup pair timed as the metric.
+  const startIndex = inputs.markers.findIndex((m) => m.name === "scenario.start");
+  const endBoundIndex = inputs.markers.findIndex((m) => m.name === "scenario.end");
+  const windowMarkers =
+    startIndex >= 0 && endBoundIndex > startIndex
+      ? inputs.markers.slice(startIndex, endBoundIndex + 1)
+      : [];
   for (const metricSpec of inputs.spec?.metrics ?? []) {
     if (!metricSpec.beginMarker || !metricSpec.endMarker) {
       continue;
     }
+    const searchMarkers = metricSpec.withinMeasuredWindow ? windowMarkers : inputs.markers;
     // Pair the LAST begin preceding the FIRST end: retry paths can emit
     // multiple begins (e.g. sts spawn re-attempts) and the tightest pair is
     // the honest duration of the attempt that completed.
-    const endIndex = inputs.markers.findIndex((m) => m.name === metricSpec.endMarker);
-    const endMarker = endIndex >= 0 ? inputs.markers[endIndex] : undefined;
+    const endIndex = searchMarkers.findIndex((m) => m.name === metricSpec.endMarker);
+    const endMarker = endIndex >= 0 ? searchMarkers[endIndex] : undefined;
     const begin =
       endIndex >= 0
-        ? [...inputs.markers.slice(0, endIndex)]
+        ? [...searchMarkers.slice(0, endIndex)]
             .reverse()
             .find((m) => m.name === metricSpec.beginMarker)
         : undefined;
