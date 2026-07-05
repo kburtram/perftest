@@ -859,6 +859,66 @@ register({
 });
 
 // ---------------------------------------------------------------------------
+// Query Studio (Phase 2 feature build). Exploratory until baseline history
+// exists. Setup flips the preview gates through the PERF_MODE-only
+// mssql.perf.setConfig command (late registration in the extension makes the
+// custom editor available without a reload).
+// ---------------------------------------------------------------------------
+
+register({
+  implemented: true,
+  plannedMilestone: "QS-M2",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-open",
+    displayName: "Query Studio: open new query editor",
+    tags: ["querystudio", "webview"],
+    profileMode: "warmed",
+    setup: [
+      ...ACTIVATE_STEPS,
+      {
+        type: "command",
+        command: "mssql.perf.setConfig",
+        args: ["mssql.sqlDataPlane.enabled", true],
+        timeoutMs: 15000,
+      },
+      {
+        type: "command",
+        command: "mssql.perf.setConfig",
+        args: ["mssql.queryStudio.enabled", true],
+        timeoutMs: 15000,
+      },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "command", command: "mssql.queryStudio.new", timeoutMs: 60000 },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.open.end",
+          timeoutMs: 60000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql"] }],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "queryStudio.open",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.open.begin",
+        endMarker: "mssql.queryStudio.open.end",
+      },
+    ],
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Designers (Chunk 4: CLI port of the in-proc designerOpen semantics).
 // Metric names + marker pairs are IDENTICAL to the self-test catalog so a
 // designer scenario graduates from local reproduction to CLI without a
