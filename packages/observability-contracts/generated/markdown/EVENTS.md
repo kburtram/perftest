@@ -69,6 +69,9 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `completions.*` | spanFamily | — | — | completions | extensionHost | sameProcessMonotonic | no |  … |
 | `queryStudio.inlineCompletion.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `replay.*` | spanFamily | — | — | replay | extensionHost | sameProcessMonotonic | no |  … |
+| `sqlLanguage.*` | spanFamily | — | — | sqlLanguage | extensionHost | sameProcessMonotonic | no |  … |
+| `sqlScripting.*` | spanFamily | — | — | sqlLanguage | extensionHost | sameProcessMonotonic | no |  … |
+| `queryStudio.languageService.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `settings.snapshot` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `settings.changed` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata … |
