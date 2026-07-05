@@ -1414,6 +1414,65 @@ VERIFY: builds green; extension suite 3278 passing (+6: 5 canary + 1
 containment) / 1 known copilot flake; contracts 18/18 (import.linesSkipped
 registered + re-vendored); gate 4/4 official; smoke 16.7ms.
 
+
+## 2026-07-04 - Entry 34: CHUNK 3 - Trust the stitching (Trace Identity V1)
+
+- TRACE IDENTITY V1 (contracts pkg): the cross-repo correlation contract -
+  TraceIdentityV1 interface with field semantics (jsonRpcId = hint not
+  unique id; sts2 cause = graph edge never fake parent), ROOT_ACTION_TTL_MS
+  = 120s (matches the console's root window).
+- CORRELATION LINTER (contracts pkg, vendored): lintCorrelation() -
+  REGISTRY-DRIVEN pair balancing (explicit pairsWith catches begin/ready +
+  submit/complete, never suffix guessing), rpc./webview./sts. family
+  .begin/.end balancing, orphan accounting w/ lifecycle exemptions
+  (sessionDiag./system./scenario./activate), leaked-root detection past
+  TTL, epoch-aligned counting, scenario-window noise; honest good/fair/poor
+  score + human-readable notes ("why this looks like this"). 6 new tests
+  (24 total in the package).
+- CONSOLE SURFACES: dc/getTraceQuality RPC (viewer-internal excluded,
+  optional per-trace); Overview gains a Trace quality card (score pill +
+  correlated/pairs/leaked-roots/diagnostic-bars rows + notes list);
+  Waterfall toolbar shows a per-trace "stitching: fair|poor" pill with
+  notes on hover when the trace has fog. Fog reported, never painted over.
+- Vendored snapshot regenerated; extension conformance suite extended with
+  a vendored-linter test.
+
+VERIFY: (below)
+
+## 2026-07-04 - Entry 35: CHUNKS 4-6 - parity, cross-run analysis, recipes
+
+C4 PARITY & GRADUATION:
+- CLI designerOpen PORTED (the recorded deferral): driver engine gained
+  deferCleanup + the in-proc semantics (server-level OE session, Databases
+  walk incl. System Databases, real database TreeNode, designer command);
+  ScenarioStep contract extended; scenarios table-designer-open +
+  schema-designer-open registered (metric names + marker pairs IDENTICAL to
+  the self-test catalog); examples/config.designers.local.jsonc.
+  LIVE PROOF: 8/8 reps passed end-to-end; rep-01 shows
+  mssql.tableDesigner.init=1944ms gate-eligible + sts.dacfx.tableDesigner
+  span + 14 rpc spans - Workflow 2 of the vision doc, working.
+- Maturity levels on both catalogs (query-10k-results explicitly ciGating;
+  designers diagnostic; defaults derived from implemented).
+- Parity conformance test (contracts pkg): shared metric families must have
+  identical marker pairs in both hosts AND match the registry derivedFrom.
+C5 CROSS-RUN ANALYSIS IN-PRODUCT:
+- quickCompareVerdict (pure, tested): regression/improved/ok/inconclusive
+  vs pinned baseline w/ 10%+50ms floors, n>=3, IQR noise check; chip on
+  scenario rows, tooltip states the CLI gate is authoritative.
+- ph/compareReps + Compare bottom tab (enabled when a baseline is pinned):
+  marker-pair phase deltas (registry pairing + .begin/.end families),
+  per-type what-changed-most ranking (counts + forwarded durationMs totals),
+  added/removed event types, honest plane notes.
+C6 DIAGNOSTIC RECIPES:
+- diagnostics.recipe presets (light/ui-rendering/service/sql/memory/full)
+  expanded at config load; explicit flags override; heavy recipe in a
+  measurement pass warns loudly. Functional check: service recipe expanded
+  correctly with override preserved + warning fired.
+C7 STS2: intentionally NOT started - gated on STS2 waves 1-3 per the plan;
+  the console's Replay Lab surface stays gated.
+
+VERIFY: (below)
+
 ## 2026-07-04 - Entry 36: PHASE 1 WRAP - pre-branch stabilization for Query Studio
 
 Owner is branching to build Query Studio (SSMS-parity editor on STS2;
