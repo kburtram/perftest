@@ -65,6 +65,13 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `queryStudio.lsp.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `sqlDataPlane.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
 | `rpc.v2.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
+| `metadata.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
+| `completions.*` | spanFamily | — | — | completions | extensionHost | sameProcessMonotonic | no |  … |
+| `queryStudio.inlineCompletion.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
+| `replay.*` | spanFamily | — | — | replay | extensionHost | sameProcessMonotonic | no |  … |
+| `settings.snapshot` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
+| `settings.changed` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
+| `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata … |
 
 ## Derived metric names
 
