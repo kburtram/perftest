@@ -75,6 +75,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `settings.snapshot` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `settings.changed` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata … |
+| `metadataStore.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
+| `objectExplorerV2.*` | spanFamily | — | — | objectExplorer | extensionHost | sameProcessMonotonic | no |  … |
 
 ## Derived metric names
 
