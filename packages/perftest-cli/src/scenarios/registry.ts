@@ -1217,6 +1217,69 @@ register({
   },
 });
 
+register({
+  implemented: true, // CACHE wrap: PERF_MODE warm-acquire probe + persistent cache
+  plannedMilestone: "CACHE",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "metadatacache-warm-acquire",
+    displayName: "Metadata cache: warm acquire served from disk",
+    tags: ["metadata", "cache"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.metadataCache.enabled": true,
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      // The probe hydrates live (cold pass), flushes the save-back, then
+      // proves a SECOND fresh store is served from DISK (throws on any
+      // honesty failure: loadedFromDisk!=1, source!=disk, no snapshot).
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.metadataCacheWarmAcquire",
+          timeoutMs: 90000,
+        },
+      ],
+      // Markers travel via the perf sink — the rep must WAIT for the end
+      // marker to arrive (afterLastAction closed the rep before flush).
+      end: { type: "waitForMarker", name: "mssql.metadata.cache.warmAcquire.end" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.metadata.cache.warmAcquire.begin" },
+      { type: "markerSeen", name: "mssql.metadata.cache.warmAcquire.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        // Disk load + publish + freshness decision — the executable form
+        // of the cache-load budget (metadata-docs cache design §20).
+        name: "metadata.cache.warmAcquire",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.metadata.cache.warmAcquire.begin",
+        endMarker: "mssql.metadata.cache.warmAcquire.end",
+        component: "metadata",
+        processRole: "extensionHost",
+      },
+    ],
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Designers (Chunk 4: CLI port of the in-proc designerOpen semantics).
 // Metric names + marker pairs are IDENTICAL to the self-test catalog so a

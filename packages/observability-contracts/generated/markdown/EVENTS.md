@@ -77,6 +77,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata … |
 | `metadataStore.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
 | `metadataCache.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
+| `mssql.metadata.cache.warmAcquire.begin` | marker | begin | `mssql.metadata.cache.warmAcquire.end` | metadata | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.metadata.cache.warmAcquire.end` | marker | end | `mssql.metadata.cache.warmAcquire.begin` | metadata | extensionHost | sameProcessMonotonic | yes | objects:structuralMetadata, waitedMs:structuralMetadata … |
 | `objectExplorerV2.*` | spanFamily | — | — | objectExplorer | extensionHost | sameProcessMonotonic | no |  … |
 
 ## Derived metric names
