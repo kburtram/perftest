@@ -462,6 +462,21 @@ async function executeStep(
       );
       return;
     }
+    case "provisionConnectionProfile": {
+      const profileName = step.profile ?? "default";
+      const profile = ctx.connectionProfiles?.[profileName];
+      if (!profile) {
+        throw new Error(
+          `No connection profile '${profileName}' was provided by the orchestrator`,
+        );
+      }
+      await withTimeout(
+        provisionSavedProfile(profile, ctx),
+        timeoutMs,
+        `provisionConnectionProfile(${profileName})`,
+      );
+      return;
+    }
     case "queryStudioExecute": {
       // The seam dispatches and returns immediately ({started}); completion
       // flows through the product's own markers (query.complete /
@@ -811,10 +826,14 @@ function normalizeEncrypt(encrypt: string | undefined): string {
  *    custom editor's document model resolves asynchronously after openWith,
  *    so early calls honestly report "no live Query Studio model".
  */
-async function queryStudioConnect(
+/**
+ * Provision-only half of queryStudioConnect: write the profile as the ONLY
+ * saved connection + seed the SqlLogin credential. Reused by scenarios whose
+ * feature performs its own connect (provisionConnectionProfile step).
+ */
+async function provisionSavedProfile(
   profile: ConnectionProfileSpec,
   ctx: EngineContext,
-  timeoutMs: number,
 ): Promise<void> {
   const savedProfile: Record<string, unknown> = {
     id: "perf-querystudio-default",
@@ -859,7 +878,15 @@ async function queryStudioConnect(
       throw new Error("credential store refused the SqlLogin password for the saved profile");
     }
   }
-  ctx.log(`queryStudioConnect: saved profile targets ${profile.server}`);
+  ctx.log(`provisionSavedProfile: saved profile targets ${profile.server}`);
+}
+
+async function queryStudioConnect(
+  profile: ConnectionProfileSpec,
+  ctx: EngineContext,
+  timeoutMs: number,
+): Promise<void> {
+  await provisionSavedProfile(profile, ctx);
 
   // Inner deadline fires BEFORE the caller's withTimeout so the diagnostic
   // last-response detail reaches the rep record instead of a bare timeout.

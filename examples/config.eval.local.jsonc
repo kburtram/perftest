@@ -15,6 +15,7 @@
     "debug-console-smoke",
     "querystudio-open",
     "querystudio-query-10k",
+    "objectexplorerv2-browse",
     "query-10k-results"
   ],
   "vscode": {

@@ -1009,6 +1009,57 @@ register({
   },
 });
 
+// Object Explorer v2 browse (OE v2 B21, exploratory): activate with the
+// v2 preview view + data plane on, then drive the PERF_MODE seam that
+// connects the provisioned profile through the data plane and expands the
+// server catalog to a rendered Databases list. The seam THROWS on every
+// honesty failure (no profile / connect failed / zero databases), so
+// noErrors is a real proof. No new markers: wallclock covers
+// connect + server-catalog hydration + expand (the OE v2 host-work targets
+// are covered separately by the unit-lane scale suite).
+register({
+  implemented: true, // OE v2 B21: mssql.perf.objectExplorerV2Browse seam
+  plannedMilestone: "OE2-7",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "objectexplorerv2-browse",
+    displayName: "Object Explorer v2: connect and expand Databases",
+    tags: ["objectexplorer", "oev2", "metadata"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.objectExplorer.viewMode": "v2Preview",
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      // Saved profile only — OE v2 performs its own (measured) connect.
+      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.objectExplorerV2Browse",
+          timeoutMs: 90000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] }],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Designers (Chunk 4: CLI port of the in-proc designerOpen semantics).
 // Metric names + marker pairs are IDENTICAL to the self-test catalog so a

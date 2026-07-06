@@ -259,6 +259,13 @@ export type ScenarioStep =
    */
   | { type: "queryStudioConnect"; profile?: string; timeoutMs?: number }
   /**
+   * Provision the orchestrator's connection profile as the ONLY saved
+   * mssql connection (+ credential-store seed for SqlLogin) WITHOUT
+   * connecting anything — for scenarios whose feature does its own
+   * connect (e.g. Object Explorer v2 browse).
+   */
+  | { type: "provisionConnectionProfile"; profile?: string; timeoutMs?: number }
+  /**
    * Execute the live Query Studio document's text through the PERF_MODE-only
    * mssql.perf.queryStudioExecute seam (backing document text by default).
    */
