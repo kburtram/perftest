@@ -15,6 +15,8 @@
     "debug-console-smoke",
     "querystudio-open",
     "querystudio-query-10k",
+    "querystudio-query-wide",
+    "querystudio-query-blob",
     "objectexplorerv2-browse",
     "query-10k-results"
   ],

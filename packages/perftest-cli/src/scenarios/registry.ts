@@ -1009,6 +1009,163 @@ register({
   },
 });
 
+// QS-3 heavy content shapes — Query Studio twins of the classic
+// query-wide-columns / query-blob-xml scenarios: SAME fixture documents,
+// SAME provisioned server, measured through the QS data plane with the same
+// rows-guarded end-marker discipline as querystudio-query-10k (the connect
+// step's unmeasured session preflight renders its own 1-row results — only
+// the real render ends the window). Success mirrors the classic row proofs
+// from two independent sources; the QS markers carry rows/resultSets but NOT
+// a column count, so the classic "columns == 300" webviewProbe has no QS
+// equivalent yet (rows-based proof only). Exploratory: wallclock stays
+// official:false until baseline history exists.
+register({
+  implemented: true,
+  plannedMilestone: "QS-3",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-query-wide",
+    displayName: "Query Studio: 300-column result (100 rows)",
+    tags: ["querystudio", "query", "results-grid", "wide", "webview"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.queryStudio.enabled": true,
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "openDocument", path: "queries/wide-columns.sql" },
+      { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+      { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+      { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "queryStudioExecute", timeoutMs: 120000 }],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 100 },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      // Classic twin proves rowCount == 100 (wide-columns.sql TOP 100).
+      { type: "markerSeen", name: "mssql.queryStudio.query.complete", attrs: { rows: 100 } },
+      { type: "markerSeen", name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100 } },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "mssql.queryStudio.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.query.complete",
+        component: "queryStudio",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+      {
+        name: "mssql.queryStudio.query.toRender",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.resultsRendered",
+        component: "queryStudio",
+        processRole: "boundary",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "QS-3",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-query-blob",
+    displayName: "Query Studio: VARBINARY(MAX)/XML/NVARCHAR(MAX) cells",
+    tags: ["querystudio", "query", "blob", "content", "webview"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.queryStudio.enabled": true,
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "openDocument", path: "queries/blob-xml.sql" },
+      { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+      { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+      { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      // Classic twin allows 180s for the heavy-content fetch; keep parity.
+      action: [{ type: "queryStudioExecute", timeoutMs: 180000 }],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 20 },
+      },
+      timeoutMs: 180000,
+    },
+    success: [
+      // Classic twin proves rowCount == 20 (dbo.PerfBlobs seed rows).
+      { type: "markerSeen", name: "mssql.queryStudio.query.complete", attrs: { rows: 20 } },
+      { type: "markerSeen", name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "mssql.queryStudio.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.query.complete",
+        component: "queryStudio",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+      {
+        name: "mssql.queryStudio.query.toRender",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.resultsRendered",
+        component: "queryStudio",
+        processRole: "boundary",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
 // Object Explorer v2 browse (OE v2 B21, exploratory): activate with the
 // v2 preview view + data plane on, then drive the PERF_MODE seam that
 // connects the provisioned profile through the data plane and expands the
