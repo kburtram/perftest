@@ -791,6 +791,54 @@ program
   );
 
 // ---------------------------------------------------------------------------
+// push — publish run directories to the central store (design C1)
+// ---------------------------------------------------------------------------
+program
+  .command("push [runId]")
+  .description("Publish perf run(s) from run directories to the central SQL Server store")
+  .option("--runs-dir <path>", "runs directory", "./perf-runs")
+  .option("--all-new", "push every run directory (unchanged runs land as alreadyPresent)")
+  .option("--dry-run", "print the exact upload preview without connecting or uploading")
+  .option("--policy <id>", "upload policy id", "ci-official.v1")
+  .option("--ci", "record the upload under the CI principal")
+  .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
+  .action(
+    async (
+      runId: string | undefined,
+      opts: { runsDir: string; allNew?: boolean; dryRun?: boolean; policy: string; ci?: boolean; target?: string },
+    ) => {
+      const { runPush } = await import("./central/push");
+      const write = (line: string) => process.stdout.write(line + "\n");
+      const pushLogger = logger.child("push");
+      if (!runId && !opts.allNew) {
+        process.stderr.write("push: pass a runId or --all-new\n");
+        exit(ExitCode.pushFailed);
+      }
+      const baseOptions = {
+        runsDir: opts.runsDir,
+        allNew: opts.allNew ?? false,
+        dryRun: opts.dryRun ?? false,
+        policy: opts.policy,
+        ci: opts.ci ?? false,
+        ...(runId !== undefined ? { runId } : {}),
+      };
+      if (baseOptions.dryRun) {
+        try {
+          const outcome = await runPush(baseOptions, undefined, pushLogger, write);
+          exit(outcome.failed > 0 ? ExitCode.pushFailed : ExitCode.ok);
+        } catch (error) {
+          process.stderr.write(`push: ${(error as Error).message}\n`);
+          exit(ExitCode.pushFailed);
+        }
+      }
+      await withCentral(opts.target, async (client) => {
+        const outcome = await runPush(baseOptions, client, pushLogger, write);
+        return outcome.failed > 0 || outcome.refused > 0 ? ExitCode.pushFailed : ExitCode.ok;
+      });
+    },
+  );
+
+// ---------------------------------------------------------------------------
 // central — shared SQL Server observability store (design C0.7/C1)
 // ---------------------------------------------------------------------------
 const central = program

@@ -388,3 +388,60 @@ function normalizeSampleRow(row: Record<string, unknown>): Record<string, unknow
     tags_json: row["tags_json"] ? JSON.parse(String(row["tags_json"])) : null,
   };
 }
+
+suite("T-B6: literal-encoder call style matches parameterized calls", () => {
+  it("stores byte-identical diag_event rows through both writer call shapes", async () => {
+    const client = await CentralClient.connect(resolveCentralTarget(CONN));
+    const { sqlNString } = await import("@mssqlperf/contracts");
+    try {
+      const paramSession = goldenSession("sess-tb6-param");
+      const litSession = goldenSession("sess-tb6-lit");
+      const paramProjection = projectDiagSession(paramSession, { uploadPolicyId: "team-default.v1" });
+      const litProjection = projectDiagSession(litSession, { uploadPolicyId: "team-default.v1" });
+
+      await uploadProjection(client, paramProjection, IDENTITY);
+
+      // Literal style: exactly what the product data plane will send (C-11).
+      const begin = await client.beginUpload(litProjection, IDENTITY);
+      expect(begin.disposition).toBe("proceed");
+      for (const item of litProjection.items) {
+        await client.batch(
+          `EXEC central.usp_stage_upload_item ` +
+            `@upload_batch_id = ${begin.uploadBatchId}, ` +
+            `@item_kind = ${sqlNString(item.item_kind)}, ` +
+            `@item_ordinal = ${item.item_ordinal}, ` +
+            `@row_count = ${item.row_count}, ` +
+            `@payload_digest = ${sqlNString(item.payload_digest)}, ` +
+            `@payload = ${sqlNString(item.payload_json, 16 * 1024 * 1024)};`,
+        );
+      }
+      const expectedRows: Record<string, number> = {};
+      for (const item of litProjection.items) {
+        expectedRows[item.item_kind] = (expectedRows[item.item_kind] ?? 0) + item.row_count;
+      }
+      const receipt = await client.commitUpload(
+        begin.uploadBatchId!,
+        litProjection.items.length,
+        expectedRows,
+      );
+      expect(receipt.outcome).toBe("committed");
+
+      const rowsFor = async (sessionId: string) =>
+        client.query(
+          `SELECT e.seq, e.event_id, e.epoch_ms, e.monotonic_ns, e.process, e.pid, e.feature,
+                  e.kind, e.type, e.status, e.trace_id, e.cause_event_id, e.entity_kind,
+                  e.entity_ref, e.duration_ms, e.timing_class, e.cls_max, e.cls_rank,
+                  e.cls_redacted_fields, e.tags_json, e.payload_json, e.payload_digest
+           FROM central.diag_events e
+           JOIN central.diag_sessions s ON s.session_sk = e.session_sk
+           WHERE s.session_id = '${sessionId}' ORDER BY e.seq`,
+        );
+      const paramRows = await rowsFor("sess-tb6-param");
+      const litRows = await rowsFor("sess-tb6-lit");
+      expect(litRows).toHaveLength(6);
+      expect(litRows).toEqual(paramRows);
+    } finally {
+      await client.close();
+    }
+  }, 60_000);
+});
