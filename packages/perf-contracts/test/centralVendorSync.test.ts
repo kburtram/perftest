@@ -29,8 +29,11 @@ maybe("central contract vendor sync (vscode-mssql)", () => {
       const headerEnd = vendored.indexOf("*/");
       expect(headerEnd, `${file} missing GENERATED header`).toBeGreaterThan(0);
       expect(vendored.slice(0, headerEnd)).toContain("GENERATED");
-      const body = vendored.slice(headerEnd + 3).replace(/^\r?\n/, "");
-      expect(body, `${file} drifted — re-vendor from perf-contracts`).toBe(source);
+      // Content identity modulo line endings: the vscode-mssql pre-commit
+      // hook rewrites the vendored copies to CRLF.
+      const normalize = (s: string) => s.split("\r").join("");
+      const body = normalize(vendored.slice(headerEnd + 3)).replace(/^\n/, "");
+      expect(body, `${file} drifted — re-vendor from perf-contracts`).toBe(normalize(source));
     }
   });
 });
