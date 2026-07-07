@@ -56,24 +56,14 @@ export function environmentRelevantConfig(config: {
   };
 }
 
-/** Deterministic JSON: keys sorted at every level. */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortValue(value));
-}
-
-function sortValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortValue);
-  }
-  if (value && typeof value === "object") {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      sorted[key] = sortValue((value as Record<string, unknown>)[key]);
-    }
-    return sorted;
-  }
-  return value;
-}
+/**
+ * Deterministic JSON. The implementation moved to the shared central contract
+ * (perf-contracts src/central/digest.ts) so every central-store digest and the
+ * environment hash use ONE canonicalization (review addendum §6); re-exported
+ * here to keep existing imports working. The recipe is unchanged.
+ */
+import { canonicalJson } from "@mssqlperf/contracts";
+export { canonicalJson };
 
 export function captureEnvironment(inputs: EnvironmentCaptureInputs): EnvironmentInfo {
   const cpus = os.cpus();
