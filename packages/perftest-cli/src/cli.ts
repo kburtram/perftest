@@ -916,6 +916,20 @@ central
   });
 
 central
+  .command("report")
+  .description("Render a static HTML report over the central store (canned views only)")
+  .option("--out <path>", "output file", "./central-report.html")
+  .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
+  .action(async (opts: { out: string; target?: string }) => {
+    await withCentral(opts.target, async (client) => {
+      const { renderCentralReport } = await import("./central/centralReport");
+      await renderCentralReport(client, opts.out);
+      process.stdout.write(`Central report written to ${opts.out}` + String.fromCharCode(10));
+      return ExitCode.ok;
+    });
+  });
+
+central
   .command("cleanup")
   .description("Run central retention: TTL lanes, orphan sweep, abandoned promotion")
   .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
