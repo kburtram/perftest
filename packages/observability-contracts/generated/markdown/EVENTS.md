@@ -80,6 +80,13 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.metadata.cache.warmAcquire.begin` | marker | begin | `mssql.metadata.cache.warmAcquire.end` | metadata | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.metadata.cache.warmAcquire.end` | marker | end | `mssql.metadata.cache.warmAcquire.begin` | metadata | extensionHost | sameProcessMonotonic | yes | objects:structuralMetadata, waitedMs:structuralMetadata … |
 | `objectExplorerV2.*` | spanFamily | — | — | objectExplorer | extensionHost | sameProcessMonotonic | no |  … |
+| `centralObservability.*` | spanFamily | — | — | centralObservability | extensionHost | sameProcessMonotonic | no |  … |
+| `mssql.central.preview.begin` | marker | begin | `mssql.central.preview.end` | centralObservability | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.central.preview.end` | marker | end | `mssql.central.preview.begin` | centralObservability | extensionHost | sameProcessMonotonic | yes | events:structuralMetadata, tables:structuralMetadata … |
+| `mssql.central.upload.begin` | marker | begin | `mssql.central.upload.end` | centralObservability | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.central.upload.end` | marker | end | `mssql.central.upload.begin` | centralObservability | extensionHost | sameProcessMonotonic | yes | items:structuralMetadata, rows:structuralMetadata, outcome:structuralMetadata … |
+| `mssql.central.provider.list.begin` | marker | begin | `mssql.central.provider.list.end` | centralObservability | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.central.provider.list.end` | marker | end | `mssql.central.provider.list.begin` | centralObservability | extensionHost | sameProcessMonotonic | yes | page:structuralMetadata, rowCount:structuralMetadata … |
 
 ## Derived metric names
 

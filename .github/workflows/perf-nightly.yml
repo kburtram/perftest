@@ -1,0 +1,67 @@
+# Nightly official perf run + central publish (central design §8.2, C1').
+#
+# TEMPLATE — activation requires (see setup-instructions.md):
+#   1. a pinned self-hosted runner (label below) with SQL Server container
+#      support and the STS2 build prerequisites;
+#   2. the MSSQL_PERFTEST_CENTRAL_CONNSTRING repository secret pointing at
+#      the team central store with a central_ci-role SQL login (decision Q-4:
+#      hosting/auth must be ratified first).
+#
+# Invariants (do not weaken):
+#   - The gate verdict is the LOCAL exit code from `perftest run`. The
+#     central push runs after it and can never change the job conclusion
+#     (continue-on-error). A central outage is a visible warning, not a
+#     failed gate.
+#   - Run artifacts upload even when the push fails — files are ground
+#     truth and central can be backfilled later with `perftest push`.
+#   - The push uses --ci so baselines stay role-gated to the CI principal.
+
+name: perf-nightly
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # nightly, off-hours for the pinned agent
+  workflow_dispatch: {}
+
+jobs:
+  perf:
+    runs-on: [self-hosted, perf-pinned]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build harness
+        run: npm ci && npm run build
+
+      - name: Run perf gates (local verdict is authoritative)
+        id: gates
+        run: node packages/perftest-cli/dist/cli.js run --config examples/config.eval.local.jsonc
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-runs-${{ github.run_id }}
+          path: perf-runs/
+          retention-days: 30
+
+      - name: Publish to central store (non-gating)
+        id: push
+        if: always()
+        continue-on-error: true
+        env:
+          MSSQL_PERFTEST_CENTRAL_CONNSTRING: ${{ secrets.MSSQL_PERFTEST_CENTRAL_CONNSTRING }}
+        run: |
+          node packages/perftest-cli/dist/cli.js push --all-new --ci | tee push-output.txt
+
+      - name: Job summary (gate verdict + central receipt, success or not)
+        if: always()
+        run: |
+          {
+            echo "## Perf nightly"
+            echo "- gate step outcome: ${{ steps.gates.outcome }}"
+            echo "- central push outcome: ${{ steps.push.outcome }}"
+            echo '```'
+            tail -n 5 push-output.txt 2>/dev/null || echo "no push output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
