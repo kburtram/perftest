@@ -230,6 +230,11 @@ BEGIN
 
     BEGIN TRAN;
 
+    -- A retry supersedes a previous failed/staged attempt at the same slot.
+    DELETE FROM central.upload_items
+    WHERE upload_batch_id = @upload_batch_id AND item_kind = @item_kind
+      AND item_ordinal = @item_ordinal AND status <> N'applied';
+
     INSERT INTO central.upload_items (upload_batch_id, item_kind, item_ordinal, row_count, payload_digest, status)
     VALUES (@upload_batch_id, @item_kind, @item_ordinal, @row_count, @payload_digest, N'staged');
     DECLARE @item_id bigint = SCOPE_IDENTITY();
@@ -273,9 +278,9 @@ BEGIN
             environment_hash nvarchar(100), captured_at_unix_ns nvarchar(30), captured_at_utc datetime2(3),
             machine_id nvarchar(200), os_platform nvarchar(60), os_version nvarchar(200),
             cpu_model nvarchar(200), logical_cores int, memory_total_mb int,
-            vscode_version nvarchar(60), extension_versions_json nvarchar(max) AS JSON,
+            vscode_version nvarchar(60), extension_versions_json nvarchar(max),
             sts_version nvarchar(60), sql_image_digest nvarchar(200), sql_snapshot nvarchar(200),
-            config_fingerprint_json nvarchar(max) AS JSON
+            config_fingerprint_json nvarchar(max)
         ) j;
         SET @inserted = @@ROWCOUNT;
     END
@@ -285,7 +290,7 @@ BEGIN
         SELECT @upload_batch_id, j.scenario_id, j.display_name, j.owner, j.tags_json, j.definition_hash
         FROM OPENJSON(@payload) WITH (
             scenario_id nvarchar(200), display_name nvarchar(400), owner nvarchar(200),
-            tags_json nvarchar(max) AS JSON, definition_hash nvarchar(100)
+            tags_json nvarchar(max), definition_hash nvarchar(100)
         ) j;
         SET @inserted = @@ROWCOUNT;
     END
@@ -318,7 +323,7 @@ BEGIN
             process_role nvarchar(80), source nvarchar(40), official bit, lower_is_better bit,
             aggregation nvarchar(40), trace_id nvarchar(80), span_id nvarchar(40),
             start_unix_ns nvarchar(30), end_unix_ns nvarchar(30), confidence nvarchar(20),
-            tags_json nvarchar(max) AS JSON, derivation_json nvarchar(max) AS JSON
+            tags_json nvarchar(max), derivation_json nvarchar(max)
         ) j;
         SET @inserted = @@ROWCOUNT;
     END
@@ -330,7 +335,7 @@ BEGIN
                j.name, j.status, j.message, j.details_json
         FROM OPENJSON(@payload) WITH (
             run_id nvarchar(100), scenario_id nvarchar(200), rep_id int, attempt_id int,
-            name nvarchar(200), status nvarchar(20), message nvarchar(max), details_json nvarchar(max) AS JSON
+            name nvarchar(200), status nvarchar(20), message nvarchar(max), details_json nvarchar(max)
         ) j;
         SET @inserted = @@ROWCOUNT;
     END
@@ -361,7 +366,7 @@ BEGIN
             session_id nvarchar(100), source nvarchar(30), capture_mode nvarchar(40),
             capture_policy_id nvarchar(120), created_utc datetime2(3), updated_utc datetime2(3),
             event_count int, gap_count int, source_size_bytes bigint,
-            provenance_json nvarchar(max) AS JSON, environment_hash nvarchar(100),
+            provenance_json nvarchar(max), environment_hash nvarchar(100),
             product_sha nvarchar(80), status nvarchar(20)
         ) j;
         SET @inserted = @@ROWCOUNT;
@@ -394,8 +399,8 @@ BEGIN
                 kind nvarchar(40), type nvarchar(200), status nvarchar(40), trace_id nvarchar(80),
                 cause_event_id nvarchar(80), entity_kind nvarchar(40), entity_ref nvarchar(200),
                 duration_ms float, timing_class nvarchar(60), cls_max nvarchar(80), cls_rank int,
-                cls_redacted_fields int, tags_json nvarchar(max) AS JSON,
-                payload_json nvarchar(max) AS JSON, payload_digest nvarchar(100)
+                cls_redacted_fields int, tags_json nvarchar(max),
+                payload_json nvarchar(max), payload_digest nvarchar(100)
             ) j;
             SET @inserted = @@ROWCOUNT;
         END
@@ -422,10 +427,15 @@ BEGIN
 
     IF @inserted <> @row_count
     BEGIN
+        -- Roll back the staged rows, then record the failure as ledger
+        -- evidence in its own right (the rolled-back item row is gone).
         ROLLBACK TRAN;
-        UPDATE central.upload_items SET status = N'failed', error_code = N'rowCountMismatch',
-            error_message = N'inserted ' + CAST(@inserted AS nvarchar(20)) + N' of ' + CAST(@row_count AS nvarchar(20))
-        WHERE upload_item_id = @item_id;
+        INSERT INTO central.upload_items
+            (upload_batch_id, item_kind, item_ordinal, row_count, payload_digest, status, error_code, error_message)
+        VALUES
+            (@upload_batch_id, @item_kind, @item_ordinal, @row_count, @payload_digest, N'failed',
+             N'rowCountMismatch',
+             N'inserted ' + CAST(@inserted AS nvarchar(20)) + N' of ' + CAST(@row_count AS nvarchar(20)));
         THROW 53007, N'usp_stage_upload_item: inserted row count does not match declared row_count', 1;
     END
 

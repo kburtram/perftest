@@ -92,3 +92,18 @@ export function schemaPath(name: ContractName): string {
 export function sqliteSchemaPath(): string {
   return join(__dirname, "..", "sql", "perf-store.schema.sql");
 }
+
+/**
+ * Absolute paths of the bundled central-store SQL files, in apply order
+ * (schema -> procedures -> views -> roles). `perftest central init/migrate`
+ * executes these; they are idempotent (IF NULL guards + CREATE OR ALTER).
+ */
+export function centralSchemaPaths(): string[] {
+  const sqlDir = join(__dirname, "..", "sql");
+  return [
+    join(sqlDir, "central-store.schema.mssql.sql"),
+    join(sqlDir, "central-store.procedures.sql"),
+    join(sqlDir, "central-store.views.sql"),
+    join(sqlDir, "central-store.roles.sql"),
+  ];
+}

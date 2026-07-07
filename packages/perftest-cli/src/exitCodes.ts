@@ -17,6 +17,12 @@ export const ExitCode = {
   infrastructureFailure: 5,
   /** Insufficient valid samples. */
   insufficientSamples: 6,
+  /**
+   * Central-store publish/admin failure (perftest push, perftest central).
+   * Deliberately distinct from infrastructureFailure: a central outage must
+   * never be mistaken for a gate-relevant failure (central design 8.2).
+   */
+  pushFailed: 7,
 } as const;
 
 export type ExitCodeName = keyof typeof ExitCode;

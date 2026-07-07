@@ -790,6 +790,95 @@ program
     },
   );
 
+// ---------------------------------------------------------------------------
+// central — shared SQL Server observability store (design C0.7/C1)
+// ---------------------------------------------------------------------------
+const central = program
+  .command("central")
+  .description("Central observability store administration (shared SQL Server)");
+
+async function withCentral(
+  explicitTarget: string | undefined,
+  action: (client: import("./central/centralClient").CentralClient) => Promise<number>,
+): Promise<void> {
+  const { CentralClient, CentralClientError, resolveCentralTarget } = await import(
+    "./central/centralClient"
+  );
+  let client: import("./central/centralClient").CentralClient | undefined;
+  let code: number = ExitCode.pushFailed;
+  try {
+    const target = resolveCentralTarget(explicitTarget);
+    client = await CentralClient.connect(target);
+    code = await action(client);
+  } catch (error) {
+    if (error instanceof CentralClientError) {
+      process.stderr.write(`central: ${error.message}\n`);
+    } else {
+      process.stderr.write(`central: ${(error as Error).message}\n`);
+    }
+    code = ExitCode.pushFailed;
+  } finally {
+    await client?.close();
+  }
+  exit(code);
+}
+
+central
+  .command("init")
+  .description("Create/upgrade the central store objects (idempotent, contract-owned DDL)")
+  .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
+  .action(async (opts: { target?: string }) => {
+    await withCentral(opts.target, async (client) => {
+      const { centralInit } = await import("./central/centralAdmin");
+      await centralInit(client, logger.child("central"));
+      process.stdout.write(`Central store initialized (${client.target.database} on ${client.target.server}).\n`);
+      return ExitCode.ok;
+    });
+  });
+
+central
+  .command("check")
+  .description("Validate the central store: schema/contract/vocabulary versions, procs, views, health")
+  .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
+  .action(async (opts: { target?: string }) => {
+    await withCentral(opts.target, async (client) => {
+      const { centralCheck } = await import("./central/centralAdmin");
+      const result = await centralCheck(client);
+      for (const issue of result.issues) {
+        process.stdout.write(`ISSUE: ${issue}\n`);
+      }
+      process.stdout.write(
+        `central check ${result.ok ? "OK" : `FAILED (${result.issues.length} issue(s))`}\n` +
+          `health: ${JSON.stringify(result.facts)}\n`,
+      );
+      return result.ok ? ExitCode.ok : ExitCode.pushFailed;
+    });
+  });
+
+central
+  .command("health")
+  .description("Print central.usp_store_health facts")
+  .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
+  .action(async (opts: { target?: string }) => {
+    await withCentral(opts.target, async (client) => {
+      const health = await client.storeHealth();
+      process.stdout.write(JSON.stringify(health, null, 2) + "\n");
+      return ExitCode.ok;
+    });
+  });
+
+central
+  .command("cleanup")
+  .description("Run central retention: TTL lanes, orphan sweep, abandoned promotion")
+  .option("--target <connstring>", "SQL auth connection string (else MSSQL_PERFTEST_CENTRAL_CONNSTRING)")
+  .action(async (opts: { target?: string }) => {
+    await withCentral(opts.target, async (client) => {
+      const result = await client.retentionCleanup();
+      process.stdout.write(JSON.stringify(result) + "\n");
+      return ExitCode.ok;
+    });
+  });
+
 program.parseAsync(process.argv).catch((error: unknown) => {
   logger.error("cli.unhandled", error instanceof Error ? error.stack : String(error));
   exit(ExitCode.infrastructureFailure);
