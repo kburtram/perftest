@@ -1353,6 +1353,96 @@ registerQueryStudioShape({
   timeoutMs: 300000,
 });
 
+// ---------------------------------------------------------------------------
+// QO-9b tuning spread: each axis point is a distinct scenarioId (the whole
+// pipeline/store/reports work unchanged) whose knobs ride
+// mssql.queryStudio.tuning.overrides in userSettings — the QueryTuning
+// snapshot stamps them on run records and the submit marker, so runs are
+// correlated by parameter set (tuningDigest), not by folklore. The base
+// (unsuffixed) scenario IS the defaults point of the spread.
+// ---------------------------------------------------------------------------
+interface QueryStudioSpreadAxis {
+  suffix: string;
+  tuningOverrides: Record<string, unknown>;
+}
+
+function registerQueryStudioSpread(
+  base: QueryStudioShapeSpec,
+  axes: QueryStudioSpreadAxis[],
+): void {
+  for (const axis of axes) {
+    registerQueryStudioShape({
+      ...base,
+      scenarioIdSuffix: `-${axis.suffix}`,
+      displayName: `${base.displayName} [${axis.suffix}]`,
+      tags: [...base.tags, "tuning-spread"],
+      tuningOverrides: { ...(base.tuningOverrides ?? {}), ...axis.tuningOverrides },
+    });
+  }
+}
+
+// Deep-results shape: wire page sizing (pageRows is service-honored since
+// QO-3; the service clamps above its pinned 1000 maximum — larger axis
+// points would silently clamp, so the spread stays within the honest range).
+registerQueryStudioSpread(
+  {
+    scenarioId: "querystudio-query-100k-narrow",
+    displayName: "Query Studio: 100k narrow rows",
+    tags: ["querystudio", "query", "results-grid", "large-results", "webview"],
+    queryPath: "queries/select-100000.sql",
+    end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+    success: [
+      { name: "mssql.queryStudio.query.complete", attrs: { rows: 100000 } },
+      { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+    ],
+    timeoutMs: 300000,
+  },
+  [
+    { suffix: "p128", tuningOverrides: { pageRows: 128 } },
+    { suffix: "p512", tuningOverrides: { pageRows: 512 } },
+    { suffix: "b64k", tuningOverrides: { pageBytes: 65536 } },
+  ],
+);
+
+// Wide shape: page sizing vs grid window sizing (QO-7 knob).
+registerQueryStudioSpread(
+  {
+    scenarioId: "querystudio-query-wide-1000x300",
+    displayName: "Query Studio: 1000 rows x 300 columns",
+    tags: ["querystudio", "query", "results-grid", "wide", "webview"],
+    queryPath: "queries/wide-columns-1000.sql",
+    end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 1000 } },
+    success: [
+      { name: "mssql.queryStudio.query.complete", attrs: { rows: 1000 } },
+      { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 1000 } },
+    ],
+    timeoutMs: 300000,
+  },
+  [
+    { suffix: "p128", tuningOverrides: { pageRows: 128 } },
+    { suffix: "w200", tuningOverrides: { gridWindowRows: 200 } },
+    { suffix: "adaptive", tuningOverrides: { gridWindowMode: "adaptive" } },
+  ],
+);
+
+// Huge-cell shape: display bound sweep (cells stream since QO-4; a lower
+// maxCellBytes bounds both wire payload and prefix retention).
+registerQueryStudioSpread(
+  {
+    scenarioId: "querystudio-query-large-cells",
+    displayName: "Query Studio: 20 rows with ~1 MiB JSON/XML cells",
+    tags: ["querystudio", "query", "blob", "content", "webview"],
+    queryPath: "queries/large-cells-1mb.sql",
+    end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+    success: [
+      { name: "mssql.queryStudio.query.complete", attrs: { rows: 20 } },
+      { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+    ],
+    timeoutMs: 300000,
+  },
+  [{ suffix: "cell64k", tuningOverrides: { maxCellBytes: 65536 } }],
+);
+
 // Object Explorer v2 browse (OE v2 B21, exploratory): activate with the
 // v2 preview view + data plane on, then drive the PERF_MODE seam that
 // connects the provisioned profile through the data plane and expands the
