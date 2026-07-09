@@ -907,7 +907,9 @@ register({
     metrics: [
       { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
       {
-        name: "queryStudio.open",
+        // Canonical registry name (was unprefixed "queryStudio.open" — a
+        // pre-QO-9a drift the family conformance test now guards against).
+        name: "mssql.queryStudio.open",
         source: "marker",
         official: false,
         lowerIsBetter: true,
@@ -1164,6 +1166,191 @@ register({
       },
     ],
   },
+});
+
+// ---------------------------------------------------------------------------
+// QO-9a result-shape scenarios (coding-docs/query-optimization EXECUTION_PLAN):
+// Query Studio under the shapes DBAs actually hit — deep results, wide grids,
+// huge cells, message floods, many result sets. All follow the
+// querystudio-query-10k discipline: activation-time preview gates in
+// userSettings, rows-guarded end markers (the connect preflight emits the
+// same marker family), exploratory maturity, wallclock official:false until
+// baselines mature. `tuningOverrides` (QO-9b spreads) inject per-combo knobs
+// via mssql.queryStudio.tuning.overrides in userSettings.
+// ---------------------------------------------------------------------------
+interface QueryStudioShapeSpec {
+  scenarioId: string;
+  displayName: string;
+  tags: string[];
+  queryPath: string;
+  /** attrs guard for the measured resultsRendered (or alternate end marker). */
+  end: { name: string; attrs: Record<string, number> };
+  success: Array<{ name: string; attrs?: Record<string, number> }>;
+  timeoutMs?: number;
+  /** Include the submit→resultsRendered pair (skip for no-result-set shapes). */
+  renderMetric?: boolean;
+  tuningOverrides?: Record<string, unknown>;
+  scenarioIdSuffix?: string;
+}
+
+function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
+  const timeoutMs = shape.timeoutMs ?? 180000;
+  register({
+    implemented: true,
+    plannedMilestone: "QO-9a",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: shape.scenarioId + (shape.scenarioIdSuffix ?? ""),
+      displayName: shape.displayName,
+      tags: shape.tags,
+      profileMode: "warmed",
+      userSettings: {
+        "mssql.sqlDataPlane.enabled": true,
+        "mssql.queryStudio.enabled": true,
+        ...(shape.tuningOverrides
+          ? { "mssql.queryStudio.tuning.overrides": shape.tuningOverrides }
+          : {}),
+      },
+      sql: {
+        database: "PerfHarness",
+        cacheMode: "warm",
+        connectionProfile: "default",
+      },
+      setup: [
+        ...ACTIVATE_STEPS,
+        { type: "openDocument", path: shape.queryPath },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: [{ type: "queryStudioExecute", timeoutMs }],
+        end: { type: "waitForMarker", name: shape.end.name, attrs: shape.end.attrs },
+        timeoutMs,
+      },
+      success: [
+        ...shape.success.map((proof) => ({
+          type: "markerSeen" as const,
+          name: proof.name,
+          ...(proof.attrs ? { attrs: proof.attrs } : {}),
+        })),
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+      cleanup: [
+        { type: "command", command: "workbench.action.closeActiveEditor" },
+        ...CLEANUP_EXPLORER,
+      ],
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+        {
+          name: "mssql.queryStudio.query.toComplete",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryStudio.query.submit",
+          endMarker: "mssql.queryStudio.query.complete",
+          component: "queryStudio",
+          processRole: "extensionHost",
+          withinMeasuredWindow: true,
+        },
+        ...(shape.renderMetric !== false
+          ? [
+              {
+                name: "mssql.queryStudio.query.toRender",
+                source: "marker" as const,
+                official: false,
+                lowerIsBetter: true,
+                beginMarker: "mssql.queryStudio.query.submit",
+                endMarker: "mssql.queryStudio.resultsRendered",
+                component: "queryStudio",
+                processRole: "boundary" as const,
+                withinMeasuredWindow: true,
+              },
+            ]
+          : []),
+      ],
+    },
+  });
+}
+
+// Deep narrow results: 100k rows x 4 columns — spill, windowing, and
+// streaming-notification pressure. The pre-optimization baseline anchor.
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-100k-narrow",
+  displayName: "Query Studio: 100k narrow rows",
+  tags: ["querystudio", "query", "results-grid", "large-results", "webview"],
+  queryPath: "queries/select-100000.sql",
+  end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 100000 } },
+    { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+  ],
+  timeoutMs: 300000,
+});
+
+// Wide grid at depth: 1000 rows x 300 columns — column-projection and
+// window-transfer pressure (the QO-6/QO-7 target shape).
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-wide-1000x300",
+  displayName: "Query Studio: 1000 rows x 300 columns",
+  tags: ["querystudio", "query", "results-grid", "wide", "webview"],
+  queryPath: "queries/wide-columns-1000.sql",
+  end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 1000 } },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 1000 } },
+    { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 1000 } },
+  ],
+  timeoutMs: 300000,
+});
+
+// Huge cells: 20 rows x two ~1 MiB-char MAX cells computed server-side —
+// exercises maxCellBytes truncation honesty and bounded payloads (QO-3/QO-4).
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-large-cells",
+  displayName: "Query Studio: 20 rows with ~1 MiB JSON/XML cells",
+  tags: ["querystudio", "query", "blob", "content", "webview"],
+  queryPath: "queries/large-cells-1mb.sql",
+  end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 20 } },
+    { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  ],
+  timeoutMs: 300000,
+});
+
+// Message flood: exactly 10000 PRINTs, zero result sets. Ends on the
+// messages pane paint. Host message rows measured deterministic at 10003
+// across reps (10000 PRINTs + synthesized Started/Total-time + one server
+// info row) — resultsRendered may not fire without result sets, so no
+// render metric.
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-10k-messages",
+  displayName: "Query Studio: 10000 PRINT messages",
+  tags: ["querystudio", "query", "messages", "webview"],
+  queryPath: "queries/many-messages.sql",
+  end: { name: "mssql.queryStudio.messagesRendered", attrs: { messages: 10003 } },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 0 } },
+    { name: "mssql.queryStudio.messagesRendered", attrs: { messages: 10003 } },
+  ],
+  timeoutMs: 300000,
+  renderMetric: false,
+});
+
+// Many result sets: 100 sets x 5 rows — lazy grid mounting and tab/state
+// stability under set-count pressure.
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-100-resultsets",
+  displayName: "Query Studio: 100 result sets",
+  tags: ["querystudio", "query", "results-grid", "resultsets", "webview"],
+  queryPath: "queries/hundred-result-sets.sql",
+  end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 500, resultSets: 100 } },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 500, resultSets: 100 } },
+    { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 500, resultSets: 100 } },
+  ],
+  timeoutMs: 300000,
 });
 
 // Object Explorer v2 browse (OE v2 B21, exploratory): activate with the

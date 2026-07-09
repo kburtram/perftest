@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { explainEventName, isKnownMetricName, loadRegistry } from "@mssqlperf/observability-contracts";
 
-import { getScenario, scenarioMaturity } from "../src/scenarios/registry";
+import { getScenario, listScenarios, scenarioMaturity } from "../src/scenarios/registry";
 
 /**
  * querystudio-query-10k must stay the honest twin of the classic gate:
@@ -62,4 +62,76 @@ describe("querystudio-query-10k scenario registration", () => {
     const officials = (entry!.spec.metrics ?? []).filter((m) => m.official);
     expect(officials.map((m) => m.name)).toEqual(["scenario.wallclock"]);
   });
+});
+
+/**
+ * EVERY querystudio-* scenario (including the QO-9a result-shape family and
+ * any QO-9b spread expansion) obeys the same conformance rules: registered
+ * markers only, registry-declared metric pairs, rows/attrs-guarded measured
+ * end (the connect preflight emits the same marker family), and no official
+ * metric beyond wallclock while maturity is exploratory.
+ */
+describe("querystudio scenario family conformance", () => {
+  const registry = loadRegistry();
+  const family = listScenarios().filter((s) => s.spec.scenarioId.startsWith("querystudio-"));
+
+  it("has the QO-9a result-shape scenarios registered", () => {
+    const ids = family.map((s) => s.spec.scenarioId);
+    for (const expected of [
+      "querystudio-query-100k-narrow",
+      "querystudio-query-wide-1000x300",
+      "querystudio-query-large-cells",
+      "querystudio-query-10k-messages",
+      "querystudio-query-100-resultsets",
+    ]) {
+      expect(ids, `missing scenario: ${expected}`).toContain(expected);
+    }
+  });
+
+  it.each(family.map((s) => [s.spec.scenarioId, s] as const))(
+    "%s waits/asserts only registered markers and derives registered metric pairs",
+    (_id, scenario) => {
+      const names: string[] = [];
+      for (const step of [...(scenario.spec.setup ?? []), ...scenario.spec.measure.action]) {
+        if (step.type === "waitForMarker") names.push(step.name);
+      }
+      if (scenario.spec.measure.end.type === "waitForMarker") {
+        names.push(scenario.spec.measure.end.name);
+      }
+      for (const criterion of scenario.spec.success ?? []) {
+        if (criterion.type === "markerSeen") names.push(criterion.name);
+      }
+      for (const name of names) {
+        expect(explainEventName(name, registry).known, `unregistered marker: ${name}`).toBe(true);
+      }
+      for (const metric of (scenario.spec.metrics ?? []).filter(
+        (m) => m.beginMarker && m.endMarker,
+      )) {
+        expect(
+          isKnownMetricName(metric.name, registry),
+          `unregistered metric: ${metric.name}`,
+        ).toBe(true);
+        const declared = registry.metrics.find((m) => m.name === metric.name)!;
+        expect([metric.beginMarker, metric.endMarker]).toEqual(declared.derivedFrom);
+      }
+    },
+  );
+
+  it.each(family.map((s) => [s.spec.scenarioId, s] as const))(
+    "%s guards its measured end with attrs and stays exploratory-honest on official metrics",
+    (_id, scenario) => {
+      if (scenario.spec.measure.end.type === "waitForMarker") {
+        expect(
+          Object.keys(scenario.spec.measure.end.attrs ?? {}).length,
+          "measured end must be attrs-guarded against the connect preflight",
+        ).toBeGreaterThan(0);
+      }
+      if (scenarioMaturity(scenario) === "exploratory") {
+        const officials = (scenario.spec.metrics ?? []).filter((m) => m.official);
+        for (const metric of officials) {
+          expect(metric.name).toBe("scenario.wallclock");
+        }
+      }
+    },
+  );
 });
