@@ -58,6 +58,14 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.query.complete` | marker | end | `mssql.queryStudio.query.submit` | queryStudio | extensionHost | sameProcessMonotonic | yes | batches:structuralMetadata, resultSets:structuralMetadata, rows:structuralMetadata, errors:structuralMetadata, canceled:structuralMetadata, partial:structuralMetadata, bytes:structuralMetadata, pages:structuralMetadata, spillWrites:structuralMetadata, spillReads:structuralMetadata, appendMsTotal:structuralMetadata, spillWriteMsTotal:structuralMetadata, spillReadMsTotal:structuralMetadata, materializeMsTotal:structuralMetadata, windowCacheHits:structuralMetadata, windowCacheMisses:structuralMetadata … |
 | `mssql.queryStudio.query.firstResult` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | msFromSubmit:structuralMetadata … |
 | `mssql.queryStudio.resultsRendered` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes | rows:structuralMetadata, resultSets:structuralMetadata, partial:structuralMetadata, fromSpill:structuralMetadata … |
+| `mssql.queryStudio.boot.scriptStart` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.reactMount` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.monacoReady` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.editorInteractive` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes | fromCache:structuralMetadata … |
+| `mssql.queryStudio.boot.gridChunkRequested` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.gridChunkLoaded` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes | waitedForByRender:structuralMetadata … |
+| `mssql.queryStudio.boot.planChunkLoaded` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.autoRunStart` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
 | `mssql.queryStudio.rows.windowFetch.begin` | marker | begin | `mssql.queryStudio.rows.windowFetch.end` | queryStudio | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.queryStudio.rows.windowFetch.end` | marker | end | `mssql.queryStudio.rows.windowFetch.begin` | queryStudio | extensionHost | sameProcessMonotonic | yes | resultSetId:structuralMetadata, start:structuralMetadata, count:structuralMetadata, fromSpill:structuralMetadata, ms:structuralMetadata, cacheHit:structuralMetadata, materializedPages:structuralMetadata … |
 | `mssql.queryStudio.rows.maxRowsPerResultSet` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batchIndex:structuralMetadata, resultSetId:structuralMetadata, rowLimit:structuralMetadata, retainedRows:structuralMetadata … |
@@ -142,6 +150,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.pin.open` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.open.end` |
 | `mssql.queryResults.transform.evaluate` | queryResults | `mssql.queryResults.transform.evaluate.begin` → `mssql.queryResults.transform.evaluate.end` |
 | `mssql.queryResults.pin.toRender` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.rendered` |
+| `mssql.queryStudio.open.toEditorInteractive` | queryStudio | `mssql.queryStudio.open.begin` → `mssql.queryStudio.boot.editorInteractive` |
+| `mssql.queryStudio.open.toResultsRendered` | queryStudio | `mssql.queryStudio.open.begin` → `mssql.queryStudio.resultsRendered` |
 
 ## Field classifications
 
