@@ -108,6 +108,9 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.snapshot.dispose` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, ageMs:diagnosticMetric, storeDisposed:safeEnum |
 | `mssql.queryResults.snapshot.retentionSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | trigger:safeEnum, swept:structuralMetadata, expired:structuralMetadata, snapshots:structuralMetadata, retainedStores:structuralMetadata |
 | `mssql.queryResults.store.demote` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, targetBytes:structuralMetadata, memoryBytesBefore:diagnosticMetric |
+| `mssql.queryResults.pin.open.begin` | marker | begin | `mssql.queryResults.pin.open.end` | queryResults | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.queryResults.pin.open.end` | marker | end | `mssql.queryResults.pin.open.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | expired:safeEnum, resultSetCount:structuralMetadata |
+| `mssql.queryResults.pin.close` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | expired:safeEnum |
 | `mssql.queryResults.spill.orphanSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | dirsRemoved:structuralMetadata, bytesRemoved:diagnosticMetric, failures:structuralMetadata |
 
 ## Derived metric names
@@ -126,6 +129,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.query.toComplete` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.complete` |
 | `mssql.queryStudio.query.toRender` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.resultsRendered` |
 | `mssql.queryResults.snapshot.create` | queryResults | `mssql.queryResults.snapshot.create.begin` → `mssql.queryResults.snapshot.create.end` |
+| `mssql.queryResults.pin.open` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.open.end` |
 
 ## Field classifications
 
