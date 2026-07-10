@@ -264,7 +264,13 @@ export type ScenarioStep =
    * connecting anything — for scenarios whose feature does its own
    * connect (e.g. Object Explorer v2 browse).
    */
-  | { type: "provisionConnectionProfile"; profile?: string; timeoutMs?: number }
+  | {
+      type: "provisionConnectionProfile";
+      profile?: string;
+      /** Save WITHOUT a database (OE parity K1: server-scoped connection). */
+      serverScoped?: boolean;
+      timeoutMs?: number;
+    }
   /**
    * Execute the live Query Studio document's text through the PERF_MODE-only
    * mssql.perf.queryStudioExecute seam (backing document text by default).

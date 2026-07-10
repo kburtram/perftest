@@ -1520,7 +1520,13 @@ register({
     },
     setup: [
       ...ACTIVATE_STEPS,
-      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+      // Server-scoped on purpose: a DB-scoped profile hides Security (K1).
+      {
+        type: "provisionConnectionProfile",
+        profile: "default",
+        serverScoped: true,
+        timeoutMs: 30000,
+      },
     ],
     measure: {
       start: { type: "beforeFirstAction" },

@@ -471,7 +471,12 @@ async function executeStep(
         );
       }
       await withTimeout(
-        provisionSavedProfile(profile, ctx),
+        provisionSavedProfile(
+          // K1: a saved database makes the connection DB-scoped and hides
+          // the server-level folders — server-scoped scenarios omit it.
+          step.serverScoped === true ? { ...profile, database: undefined } : profile,
+          ctx,
+        ),
         timeoutMs,
         `provisionConnectionProfile(${profileName})`,
       );
