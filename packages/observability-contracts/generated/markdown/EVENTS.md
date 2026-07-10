@@ -108,6 +108,10 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.snapshot.dispose` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, ageMs:diagnosticMetric, storeDisposed:safeEnum |
 | `mssql.queryResults.snapshot.retentionSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | trigger:safeEnum, swept:structuralMetadata, expired:structuralMetadata, snapshots:structuralMetadata, retainedStores:structuralMetadata |
 | `mssql.queryResults.store.demote` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, targetBytes:structuralMetadata, memoryBytesBefore:diagnosticMetric |
+| `mssql.queryResults.transform.evaluate.begin` | marker | begin | `mssql.queryResults.transform.evaluate.end` | queryResults | extensionHost | sameProcessMonotonic | yes | terminalKind:safeEnum, opCount:structuralMetadata, specDigest:structuralMetadata |
+| `mssql.queryResults.transform.evaluate.end` | marker | end | `mssql.queryResults.transform.evaluate.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | terminalKind:safeEnum, opCount:structuralMetadata, specDigest:structuralMetadata, rowsScanned:diagnosticMetric, rowsMatched:diagnosticMetric, partial:safeEnum, partialReason:safeEnum, outputRows:structuralMetadata, outputClass:safeEnum, ms:diagnosticMetric |
+| `mssql.queryResults.derive.begin` | marker | begin | `mssql.queryResults.derive.end` | queryResults | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.queryResults.derive.end` | marker | end | `mssql.queryResults.derive.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | specDigest:structuralMetadata, derivedRows:structuralMetadata, rowsScanned:diagnosticMetric, fromDerived:safeEnum |
 | `mssql.queryResults.context.update` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | sourceKind:safeEnum, reason:safeEnum, hasSelection:safeEnum, selectedCells:structuralMetadata |
 | `mssql.queryResults.pin.open.begin` | marker | begin | `mssql.queryResults.pin.open.end` | queryResults | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.queryResults.pin.open.end` | marker | end | `mssql.queryResults.pin.open.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | expired:safeEnum, resultSetCount:structuralMetadata |
@@ -131,6 +135,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.query.toRender` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.resultsRendered` |
 | `mssql.queryResults.snapshot.create` | queryResults | `mssql.queryResults.snapshot.create.begin` → `mssql.queryResults.snapshot.create.end` |
 | `mssql.queryResults.pin.open` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.open.end` |
+| `mssql.queryResults.transform.evaluate` | queryResults | `mssql.queryResults.transform.evaluate.begin` → `mssql.queryResults.transform.evaluate.end` |
 
 ## Field classifications
 
