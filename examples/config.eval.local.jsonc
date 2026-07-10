@@ -18,6 +18,7 @@
     "querystudio-query-wide",
     "querystudio-query-blob",
     "objectexplorerv2-browse",
+    "objectexplorerv2-security-expand",
     "metadatacache-warm-acquire",
     "query-10k-results"
   ],

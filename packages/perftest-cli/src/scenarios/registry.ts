@@ -1494,6 +1494,54 @@ register({
   },
 });
 
+// Object Explorer v2 server-level aux browse (OE parity B27, exploratory):
+// connect through the data plane, expand Security → Logins, and wait for
+// REAL items from the LAZY aux section (metadataStore.auxCatalog.hydrate is
+// expand-triggered — never at connect). The seam THROWS on every honesty
+// failure (missing folders, failed/empty section, 15s hydration timeout),
+// so noErrors proves the whole K1 path live.
+register({
+  implemented: true, // OE parity B27: mssql.perf.objectExplorerV2SecurityExpand seam
+  plannedMilestone: "OE2-PARITY",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "objectexplorerv2-security-expand",
+    displayName: "Object Explorer v2: expand Security → Logins (lazy aux section)",
+    tags: ["objectexplorer", "oev2", "metadata"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.objectExplorer.viewMode": "v2Preview",
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.objectExplorerV2SecurityExpand",
+          timeoutMs: 90000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] }],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
 register({
   implemented: true, // CACHE wrap: PERF_MODE warm-acquire probe + persistent cache
   plannedMilestone: "CACHE",
