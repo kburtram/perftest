@@ -101,6 +101,14 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.central.upload.end` | marker | end | `mssql.central.upload.begin` | centralObservability | extensionHost | sameProcessMonotonic | yes | items:structuralMetadata, rows:structuralMetadata, outcome:structuralMetadata … |
 | `mssql.central.provider.list.begin` | marker | begin | `mssql.central.provider.list.end` | centralObservability | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.central.provider.list.end` | marker | end | `mssql.central.provider.list.begin` | centralObservability | extensionHost | sameProcessMonotonic | yes | page:structuralMetadata, rowCount:structuralMetadata … |
+| `mssql.queryResults.snapshot.create.begin` | marker | begin | `mssql.queryResults.snapshot.create.end` | queryResults | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.queryResults.snapshot.create.end` | marker | end | `mssql.queryResults.snapshot.create.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | resultSetCount:structuralMetadata, totalRows:structuralMetadata, ownerKind:safeEnum, purpose:safeEnum, scanFree:safeEnum |
+| `mssql.queryResults.snapshot.acquire` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | ownerKind:safeEnum, leaseCount:structuralMetadata |
+| `mssql.queryResults.snapshot.release` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, leaseCount:structuralMetadata |
+| `mssql.queryResults.snapshot.dispose` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, ageMs:diagnosticMetric, storeDisposed:safeEnum |
+| `mssql.queryResults.snapshot.retentionSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | trigger:safeEnum, swept:structuralMetadata, expired:structuralMetadata, snapshots:structuralMetadata, retainedStores:structuralMetadata |
+| `mssql.queryResults.store.demote` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, targetBytes:structuralMetadata, memoryBytesBefore:diagnosticMetric |
+| `mssql.queryResults.spill.orphanSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | dirsRemoved:structuralMetadata, bytesRemoved:diagnosticMetric, failures:structuralMetadata |
 
 ## Derived metric names
 
@@ -117,6 +125,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.connect` | queryStudio | `mssql.queryStudio.connect.begin` → `mssql.queryStudio.connect.ready` |
 | `mssql.queryStudio.query.toComplete` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.complete` |
 | `mssql.queryStudio.query.toRender` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.resultsRendered` |
+| `mssql.queryResults.snapshot.create` | queryResults | `mssql.queryResults.snapshot.create.begin` → `mssql.queryResults.snapshot.create.end` |
 
 ## Field classifications
 
