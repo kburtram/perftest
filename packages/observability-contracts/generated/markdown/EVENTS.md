@@ -87,7 +87,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `queryStudio.languageService.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `settings.snapshot` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `settings.changed` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
-| `queryStudio.saveAs.adopted` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | extension:safeEnum, reopened:structuralMetadata, withConnection:structuralMetadata … |
+| `queryStudio.saveAs.adopted` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | extension:safeEnum, reopened:structuralMetadata, orphansClosed:structuralMetadata, transplantPending:structuralMetadata … |
 | `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata … |
 | `metadataStore.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
 | `metadataCache.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
