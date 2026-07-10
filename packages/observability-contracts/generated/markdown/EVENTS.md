@@ -119,6 +119,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.context.update` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | sourceKind:safeEnum, reason:safeEnum, hasSelection:safeEnum, selectedCells:structuralMetadata |
 | `mssql.queryResults.pin.open.begin` | marker | begin | `mssql.queryResults.pin.open.end` | queryResults | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.queryResults.pin.open.end` | marker | end | `mssql.queryResults.pin.open.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | expired:safeEnum, resultSetCount:structuralMetadata |
+| `mssql.queryResults.pin.rendered` | webviewMark | instant | — | queryResults | webview | epochAligned | yes | resultSets:structuralMetadata, rows:structuralMetadata |
 | `mssql.queryResults.pin.close` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | expired:safeEnum |
 | `mssql.queryResults.spill.orphanSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | dirsRemoved:structuralMetadata, bytesRemoved:diagnosticMetric, failures:structuralMetadata |
 
@@ -140,6 +141,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.snapshot.create` | queryResults | `mssql.queryResults.snapshot.create.begin` → `mssql.queryResults.snapshot.create.end` |
 | `mssql.queryResults.pin.open` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.open.end` |
 | `mssql.queryResults.transform.evaluate` | queryResults | `mssql.queryResults.transform.evaluate.begin` → `mssql.queryResults.transform.evaluate.end` |
+| `mssql.queryResults.pin.toRender` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.rendered` |
 
 ## Field classifications
 

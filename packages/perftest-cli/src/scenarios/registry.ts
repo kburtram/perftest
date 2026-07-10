@@ -1649,6 +1649,200 @@ register({
   },
 });
 
+// ---------------------------------------------------------------------------
+// C2D-8 queryresults-* scenarios (coding-docs/chat-to-data PROGRESS): the
+// snapshot/pin/transform platform under the QO-9a fixtures. Exploratory,
+// wallclock unofficial — like the querystudio shapes, these accrue baselines
+// before any budget hardens. Pinning rides the mssql.queryStudio.pinAllResults
+// command; transforms ride the hidden benchmarkTransform probe. All markers
+// are registry-first (queryResults family).
+// ---------------------------------------------------------------------------
+interface QueryResultsShapeSpec {
+  scenarioId: string;
+  displayName: string;
+  tags: string[];
+  queryPath: string;
+  /** Rendered-rows guard for the seeding run. */
+  renderedAttrs: Record<string, number>;
+  /** Steps of the measured window (after the seeded+rendered run). */
+  action: Array<Record<string, unknown>>;
+  end: { name: string; attrs?: Record<string, number> };
+  success: Array<{ name: string; attrs?: Record<string, number> }>;
+  metrics: Array<Record<string, unknown>>;
+  /** Extra setup after the seeding run completes (e.g. first pin). */
+  postRunSetup?: Array<Record<string, unknown>>;
+  timeoutMs?: number;
+}
+
+function registerQueryResultsShape(shape: QueryResultsShapeSpec): void {
+  const timeoutMs = shape.timeoutMs ?? 300000;
+  register({
+    implemented: true,
+    plannedMilestone: "C2D-8",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: shape.scenarioId,
+      displayName: shape.displayName,
+      tags: shape.tags,
+      profileMode: "warmed",
+      userSettings: {
+        "mssql.sqlDataPlane.enabled": true,
+        "mssql.queryStudio.enabled": true,
+      },
+      sql: {
+        database: "PerfHarness",
+        cacheMode: "warm",
+        connectionProfile: "default",
+      },
+      setup: [
+        ...ACTIVATE_STEPS,
+        { type: "openDocument", path: shape.queryPath },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        { type: "queryStudioExecute", timeoutMs },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: shape.renderedAttrs,
+          timeoutMs,
+        },
+        ...((shape.postRunSetup ?? []) as never[]),
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: shape.action as never,
+        end: { type: "waitForMarker", name: shape.end.name, ...(shape.end.attrs ? { attrs: shape.end.attrs } : {}) },
+        timeoutMs,
+      },
+      success: [
+        ...shape.success.map((proof) => ({
+          type: "markerSeen" as const,
+          name: proof.name,
+          ...(proof.attrs ? { attrs: proof.attrs } : {}),
+        })),
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+      cleanup: [
+        { type: "command", command: "workbench.action.closeAllEditors" },
+        ...CLEANUP_EXPLORER,
+      ],
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+        ...(shape.metrics as never[]),
+      ],
+    },
+  });
+}
+
+// Pin 100k rows: measured window = the pin command → first pinned paint.
+// snapshot.create must stay scan-free regardless of result size.
+registerQueryResultsShape({
+  scenarioId: "queryresults-pin-after-100k",
+  displayName: "Query Results: pin 100k rows to a snapshot document",
+  tags: ["queryresults", "querystudio", "pin", "snapshot", "webview"],
+  queryPath: "queries/select-100000.sql",
+  renderedAttrs: { rows: 100000 },
+  action: [{ type: "command", command: "mssql.queryStudio.pinAllResults", timeoutMs: 60000 }],
+  end: { name: "mssql.queryResults.pin.rendered", attrs: { rows: 100000 } },
+  success: [
+    { name: "mssql.queryResults.snapshot.create.end" },
+    { name: "mssql.queryResults.pin.open.end" },
+  ],
+  metrics: [
+    {
+      name: "mssql.queryResults.pin.open",
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      beginMarker: "mssql.queryResults.pin.open.begin",
+      endMarker: "mssql.queryResults.pin.open.end",
+      component: "queryResults",
+      processRole: "extensionHost",
+      withinMeasuredWindow: true,
+    },
+    {
+      name: "mssql.queryResults.pin.toRender",
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      beginMarker: "mssql.queryResults.pin.open.begin",
+      endMarker: "mssql.queryResults.pin.rendered",
+      component: "queryResults",
+      processRole: "boundary",
+      withinMeasuredWindow: true,
+    },
+  ],
+});
+
+// Pin then rerun: the measured window is the RERUN with a pinned snapshot
+// holding a lease — the previous store must demote (not dispose) and the
+// rerun must not regress. store.demote seen = the lease path exercised.
+registerQueryResultsShape({
+  scenarioId: "queryresults-pin-survives-rerun",
+  displayName: "Query Results: rerun with a pinned snapshot alive",
+  tags: ["queryresults", "querystudio", "pin", "lease", "rerun"],
+  queryPath: "queries/select-100000.sql",
+  renderedAttrs: { rows: 100000 },
+  postRunSetup: [
+    { type: "command", command: "mssql.queryStudio.pinAllResults", timeoutMs: 60000 },
+    { type: "waitForMarker", name: "mssql.queryResults.pin.rendered", timeoutMs: 60000 },
+  ],
+  action: [{ type: "queryStudioExecute", timeoutMs: 300000 }],
+  end: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+  success: [
+    { name: "mssql.queryResults.store.demote" },
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 100000 } },
+  ],
+  metrics: [
+    {
+      name: "mssql.queryStudio.query.toRender",
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      beginMarker: "mssql.queryStudio.query.submit",
+      endMarker: "mssql.queryStudio.resultsRendered",
+      component: "queryStudio",
+      processRole: "boundary",
+      withinMeasuredWindow: true,
+    },
+  ],
+});
+
+// Transform throughput: groupBy(count) over the pinned 100k snapshot via the
+// hidden benchmark probe. EvalStats ride the evaluate.end marker; the
+// addendum §8.6 target (≥200k rows/s on 100k-narrow) is validated from
+// baseline data before any budget hardens.
+registerQueryResultsShape({
+  scenarioId: "queryresults-transform-groupby-100k",
+  displayName: "Query Results: groupBy transform over a 100k snapshot",
+  tags: ["queryresults", "transform", "engine", "snapshot"],
+  queryPath: "queries/select-100000.sql",
+  renderedAttrs: { rows: 100000 },
+  postRunSetup: [
+    { type: "command", command: "mssql.queryStudio.pinAllResults", timeoutMs: 60000 },
+    { type: "waitForMarker", name: "mssql.queryResults.pin.rendered", timeoutMs: 60000 },
+  ],
+  action: [
+    { type: "command", command: "mssql.queryResults.benchmarkTransform", timeoutMs: 120000 },
+  ],
+  end: { name: "mssql.queryResults.transform.evaluate.end" },
+  success: [{ name: "mssql.queryResults.transform.evaluate.end" }],
+  metrics: [
+    {
+      name: "mssql.queryResults.transform.evaluate",
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      beginMarker: "mssql.queryResults.transform.evaluate.begin",
+      endMarker: "mssql.queryResults.transform.evaluate.end",
+      component: "queryResults",
+      processRole: "extensionHost",
+      withinMeasuredWindow: true,
+    },
+  ],
+});
+
 export function listScenarios(): RegisteredScenario[] {
   return [...registry.values()];
 }
