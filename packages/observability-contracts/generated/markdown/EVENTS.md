@@ -108,6 +108,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.snapshot.dispose` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, ageMs:diagnosticMetric, storeDisposed:safeEnum |
 | `mssql.queryResults.snapshot.retentionSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | trigger:safeEnum, swept:structuralMetadata, expired:structuralMetadata, snapshots:structuralMetadata, retainedStores:structuralMetadata |
 | `mssql.queryResults.store.demote` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, targetBytes:structuralMetadata, memoryBytesBefore:diagnosticMetric |
+| `mssql.queryResults.context.update` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | sourceKind:safeEnum, reason:safeEnum, hasSelection:safeEnum, selectedCells:structuralMetadata |
 | `mssql.queryResults.pin.open.begin` | marker | begin | `mssql.queryResults.pin.open.end` | queryResults | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.queryResults.pin.open.end` | marker | end | `mssql.queryResults.pin.open.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | expired:safeEnum, resultSetCount:structuralMetadata |
 | `mssql.queryResults.pin.close` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | expired:safeEnum |
