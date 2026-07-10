@@ -20,6 +20,8 @@ export interface ScenarioStep {
   probe?: string;
   assert?: string;
   profile?: string;
+  /** provisionConnectionProfile: save WITHOUT a database (OE parity K1). */
+  serverScoped?: boolean;
   /** oeExpand: node labels from the server root, e.g. ["Databases","PerfCatalog","Tables"]. */
   oePath?: string[];
   /** completionProbe: a suggestion label that must be present. */

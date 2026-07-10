@@ -1548,6 +1548,82 @@ register({
   },
 });
 
+// QS bootstrap (BOOT-4, Karl P0): open a Query Studio window WITH initial
+// SQL + autoRun and measure to rendered results — the full bootstrap
+// (webview HTML → chunks → Monaco → editor interactive → grid chunk →
+// autorun → grid paint). Execution is ~0 (SELECT 100). The boot.* phase
+// marks land in the session journal for every rep.
+register({
+  implemented: true, // BOOT-4: newQueryFromContext(initialSql, autoRun) seam
+  plannedMilestone: "BOOT-4",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-open-autorun",
+    displayName: "Query Studio: open with SQL, autorun, results visible (bootstrap)",
+    tags: ["querystudio", "bootstrap", "webview"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.queryStudio.enabled": true,
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.queryStudio.newQueryFromContext",
+          args: [
+            {
+              profileId: "perf-querystudio-default",
+              initialSql: "SELECT 100 AS bootstrap_probe;",
+              autoRun: true,
+              source: "perftest",
+            },
+          ],
+          timeoutMs: 60000,
+        },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          timeoutMs: 90000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.queryStudio.boot.editorInteractive" },
+      { type: "markerSeen", name: "mssql.queryStudio.boot.gridChunkLoaded" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "mssql.queryStudio.open.toEditorInteractive",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+      },
+      {
+        name: "mssql.queryStudio.open.toResultsRendered",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+      },
+    ],
+  },
+});
+
 register({
   implemented: true, // CACHE wrap: PERF_MODE warm-acquire probe + persistent cache
   plannedMilestone: "CACHE",
