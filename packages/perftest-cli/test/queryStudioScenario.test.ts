@@ -99,7 +99,11 @@ describe("querystudio scenario family conformance", () => {
         names.push(scenario.spec.measure.end.name);
       }
       for (const criterion of scenario.spec.success ?? []) {
-        if (criterion.type === "markerSeen") names.push(criterion.name);
+        // Negative proofs are still contract-bound: a markerAbsent on an
+        // unregistered name would pass vacuously forever.
+        if (criterion.type === "markerSeen" || criterion.type === "markerAbsent") {
+          names.push(criterion.name);
+        }
       }
       for (const name of names) {
         expect(explainEventName(name, registry).known, `unregistered marker: ${name}`).toBe(true);
@@ -134,4 +138,77 @@ describe("querystudio scenario family conformance", () => {
       }
     },
   );
+});
+
+/**
+ * VEC-12 — the Vector Workbench pair: the unopened-cost claim is proven with
+ * markerAbsent negative proofs (chunk never requested, host never ingested),
+ * and the activation profile derives only registry-declared pairs scoped to
+ * the measured window. Both gate on the vectorWorkbench setting at launch.
+ */
+describe("querystudio-vector scenarios (VEC-12)", () => {
+  const unopened = getScenario("querystudio-vector-unopened-f32");
+  const profile = getScenario("querystudio-vector-profile-f32");
+
+  it("both are registered, implemented, exploratory, and vector-gated", () => {
+    for (const entry of [unopened, profile]) {
+      expect(entry).toBeDefined();
+      expect(entry!.implemented).toBe(true);
+      expect(scenarioMaturity(entry!)).toBe("exploratory");
+      expect(entry!.spec.userSettings?.["mssql.queryStudio.vectorWorkbench.enabled"]).toBe(true);
+      expect(entry!.spec.tags).toContain("vector");
+    }
+  });
+
+  it("unopened: proves absence of BOTH the webview chunk request and the host ingest", () => {
+    const absent = (unopened!.spec.success ?? []).filter((c) => c.type === "markerAbsent");
+    expect(absent.map((c) => (c as { name: string }).name).sort()).toEqual([
+      "mssql.queryResults.vector.ingest",
+      "mssql.queryStudio.boot.vectorChunkRequested",
+    ]);
+  });
+
+  it("unopened: measured end is rows-guarded against the connect preflight", () => {
+    expect(unopened!.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 5000 },
+    });
+  });
+
+  it("profile: activates the vector tab through the perf seam with an args payload", () => {
+    const command = profile!.spec.measure.action.find((s) => s.type === "command");
+    expect(command).toBeDefined();
+    expect((command as { command: string }).command).toBe("mssql.perf.queryStudioActivateTab");
+    expect((command as { args?: unknown[] }).args).toEqual([{ tab: "vector" }]);
+  });
+
+  it("profile: the query execute lives in SETUP so only activation → firstPaint is measured", () => {
+    expect(profile!.spec.setup?.some((s) => s.type === "queryStudioExecute")).toBe(true);
+    expect(profile!.spec.measure.action.some((s) => s.type === "queryStudioExecute")).toBe(false);
+    const lastAction = profile!.spec.measure.action[profile!.spec.measure.action.length - 1];
+    expect(lastAction).toMatchObject({
+      type: "waitForMarker",
+      name: "mssql.queryResults.vector.render.firstPaint",
+    });
+    expect(profile!.spec.measure.end.type).toBe("afterLastAction");
+  });
+
+  it("profile: derives ONLY registry-declared pairs, all scoped to the measured window", () => {
+    const registry = loadRegistry();
+    const paired = (profile!.spec.metrics ?? []).filter((m) => m.beginMarker && m.endMarker);
+    expect(paired.map((m) => m.name).sort()).toEqual([
+      "mssql.queryResults.vector.analysis",
+      "mssql.queryStudio.boot.vectorChunkLoad",
+    ]);
+    for (const metric of paired) {
+      expect(isKnownMetricName(metric.name, registry), `unregistered metric: ${metric.name}`).toBe(
+        true,
+      );
+      const declared = registry.metrics.find((m) => m.name === metric.name)!;
+      expect([metric.beginMarker, metric.endMarker]).toEqual(declared.derivedFrom);
+      expect(metric.withinMeasuredWindow, `${metric.name} must be window-scoped`).toBe(true);
+      expect(metric.official, `${metric.name} official before baselines exist`).toBe(false);
+    }
+  });
 });

@@ -1693,6 +1693,197 @@ register({
   },
 });
 
+// ---------------------------------------------------------------------------
+// VEC-12 — Vector Workbench scenarios. Two claims, proven separately:
+//  (a) unopened cost ≈ 0: running a query with a native vector column while
+//      NEVER activating the Vector tab must not load the lazy vector chunk
+//      or ingest vector data (markerAbsent negative proofs);
+//  (b) activation → first paint: host-driven tab activation through the
+//      mssql.perf.queryStudioActivateTab seam, timed to the pane's honest
+//      double-rAF firstPaint, with chunk-load and analysis pairs derived.
+// Both run against the pre-provisioned VectorLab database (5000 rows of
+// 64-dim f32 vectors); the SQL fully-qualifies the table so the profile
+// database is not load-bearing. Exploratory: wallclock stays official:false
+// until baseline history exists (same discipline as the QS-3 shapes).
+// ---------------------------------------------------------------------------
+
+const VECTOR_USER_SETTINGS = {
+  "mssql.sqlDataPlane.enabled": true,
+  "mssql.queryStudio.enabled": true,
+  "mssql.queryStudio.vectorWorkbench.enabled": true,
+};
+
+const VECTOR_SETUP: import("@mssqlperf/contracts").ScenarioStep[] = [
+  ...ACTIVATE_STEPS,
+  { type: "openDocument", path: "queries/vectorlab-chunks.sql" },
+  { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+  { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+  { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+];
+
+register({
+  implemented: true, // VEC-12: markerAbsent criterion + VectorLab fixture
+  plannedMilestone: "VEC-12",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-vector-unopened-f32",
+    displayName: "Query Studio: 5000-row f32 vector query — Vector tab unopened costs nothing",
+    tags: ["querystudio", "vector", "webview"],
+    profileMode: "warmed",
+    userSettings: VECTOR_USER_SETTINGS,
+    sql: {
+      database: "VectorLab",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: VECTOR_SETUP,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "queryStudioExecute", timeoutMs: 120000 }],
+      // rows-guarded: the connect step's unmeasured session preflight renders
+      // its own (1-row) results — only the real 5000-row render ends the window.
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 5000 },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.queryStudio.query.complete", attrs: { rows: 5000 } },
+      { type: "markerSeen", name: "mssql.queryStudio.resultsRendered", attrs: { rows: 5000 } },
+      // The unopened-cost proof: the lazy Vector chunk was never requested and
+      // the host never ingested vector data anywhere in the rep.
+      { type: "markerAbsent", name: "mssql.queryStudio.boot.vectorChunkRequested" },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.ingest" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      // withinMeasuredWindow: the setup preflight emits the same product
+      // marker family — only the measured pair may be timed.
+      {
+        name: "mssql.queryStudio.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.query.complete",
+        component: "queryStudio",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+      {
+        name: "mssql.queryStudio.query.toRender",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.resultsRendered",
+        component: "queryStudio",
+        processRole: "boundary",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
+register({
+  implemented: true, // VEC-12: mssql.perf.queryStudioActivateTab seam (product-side)
+  plannedMilestone: "VEC-12",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-vector-profile-f32",
+    displayName: "Query Studio: Vector tab activation → profile first paint (5000 f32 rows)",
+    tags: ["querystudio", "vector", "webview"],
+    profileMode: "warmed",
+    userSettings: VECTOR_USER_SETTINGS,
+    sql: {
+      database: "VectorLab",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    // The measured window starts AFTER the 5000-row results are rendered:
+    // the query execute lives in setup so only activation → first paint is
+    // timed (chunk load + ingest + analysis + summary render).
+    setup: [
+      ...VECTOR_SETUP,
+      { type: "queryStudioExecute", timeoutMs: 120000 },
+      {
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 5000 },
+        timeoutMs: 120000,
+      },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.queryStudioActivateTab",
+          args: [{ tab: "vector" }],
+          timeoutMs: 30000,
+        },
+        // firstPaint carries no attrs (like the open-autorun boot marks), so
+        // the wait is the last ACTION and the window ends afterLastAction —
+        // no stale-match risk: the mark can only ever fire after activation.
+        {
+          type: "waitForMarker",
+          name: "mssql.queryResults.vector.render.firstPaint",
+          timeoutMs: 90000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.queryStudio.boot.vectorChunkRequested" },
+      { type: "markerSeen", name: "mssql.queryStudio.boot.vectorChunkLoaded" },
+      {
+        type: "markerSeen",
+        name: "mssql.queryResults.vector.analysis.end",
+        attrs: { outcome: "ok" },
+      },
+      { type: "markerSeen", name: "mssql.queryResults.vector.render.firstPaint" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "mssql.queryStudio.boot.vectorChunkLoad",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.boot.vectorChunkRequested",
+        endMarker: "mssql.queryStudio.boot.vectorChunkLoaded",
+        component: "queryStudio",
+        processRole: "webview",
+        withinMeasuredWindow: true,
+      },
+      {
+        name: "mssql.queryResults.vector.analysis",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryResults.vector.analysis.begin",
+        endMarker: "mssql.queryResults.vector.analysis.end",
+        component: "queryResults",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
 register({
   implemented: true, // CACHE wrap: PERF_MODE warm-acquire probe + persistent cache
   plannedMilestone: "CACHE",

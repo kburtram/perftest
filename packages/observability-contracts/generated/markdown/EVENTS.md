@@ -163,6 +163,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.pin.toRender` | queryResults | `mssql.queryResults.pin.open.begin` → `mssql.queryResults.pin.rendered` |
 | `mssql.queryStudio.open.toEditorInteractive` | queryStudio | `mssql.queryStudio.open.begin` → `mssql.queryStudio.boot.editorInteractive` |
 | `mssql.queryStudio.open.toResultsRendered` | queryStudio | `mssql.queryStudio.open.begin` → `mssql.queryStudio.resultsRendered` |
+| `mssql.queryStudio.boot.vectorChunkLoad` | queryStudio | `mssql.queryStudio.boot.vectorChunkRequested` → `mssql.queryStudio.boot.vectorChunkLoaded` |
+| `mssql.queryResults.vector.analysis` | queryResults | `mssql.queryResults.vector.analysis.begin` → `mssql.queryResults.vector.analysis.end` |
 
 ## Field classifications
 

@@ -967,6 +967,29 @@ async function evaluateCriterion(
             if (!seen) result.message = `marker '${criterion.name}' not observed`;
             return result;
         }
+        case "markerAbsent": {
+            // Negative proof: same matching semantics as markerSeen, inverted.
+            // A missing name is a spec bug — fail honestly rather than pass vacuously.
+            if (!criterion.name) {
+                return {
+                    step: "markerAbsent(?)",
+                    status: "failed",
+                    message: "markerAbsent criterion missing marker name",
+                };
+            }
+            const offending = ctx.bus.find(criterion.name, criterion.attrs, afterUnixNs);
+            const result: StepOutcome = {
+                step: `markerAbsent(${criterion.name})`,
+                status: offending ? "failed" : "passed",
+            };
+            if (offending) {
+                result.message =
+                    `marker '${criterion.name}' WAS observed at ${offending.timestampUnixNs}ns ` +
+                    `from ${offending.process.role}(pid ${offending.process.pid})` +
+                    (offending.attrs ? ` attrs=${JSON.stringify(offending.attrs)}` : "");
+            }
+            return result;
+        }
         case "noErrors": {
             const ok = ctx.errors.length === 0;
             const result: StepOutcome = { step: "noErrors", status: ok ? "passed" : "failed" };

@@ -286,6 +286,13 @@ export type ScenarioStep =
 
 export type SuccessCriterion =
   | { type: "markerSeen"; name: string; attrs?: Record<string, unknown> }
+  /**
+   * Passes when NO matching marker occurred in the rep (same matching
+   * semantics as markerSeen). Negative proofs for lazy-cost claims — e.g.
+   * "the unopened Vector tab never requested its chunk". Failure messages
+   * name the offending occurrence honestly.
+   */
+  | { type: "markerAbsent"; name: string; attrs?: Record<string, unknown> }
   | { type: "webviewProbe"; probe: string; assert: string }
   | { type: "objectExplorerProbe"; name?: string; assert: string }
   | { type: "noErrors"; sources: string[] }

@@ -229,6 +229,99 @@ describe("SelfTestRunner policies", () => {
         expect(result.reps[0].failureReason).toContain("Unknown step type");
     });
 
+    test("markerAbsent criterion fails when the marker occurred, naming the occurrence", async () => {
+        const scenario: BuiltinScenario = {
+            id: "test-marker-absent-fails",
+            title: "asserts absence of a marker the engine itself emits",
+            description: "",
+            tags: [],
+            needsSql: false,
+            estMs: 10,
+            metrics: [{ name: "scenario.wallclock", official: true }],
+            spec: {
+                scenarioId: "test-marker-absent-fails",
+                displayName: "t",
+                measure: {
+                    start: { type: "beforeFirstAction" },
+                    action: [{ type: "noop" }],
+                    end: { type: "afterLastAction" },
+                    timeoutMs: 5000,
+                },
+                // scenario.start IS emitted by the engine — the negative proof
+                // must fail and the message must name the offending occurrence.
+                success: [{ type: "markerAbsent", name: "scenario.start" }],
+            },
+        };
+        const { runner } = runnerFor([scenario]);
+        const result = await runner.run();
+        expect(result.reps[0].status).toBe("failed");
+        expect(result.reps[0].failureReason).toContain("scenario.start");
+        expect(result.reps[0].failureReason).toContain("WAS observed");
+    });
+
+    test("markerAbsent criterion passes for absent names and non-matching attrs", async () => {
+        const scenario: BuiltinScenario = {
+            id: "test-marker-absent-passes",
+            title: "asserts absence honestly",
+            description: "",
+            tags: [],
+            needsSql: false,
+            estMs: 10,
+            metrics: [{ name: "scenario.wallclock", official: true }],
+            spec: {
+                scenarioId: "test-marker-absent-passes",
+                displayName: "t",
+                measure: {
+                    start: { type: "beforeFirstAction" },
+                    action: [{ type: "noop" }],
+                    end: { type: "afterLastAction" },
+                    timeoutMs: 5000,
+                },
+                success: [
+                    // Never emitted at all.
+                    { type: "markerAbsent", name: "never.emitted" },
+                    // Emitted, but with different attrs — markerSeen matching
+                    // semantics apply symmetrically.
+                    {
+                        type: "markerAbsent",
+                        name: "scenario.start",
+                        attrs: { scenarioId: "some-other-scenario" },
+                    },
+                ],
+            },
+        };
+        const { runner } = runnerFor([scenario]);
+        const result = await runner.run();
+        expect(result.reps[0].status).toBe("passed");
+    });
+
+    test("markerAbsent without a name fails honestly (never a vacuous pass)", async () => {
+        const scenario: BuiltinScenario = {
+            id: "test-marker-absent-noname",
+            title: "spec bug: no marker name",
+            description: "",
+            tags: [],
+            needsSql: false,
+            estMs: 10,
+            metrics: [{ name: "scenario.wallclock", official: true }],
+            spec: {
+                scenarioId: "test-marker-absent-noname",
+                displayName: "t",
+                measure: {
+                    start: { type: "beforeFirstAction" },
+                    action: [{ type: "noop" }],
+                    end: { type: "afterLastAction" },
+                    timeoutMs: 5000,
+                },
+                success: [{ type: "markerAbsent" }],
+            },
+        };
+        const { runner } = runnerFor([scenario]);
+        const result = await runner.run();
+        expect(result.reps[0].status).toBe("failed");
+        expect(result.reps[0].failureReason).toContain("missing marker name");
+    });
+
     test("catalog sanity: every builtin has metrics or an honest skip", () => {
         for (const scenario of BUILTIN_SCENARIOS) {
             if (scenario.inProcess === false) {

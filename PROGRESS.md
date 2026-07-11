@@ -1595,3 +1595,40 @@ markers: queryStudio sqlcmd.toggle / sqlcmd.run / scan.run (counts + safe
 enums only). examples/config.sqlcmd.local.jsonc runs it standalone. Suite:
 97 passing; the central-store integration file needs the CENT container SQL
 (localhost:14333) and is expected red while it is down.
+
+## 2026-07-11 — Vector Workbench scenarios (VEC-12)
+
+Two scenarios, two claims proven separately. querystudio-vector-unopened-f32:
+run queries/vectorlab-chunks.sql (5000 rows, 64-dim f32 native vector column,
+VectorLab db via the per-scenario profile override) with the vectorWorkbench
+gate ON but the tab never activated — success includes the NEW markerAbsent
+criterion (negative proof: boot.vectorChunkRequested and queryResults.vector
+.ingest never occurred in the rep). PASSED 3/3 + warmup: wallclock 715/724/728
+ms, toComplete 374–453ms, toRender 448–512ms — directionally half the
+querystudio-query-10k numbers for half the rows; the unopened Vector tab adds
+nothing measurable. querystudio-vector-profile-f32: execute moved into setup,
+measured window = mssql.perf.queryStudioActivateTab {tab:"vector"} → firstPaint
+(afterLastAction pattern; firstPaint carries no attrs so it cannot be the
+attrs-guarded end). BLOCKED by a product bug — reported, not patched:
+executionOrchestrator.ts beginResultSet column mapping drops the `vector`
+metadata that toQsResultColumn (same file, one line below) preserves, so the
+VectorWorkbenchService reads transport=textFallback from the retained store
+and profile() refuses; STS2 journal proves vectorBinaryV1 WAS negotiated and
+vectorEncoding:"binary-v1" WAS sent. All 4 profile reps invalid on firstPaint
+timeout with ingest attrs {phase:"open",transport:"textFallback"} and no
+dimensions — exactly a missing column.vector.
+
+markerAbsent lives in perf-contracts SuccessCriterion + BOTH engines (driver +
+inproc twins, same matching semantics as markerSeen, honest failure message
+naming the offending occurrence; nameless criterion fails, never vacuous).
+Registry: mssql.queryStudio.boot.vectorChunkLoad + mssql.queryResults.vector.
+analysis derived metrics (regenerated + re-vendored). Conformance now checks
+markerAbsent names against the registry too; VEC-12 describe block pins the
+negative proofs, the setup/measure split, and window-scoped registered pairs.
+examples/config.vector.local.jsonc runs both. Suite: obs 27, perf-contracts
+47, cli 107 (+central-store integration expected red while the CENT container
+is down), inproc 15 (3 new markerAbsent tests).
+
+DEFERRED: profile-f32 pass blocked on the product fix above (one-line mirror
+of `vector` into the rowStore registration); rerun config.vector once fixed.
+No baseline history for either scenario — exploratory, official:false stands.
