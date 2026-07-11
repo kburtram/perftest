@@ -1585,3 +1585,13 @@ DEFERRED (recorded, not hidden): multi-rep QS baseline history (n=1 so far -
 exploratory stands); SqlLogin credential-seeding path untested live (this
 box provisions Integrated); querystudio-open still flips settings via
 setConfig (works - late registration - left unchurned).
+
+## 2026-07-11 — SQLCMD scenario (SC-5)
+
+Registered querystudio-sqlcmd-run (setvar/$(var)/GO 2 through the QS SQLCMD
+preprocessor via the newQueryFromContext sqlcmd:true seam; success gates on
+mssql.queryStudio.sqlcmd.run + query.complete + noErrors). New registry
+markers: queryStudio sqlcmd.toggle / sqlcmd.run / scan.run (counts + safe
+enums only). examples/config.sqlcmd.local.jsonc runs it standalone. Suite:
+97 passing; the central-store integration file needs the CENT container SQL
+(localhost:14333) and is expected red while it is down.

@@ -1625,6 +1625,75 @@ register({
 });
 
 register({
+  implemented: true, // SC-5: sqlcmd mode end-to-end (SQLCMD_MODE_PLAN.md)
+  plannedMilestone: "SC-5",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-sqlcmd-run",
+    displayName: "Query Studio: SQLCMD script (setvar/$(var)/GO n) to results visible",
+    tags: ["querystudio", "sqlcmd", "webview"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.queryStudio.enabled": true,
+    },
+    sql: {
+      database: "PerfHarness",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.queryStudio.newQueryFromContext",
+          args: [
+            {
+              profileId: "perf-querystudio-default",
+              initialSql:
+                ":setvar probe 41\nSELECT $(probe) + 1 AS sqlcmd_probe;\nGO 2\n",
+              autoRun: true,
+              sqlcmd: true,
+              source: "perftest",
+            },
+          ],
+          timeoutMs: 60000,
+        },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          timeoutMs: 90000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 120000,
+    },
+    success: [
+      // The run went through the SQLCMD preprocessor (not the classic path)…
+      { type: "markerSeen", name: "mssql.queryStudio.sqlcmd.run" },
+      // …and actually completed against the server.
+      { type: "markerSeen", name: "mssql.queryStudio.query.complete" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "mssql.queryStudio.query.toComplete",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+      },
+    ],
+  },
+});
+
+register({
   implemented: true, // CACHE wrap: PERF_MODE warm-acquire probe + persistent cache
   plannedMilestone: "CACHE",
   maturity: "exploratory",
