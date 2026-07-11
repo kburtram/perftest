@@ -90,6 +90,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `queryStudio.sync.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `queryStudio.lsp.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `sqlDataPlane.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
+| `sqlDataPlane.auth.token.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no | authKind:safeEnum, hasAccountId:structuralMetadata, hasTenantId:structuralMetadata, hasAccountLabel:structuralMetadata, result:safeEnum, expiryBucket:safeEnum, errorClass:safeEnum, diag:structuralMetadata, durationMs:structuralMetadata |
 | `rpc.v2.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
 | `metadata.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
 | `completions.*` | spanFamily | — | — | completions | extensionHost | sameProcessMonotonic | no |  … |
