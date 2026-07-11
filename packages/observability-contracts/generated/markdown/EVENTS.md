@@ -65,6 +65,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.boot.gridChunkRequested` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
 | `mssql.queryStudio.boot.gridChunkLoaded` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes | waitedForByRender:structuralMetadata … |
 | `mssql.queryStudio.boot.planChunkLoaded` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.vectorChunkRequested` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
+| `mssql.queryStudio.boot.vectorChunkLoaded` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes | waitedForByRender:structuralMetadata … |
 | `mssql.queryStudio.boot.autoRunStart` | webviewMark | instant | — | queryStudio | webview | epochAligned | yes |  … |
 | `mssql.queryStudio.sqlcmd.toggle` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | enabled:structuralMetadata, source:safeEnum |
 | `mssql.queryStudio.sqlcmd.run` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | yes | steps:structuralMetadata, batches:structuralMetadata, setvars:structuralMetadata, includes:structuralMetadata, connects:structuralMetadata, onError:safeEnum, errorCode:safeEnum, preprocessMs:structuralMetadata |
@@ -133,6 +135,12 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.pin.rendered` | webviewMark | instant | — | queryResults | webview | epochAligned | yes | resultSets:structuralMetadata, rows:structuralMetadata |
 | `mssql.queryResults.pin.close` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | expired:safeEnum |
 | `mssql.queryResults.spill.orphanSweep` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | dirsRemoved:structuralMetadata, bytesRemoved:diagnosticMetric, failures:structuralMetadata |
+| `mssql.queryResults.vector.ingest` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | phase:safeEnum, totalRows:diagnosticMetric, rows:diagnosticMetric, dimensions:diagnosticMetric, packedBytes:diagnosticMetric, scannedBytes:diagnosticMetric, rowsScanned:diagnosticMetric, nulls:diagnosticMetric, unavailable:diagnosticMetric, transport:safeEnum, partialReason:safeEnum |
+| `mssql.queryResults.vector.analysis.begin` | marker | begin | `mssql.queryResults.vector.analysis.end` | queryResults | extensionHost | sameProcessMonotonic | yes | totalBudgetMs:diagnosticMetric |
+| `mssql.queryResults.vector.analysis.end` | marker | end | `mssql.queryResults.vector.analysis.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, rows:diagnosticMetric, dimensions:diagnosticMetric, findings:diagnosticMetric, partialTime:safeEnum, workerMs:diagnosticMetric, ms:diagnosticMetric |
+| `mssql.queryResults.vector.analysis.cancel` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | — |
+| `mssql.queryResults.vector.render.begin` | webviewMark | begin | `mssql.queryResults.vector.render.firstPaint` | queryResults | webview | epochAligned | yes |  … |
+| `mssql.queryResults.vector.render.firstPaint` | webviewMark | end | `mssql.queryResults.vector.render.begin` | queryResults | webview | epochAligned | yes |  … |
 
 ## Derived metric names
 
