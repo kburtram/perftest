@@ -139,6 +139,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.vector.analysis.begin` | marker | begin | `mssql.queryResults.vector.analysis.end` | queryResults | extensionHost | sameProcessMonotonic | yes | totalBudgetMs:diagnosticMetric |
 | `mssql.queryResults.vector.analysis.end` | marker | end | `mssql.queryResults.vector.analysis.begin` | queryResults | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, rows:diagnosticMetric, dimensions:diagnosticMetric, findings:diagnosticMetric, partialTime:safeEnum, workerMs:diagnosticMetric, ms:diagnosticMetric |
 | `mssql.queryResults.vector.analysis.cancel` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | — |
+| `mssql.queryResults.vector.model.end` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | outcome:safeEnum, dims:diagnosticMetric, ms:diagnosticMetric |
+| `mssql.queryResults.vector.search.end` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | outcome:safeEnum, k:diagnosticMetric, exactMs:diagnosticMetric, approxMs:diagnosticMetric, approxIncluded:safeEnum, ms:diagnosticMetric |
 | `mssql.queryResults.vector.render.begin` | webviewMark | begin | `mssql.queryResults.vector.render.firstPaint` | queryResults | webview | epochAligned | yes |  … |
 | `mssql.queryResults.vector.render.firstPaint` | webviewMark | end | `mssql.queryResults.vector.render.begin` | queryResults | webview | epochAligned | yes |  … |
 
