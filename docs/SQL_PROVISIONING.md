@@ -26,6 +26,12 @@ Supports SQL logins and Windows Integrated auth. Seeding runs through host
 `sqlcmd` (works with both classic ODBC sqlcmd and go-sqlcmd; the password
 travels in `SQLCMDPASSWORD`, never on a command line).
 
+Self-contained scenarios can set `sql.provisionSeed: false`. In that mode the
+harness performs no seed or verification mutation and hands the driver a
+profile for the database already named by the external connection string. The
+config should use a truthful snapshot label such as `external-existing`; this
+mode is intended for read-only fixtures and does not claim seed determinism.
+
 ## Seed (`sql/seed/create-perf-db.sql`, snapshot `seed-v1`)
 
 Fully deterministic, non-sensitive, idempotent (drop + recreate `PerfHarness`):

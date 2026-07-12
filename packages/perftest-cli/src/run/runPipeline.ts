@@ -213,15 +213,22 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     // Catalog fixture only when a selected scenario targets it (10k-table
     // build is skip-guarded server-side but still worth avoiding entirely).
     const needsCatalog = specs.some((s) => s.sql?.database === "PerfCatalog");
+    const provisionSeed = config.sql.provisionSeed !== false;
     const provisioned = await provisionSql(config, logger.child("sql"), {
-      seedFiles: [
-        resolve("sql", "seed", "create-perf-db.sql"),
-        ...(needsCatalog ? [resolve("sql", "seed", "create-perf-catalog.sql")] : []),
-      ],
-      verifyQuery: {
-        sql: "SET NOCOUNT ON; SELECT COUNT(*) FROM PerfHarness.dbo.PerfRows",
-        expect: "10000",
-      },
+      seedFiles: provisionSeed
+        ? [
+            resolve("sql", "seed", "create-perf-db.sql"),
+            ...(needsCatalog ? [resolve("sql", "seed", "create-perf-catalog.sql")] : []),
+          ]
+        : [],
+      ...(provisionSeed
+        ? {
+            verifyQuery: {
+              sql: "SET NOCOUNT ON; SELECT COUNT(*) FROM PerfHarness.dbo.PerfRows",
+              expect: "10000",
+            },
+          }
+        : {}),
       ...(needsCatalog
         ? {
             verifyQueries: [

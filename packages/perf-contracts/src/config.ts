@@ -43,6 +43,8 @@ export interface SqlConfig {
   snapshot: string;
   cacheMode: SqlCacheMode;
   connectionProfile: string;
+  /** Skip harness seed mutation and use the database in an external connection string. */
+  provisionSeed?: boolean;
   [key: string]: unknown;
 }
 

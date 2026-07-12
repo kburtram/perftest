@@ -113,6 +113,24 @@ export function parseSqlConnectionString(connectionString: string): ParsedConnec
   return parsed;
 }
 
+export function createExternalConnectionProfile(
+  connectionString: string,
+  seeded: boolean,
+): ConnectionProfileSpec {
+  const parsed = parseSqlConnectionString(connectionString);
+  return {
+    server: parsed.server,
+    database: seeded ? "PerfHarness" : (parsed.database ?? "master"),
+    authenticationType: parsed.integrated ? "Integrated" : "SqlLogin",
+    ...(parsed.user !== undefined ? { user: parsed.user } : {}),
+    ...(parsed.password !== undefined ? { password: parsed.password } : {}),
+    ...(parsed.encrypt !== undefined ? { encrypt: parsed.encrypt } : {}),
+    ...(parsed.trustServerCertificate !== undefined
+      ? { trustServerCertificate: parsed.trustServerCertificate }
+      : {}),
+  };
+}
+
 async function provisionExternal(
   config: PerfConfig,
   logger: HarnessLogger,
@@ -142,17 +160,7 @@ async function provisionExternal(
     validation = verify(sqlcmdBase, sqlcmdEnv, extraVerify, logger);
   }
 
-  const profile: ConnectionProfileSpec = {
-    server: parsed.server,
-    database: "PerfHarness",
-    authenticationType: parsed.integrated ? "Integrated" : "SqlLogin",
-    ...(parsed.user !== undefined ? { user: parsed.user } : {}),
-    ...(parsed.password !== undefined ? { password: parsed.password } : {}),
-    ...(parsed.encrypt !== undefined ? { encrypt: parsed.encrypt } : {}),
-    ...(parsed.trustServerCertificate !== undefined
-      ? { trustServerCertificate: parsed.trustServerCertificate }
-      : {}),
-  };
+  const profile = createExternalConnectionProfile(connectionString, options.seedFiles.length > 0);
   return { profile, validation, provider: "external" };
 }
 
