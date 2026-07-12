@@ -1632,3 +1632,30 @@ is down), inproc 15 (3 new markerAbsent tests).
 DEFERRED: profile-f32 pass blocked on the product fix above (one-line mirror
 of `vector` into the rowStore registration); rerun config.vector once fixed.
 No baseline history for either scenario — exploratory, official:false stands.
+
+## 2026-07-12 — Vector Projection/Search scenario close-out (VEC-12 partial)
+
+`d72d1d4` added the real nested-workspace PERF_MODE path plus Projection,
+exact Search, and indexed ANN Search scenarios. The five-scenario config now
+drives the committed product (`vscode-mssql 67eb22d7c`) through unopened,
+Profile, Projection, exact Search, and ANN Search paths; no arbitrary SQL,
+model text, or vector payload crosses the activation seam.
+
+LIVE RUN `2026-07-12T18-06-15Z_d6aa38b5`: unopened, Profile, exact Search,
+and ANN Search each passed warmup + 3 measurements (16/16). Projection emitted
+successful analysis, projection-worker, and workspace-first-paint markers in
+all four reps but the scenario expected `rows:5000`; the fixture has 5,000
+source rows with 12 intentional NULL vectors, so the product correctly emitted
+`rows:4988`. This was a scenario-contract bug, not a product failure.
+
+`ec21555` changes both Projection success guards to the pinned 4,988 analyzed-
+row invariant and adds test coverage for analysis.end and worker.end. Focused
+CLI scenario suite: 63/63. Corrected LIVE RUN
+`2026-07-12T18-14-14Z_48461388`: Projection 4/4 passed, exploratory wallclock
+861.1 / 854.8 / 861.2 / 876.2 ms. Combined current live evidence is 4/4 for
+each of all five Vector scenarios. All metrics remain `official:false` because
+no baseline history/regression thresholds have been approved.
+
+DEFERRED: the complete VTEST-01..VTEST-22 matrix, baseline/regression gates,
+privacy/a11y/localization sweeps, all-family session-diag proof, and release
+documentation. VEC-12 remains PARTIAL.
