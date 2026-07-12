@@ -267,7 +267,12 @@ describe("querystudio-vector scenarios (VEC-12)", () => {
     expect(projection!.spec.success).toContainEqual({
       type: "markerSeen",
       name: "mssql.queryResults.vector.worker.end",
-      attrs: { operation: "projection", outcome: "ok", rows: 5000, dimensions: 64 },
+      attrs: { operation: "projection", outcome: "ok", rows: 4988, dimensions: 64 },
+    });
+    expect(projection!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryResults.vector.analysis.end",
+      attrs: { outcome: "ok", rows: 4988, dimensions: 64 },
     });
   });
 

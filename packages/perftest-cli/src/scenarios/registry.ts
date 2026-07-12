@@ -1985,12 +1985,13 @@ register({
       {
         type: "markerSeen",
         name: "mssql.queryResults.vector.analysis.end",
-        attrs: { outcome: "ok", rows: 5000, dimensions: 64 },
+        // VectorLabChunks has 5,000 source rows and 12 intentional NULL vectors.
+        attrs: { outcome: "ok", rows: 4988, dimensions: 64 },
       },
       {
         type: "markerSeen",
         name: "mssql.queryResults.vector.worker.end",
-        attrs: { operation: "projection", outcome: "ok", rows: 5000, dimensions: 64 },
+        attrs: { operation: "projection", outcome: "ok", rows: 4988, dimensions: 64 },
       },
       {
         type: "markerAbsent",
