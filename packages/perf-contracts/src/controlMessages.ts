@@ -208,6 +208,48 @@ export type ControlMessage =
   | ErrorMessage;
 
 // ---------------------------------------------------------------------------
+// PERF_MODE-only Query Studio command arguments.
+// ---------------------------------------------------------------------------
+
+/**
+ * Stable catalog selector for the synthetic VectorLab search fixture. The
+ * product must resolve this selector to its own host-owned binding and reject
+ * missing, ambiguous, stale, or incompatible targets; it must not forward
+ * these names to the webview as SQL authority.
+ */
+export interface QueryStudioVectorPerfTargetSelector {
+  schema: string;
+  table: string;
+  vectorColumn: string;
+}
+
+/** The smallest Search composition needed by the VEC-12 perf scenarios. */
+export interface QueryStudioVectorPerfSearchAction {
+  source: { kind: "selectedRow"; ordinal: number };
+  target: QueryStudioVectorPerfTargetSelector;
+  metric: "cosine" | "euclidean" | "dot";
+  k: number;
+  /** False = exact only; true = exact plus the capability-gated ANN variant. */
+  includeApprox: boolean;
+}
+
+/**
+ * Optional Vector action carried by `mssql.perf.queryStudioActivateTab`.
+ * Projection runs when its workspace opens; Search additionally receives one
+ * deterministic composition and invokes the same run path as the product UI.
+ */
+export type QueryStudioVectorPerfAction =
+  | { workspace: "projection" }
+  | { workspace: "search"; search: QueryStudioVectorPerfSearchAction };
+
+/** PERF_MODE-only arguments expected by `mssql.perf.queryStudioActivateTab`. */
+export interface QueryStudioPerfActivateTabArgs {
+  uri?: string;
+  tab: "vector";
+  vector?: QueryStudioVectorPerfAction;
+}
+
+// ---------------------------------------------------------------------------
 // Scenario model (design §7) — the spec shipped to the driver in startScenario.
 // ---------------------------------------------------------------------------
 

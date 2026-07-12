@@ -149,6 +149,9 @@ describe("querystudio scenario family conformance", () => {
 describe("querystudio-vector scenarios (VEC-12)", () => {
   const unopened = getScenario("querystudio-vector-unopened-f32");
   const profile = getScenario("querystudio-vector-profile-f32");
+  const projection = getScenario("querystudio-vector-projection-f32");
+  const searchExact = getScenario("querystudio-vector-search-exact-f32");
+  const searchAnn = getScenario("querystudio-vector-search-ann-f32");
 
   it("both are registered, implemented, exploratory, and vector-gated", () => {
     for (const entry of [unopened, profile]) {
@@ -209,6 +212,129 @@ describe("querystudio-vector scenarios (VEC-12)", () => {
       expect([metric.beginMarker, metric.endMarker]).toEqual(declared.derivedFrom);
       expect(metric.withinMeasuredWindow, `${metric.name} must be window-scoped`).toBe(true);
       expect(metric.official, `${metric.name} official before baselines exist`).toBe(false);
+    }
+  });
+
+  it("registers Projection and both Search variants as implemented exploratory scenarios", () => {
+    for (const entry of [projection, searchExact, searchAnn]) {
+      expect(entry).toBeDefined();
+      expect(entry!.implemented).toBe(true);
+      expect(entry!.plannedMilestone).toBe("VEC-12");
+      expect(scenarioMaturity(entry!)).toBe("exploratory");
+      expect(entry!.spec.userSettings?.["mssql.queryStudio.vectorWorkbench.enabled"]).toBe(true);
+      expect(entry!.spec.tags).toContain("vector");
+    }
+  });
+
+  it("nested workspaces start from a profile-ready setup outside the measured window", () => {
+    for (const entry of [projection, searchExact, searchAnn]) {
+      expect(entry!.spec.setup?.some((step) => step.type === "queryStudioExecute")).toBe(true);
+      expect(
+        entry!.spec.setup?.some(
+          (step) =>
+            step.type === "waitForMarker" &&
+            step.name === "mssql.queryResults.vector.render.firstPaint",
+        ),
+      ).toBe(true);
+      expect(entry!.spec.measure.action.some((step) => step.type === "queryStudioExecute")).toBe(
+        false,
+      );
+    }
+  });
+
+  it("Projection selects the real workspace and ends only on its Canvas first paint", () => {
+    const command = projection!.spec.measure.action.find((step) => step.type === "command");
+    expect(command).toMatchObject({
+      type: "command",
+      command: "mssql.perf.queryStudioActivateTab",
+      args: [{ tab: "vector", vector: { workspace: "projection" } }],
+    });
+    expect(projection!.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryResults.vector.render.firstPaint",
+      attrs: { workspace: "projection" },
+    });
+    const absent = (projection!.spec.success ?? []).filter((criterion) =>
+      ["markerAbsent"].includes(criterion.type),
+    );
+    expect(absent.map((criterion) => (criterion as { name: string }).name).sort()).toEqual([
+      "mssql.queryResults.vector.analysis.cancel",
+      "mssql.queryResults.vector.model.end",
+      "mssql.queryResults.vector.search.end",
+      "mssql.queryResults.vector.worker.end",
+      "mssql.queryResults.vector.worker.end",
+    ]);
+    expect(projection!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryResults.vector.worker.end",
+      attrs: { operation: "projection", outcome: "ok", rows: 5000, dimensions: 64 },
+    });
+  });
+
+  it("Search exact and ANN share one deterministic composition and differ only by the variant gate", () => {
+    const commandArgs = (entry: NonNullable<typeof searchExact>) => {
+      const command = entry.spec.measure.action.find((step) => step.type === "command");
+      return (command as { command: string; args?: unknown[] }).args?.[0] as {
+        tab: string;
+        vector: {
+          workspace: string;
+          search: {
+            source: { kind: string; ordinal: number };
+            target: { schema: string; table: string; vectorColumn: string };
+            metric: string;
+            k: number;
+            includeApprox: boolean;
+          };
+        };
+      };
+    };
+    const exactArgs = commandArgs(searchExact!);
+    const annArgs = commandArgs(searchAnn!);
+    expect(exactArgs).toMatchObject({
+      tab: "vector",
+      vector: {
+        workspace: "search",
+        search: {
+          source: { kind: "selectedRow", ordinal: 1000 },
+          target: {
+            schema: "dbo",
+            table: "VectorLabSearchCorpus",
+            vectorColumn: "embedding",
+          },
+          metric: "cosine",
+          k: 20,
+          includeApprox: false,
+        },
+      },
+    });
+    expect(annArgs).toEqual({
+      ...exactArgs,
+      vector: {
+        ...exactArgs.vector,
+        search: { ...exactArgs.vector.search, includeApprox: true },
+      },
+    });
+  });
+
+  it("Search terminal markers prove the requested variant and exclude model calls", () => {
+    for (const [entry, included] of [
+      [searchExact!, false],
+      [searchAnn!, true],
+    ] as const) {
+      expect(entry.spec.measure.end).toEqual({
+        type: "waitForMarker",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { outcome: "ok", k: 20, approxIncluded: included },
+      });
+      expect(entry.spec.success).toContainEqual({
+        type: "markerAbsent",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { approxIncluded: !included },
+      });
+      expect(entry.spec.success).toContainEqual({
+        type: "markerAbsent",
+        name: "mssql.queryResults.vector.model.end",
+      });
     }
   });
 });

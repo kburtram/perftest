@@ -1,9 +1,12 @@
-// VEC-12 Vector Workbench scenarios: unopened-cost proof + activation profile.
+// VEC-12 Vector Workbench scenarios: unopened cost plus Profile, Projection,
+// exact Search, and verified-index ANN Search.
 // querystudio-vector-unopened-f32 proves the lazy Vector tab costs ~0 when
 // never activated (markerAbsent negative proofs); querystudio-vector-profile-f32
-// measures host-driven activation → profile first paint. Requires the local
-// VectorLab database (5000 rows, 64-dim f32 vectors) on the server named by
-// STS2_SQLSERVER_CONNSTRING. No baseline history yet — failOnRegression false.
+// measures host-driven activation → profile first paint. Projection and Search
+// use the real nested-workspace PERF_MODE seam. The ANN scenario deliberately
+// fails if VectorLabSearchCorpus lacks a compatible cosine index. Requires the
+// local VectorLab database (5000 rows, 64-dim f32 vectors) on the server named
+// by STS2_SQLSERVER_CONNSTRING. No baseline history yet — failOnRegression false.
 // Run from the perftest repo root:
 //   node packages/perftest-cli/dist/cli.js run --config examples/config.vector.local.jsonc
 {
@@ -14,7 +17,10 @@
   "warmupRepetitions": 1,
   "scenarios": [
     "querystudio-vector-unopened-f32",
-    "querystudio-vector-profile-f32"
+    "querystudio-vector-profile-f32",
+    "querystudio-vector-projection-f32",
+    "querystudio-vector-search-exact-f32",
+    "querystudio-vector-search-ann-f32"
   ],
   "vscode": {
     "version": "stable",

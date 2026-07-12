@@ -4,7 +4,11 @@
  * which are implemented so `scenarios list` never overstates coverage.
  */
 
-import type { ScenarioSpec } from "@mssqlperf/contracts";
+import type {
+  QueryStudioPerfActivateTabArgs,
+  ScenarioSpec,
+  ScenarioStep,
+} from "@mssqlperf/contracts";
 
 export type ScenarioMaturity =
   | "exploratory"
@@ -1713,12 +1717,49 @@ const VECTOR_USER_SETTINGS = {
   "mssql.queryStudio.vectorWorkbench.enabled": true,
 };
 
-const VECTOR_SETUP: import("@mssqlperf/contracts").ScenarioStep[] = [
+const VECTOR_SETUP: ScenarioStep[] = [
   ...ACTIVATE_STEPS,
   { type: "openDocument", path: "queries/vectorlab-chunks.sql" },
   { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
   { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
   { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+];
+
+const VECTOR_ACTIVATE_COMMAND = "mssql.perf.queryStudioActivateTab";
+
+function vectorActivateStep(
+  args: QueryStudioPerfActivateTabArgs,
+  timeoutMs = 30000,
+): ScenarioStep {
+  return {
+    type: "command",
+    command: VECTOR_ACTIVATE_COMMAND,
+    args: [args],
+    timeoutMs,
+  };
+}
+
+/**
+ * Projection and Search measurements start from an already-open workbench.
+ * The current product opens/profile-analyzes the selected vector column before
+ * mounting nested workspaces, so keeping that work in setup prevents a
+ * Projection/Search number from silently including Profile or chunk loading.
+ */
+const VECTOR_PROFILE_READY_SETUP: ScenarioStep[] = [
+  ...VECTOR_SETUP,
+  { type: "queryStudioExecute", timeoutMs: 120000 },
+  {
+    type: "waitForMarker",
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 5000 },
+    timeoutMs: 120000,
+  },
+  vectorActivateStep({ tab: "vector" }),
+  {
+    type: "waitForMarker",
+    name: "mssql.queryResults.vector.render.firstPaint",
+    timeoutMs: 90000,
+  },
 ];
 
 register({
@@ -1823,12 +1864,7 @@ register({
     measure: {
       start: { type: "beforeFirstAction" },
       action: [
-        {
-          type: "command",
-          command: "mssql.perf.queryStudioActivateTab",
-          args: [{ tab: "vector" }],
-          timeoutMs: 30000,
-        },
+        vectorActivateStep({ tab: "vector" }),
         // firstPaint carries no attrs (like the open-autorun boot marks), so
         // the wait is the last ACTION and the window ends afterLastAction —
         // no stale-match risk: the mark can only ever fire after activation.
@@ -1880,6 +1916,216 @@ register({
         processRole: "extensionHost",
         withinMeasuredWindow: true,
       },
+    ],
+  },
+});
+
+// The nested-workspace action is a small PERF_MODE-only extension of the
+// existing activation command. vscode-mssql normalizes it and drives the real
+// workspace/UI paths; no arbitrary SQL or vector payload crosses this seam.
+const VECTOR_SEARCH_TARGET = {
+  schema: "dbo",
+  table: "VectorLabSearchCorpus",
+  vectorColumn: "embedding",
+} as const;
+
+const vectorSearchArgs = (includeApprox: boolean): QueryStudioPerfActivateTabArgs => ({
+  tab: "vector",
+  vector: {
+    workspace: "search",
+    search: {
+      // vectorlab-chunks.sql is ordered by chunk_id; ordinal 1000 is the
+      // deterministic, non-null 64-D fixture row with chunk_id 1001.
+      source: { kind: "selectedRow", ordinal: 1000 },
+      target: VECTOR_SEARCH_TARGET,
+      metric: "cosine",
+      k: 20,
+      includeApprox,
+    },
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "VEC-12",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-vector-projection-f32",
+    displayName: "Query Studio: Vector Projection workspace → first Canvas paint (5000 f32 rows)",
+    tags: ["querystudio", "vector", "projection", "webview"],
+    profileMode: "warmed",
+    userSettings: VECTOR_USER_SETTINGS,
+    sql: {
+      database: "VectorLab",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: VECTOR_PROFILE_READY_SETUP,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        vectorActivateStep({
+          tab: "vector",
+          vector: { workspace: "projection" },
+        }),
+      ],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryResults.vector.render.firstPaint",
+        attrs: { workspace: "projection" },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      {
+        type: "markerSeen",
+        name: "mssql.queryResults.vector.render.firstPaint",
+        attrs: { workspace: "projection" },
+      },
+      {
+        type: "markerSeen",
+        name: "mssql.queryResults.vector.analysis.end",
+        attrs: { outcome: "ok", rows: 5000, dimensions: 64 },
+      },
+      {
+        type: "markerSeen",
+        name: "mssql.queryResults.vector.worker.end",
+        attrs: { operation: "projection", outcome: "ok", rows: 5000, dimensions: 64 },
+      },
+      {
+        type: "markerAbsent",
+        name: "mssql.queryResults.vector.worker.end",
+        attrs: { operation: "projection", outcome: "error" },
+      },
+      {
+        type: "markerAbsent",
+        name: "mssql.queryResults.vector.worker.end",
+        attrs: { operation: "projection", outcome: "cancelled" },
+      },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.analysis.cancel" },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.search.end" },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.model.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      {
+        name: "mssql.queryResults.vector.analysis",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryResults.vector.analysis.begin",
+        endMarker: "mssql.queryResults.vector.analysis.end",
+        component: "queryResults",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "VEC-12",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-vector-search-exact-f32",
+    displayName: "Query Studio: Vector Search exact-only result (K=20, 64-D f32)",
+    tags: ["querystudio", "vector", "search", "exact"],
+    profileMode: "warmed",
+    userSettings: VECTOR_USER_SETTINGS,
+    sql: {
+      database: "VectorLab",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: VECTOR_PROFILE_READY_SETUP,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [vectorActivateStep(vectorSearchArgs(false))],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { outcome: "ok", k: 20, approxIncluded: false },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      {
+        type: "markerSeen",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { outcome: "ok", k: 20, approxIncluded: false },
+      },
+      {
+        type: "markerAbsent",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { approxIncluded: true },
+      },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.analysis.cancel" },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.model.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
+register({
+  implemented: true, // Runtime success intentionally requires the fixture's compatible cosine index.
+  plannedMilestone: "VEC-12",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-vector-search-ann-f32",
+    displayName: "Query Studio: Vector Search exact + ANN result (K=20, 64-D f32)",
+    tags: ["querystudio", "vector", "search", "ann"],
+    profileMode: "warmed",
+    userSettings: VECTOR_USER_SETTINGS,
+    sql: {
+      database: "VectorLab",
+      cacheMode: "warm",
+      connectionProfile: "default",
+    },
+    setup: VECTOR_PROFILE_READY_SETUP,
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [vectorActivateStep(vectorSearchArgs(true))],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { outcome: "ok", k: 20, approxIncluded: true },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      {
+        type: "markerSeen",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { outcome: "ok", k: 20, approxIncluded: true },
+      },
+      {
+        type: "markerAbsent",
+        name: "mssql.queryResults.vector.search.end",
+        attrs: { approxIncluded: false },
+      },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.analysis.cancel" },
+      { type: "markerAbsent", name: "mssql.queryResults.vector.model.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
     ],
   },
 });
