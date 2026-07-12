@@ -2412,6 +2412,169 @@ registerQueryResultsShape({
   ],
 });
 
+// ---------------------------------------------------------------------------
+// SPA-9 — offline Spatial result-pane scenarios. The query itself runs in
+// setup for activation cases, so the measured window is pane activation to
+// a real OpenLayers render completion. All remain exploratory until multiple
+// machines establish stable baselines.
+// ---------------------------------------------------------------------------
+
+const SPATIAL_USER_SETTINGS = {
+  "mssql.sqlDataPlane.enabled": true,
+  "mssql.queryStudio.enabled": true,
+  "mssql.queryStudio.spatial.enabled": true,
+};
+
+function spatialSetup(queryPath: string): ScenarioStep[] {
+  return [
+    ...ACTIVATE_STEPS,
+    { type: "openDocument", path: queryPath },
+    { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+    { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+    { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+  ];
+}
+
+function registerSpatialActivation(args: {
+  scenarioId: string;
+  displayName: string;
+  queryPath: string;
+  rows: number;
+}): void {
+  register({
+    implemented: true,
+    plannedMilestone: "SPA-9",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: args.scenarioId,
+      displayName: args.displayName,
+      tags: ["querystudio", "spatial", "webview", "offline"],
+      profileMode: "warmed",
+      userSettings: SPATIAL_USER_SETTINGS,
+      setup: [
+        ...spatialSetup(args.queryPath),
+        { type: "queryStudioExecute", timeoutMs: 180000 },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: { rows: args.rows },
+          timeoutMs: 180000,
+        },
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: [
+          {
+            type: "command",
+            command: "mssql.perf.queryStudioActivateTab",
+            args: [{ tab: "spatial" }],
+            timeoutMs: 30000,
+          },
+        ],
+        end: {
+          type: "waitForMarker",
+          name: "mssql.queryResults.spatial.render.firstPaint",
+          attrs: { tier: "canvas" },
+        },
+        timeoutMs: 180000,
+      },
+      success: [
+        { type: "markerSeen", name: "mssql.queryStudio.boot.spatialChunkRequested" },
+        { type: "markerSeen", name: "mssql.queryStudio.boot.spatialChunkLoaded" },
+        {
+          type: "markerSeen",
+          name: "mssql.queryResults.spatial.prepare.end",
+          attrs: { outcome: "ok" },
+        },
+        { type: "markerSeen", name: "mssql.queryResults.spatial.render.firstPaint" },
+        { type: "markerAbsent", name: "mssql.queryResults.spatial.prepare.cancel" },
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+      cleanup: [
+        { type: "command", command: "workbench.action.closeActiveEditor" },
+        ...CLEANUP_EXPLORER,
+      ],
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+        {
+          name: "mssql.queryStudio.boot.spatialChunkLoad",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryStudio.boot.spatialChunkRequested",
+          endMarker: "mssql.queryStudio.boot.spatialChunkLoaded",
+          component: "queryStudio",
+          processRole: "webview",
+          withinMeasuredWindow: true,
+        },
+        {
+          name: "mssql.queryResults.spatial.render.firstPaint",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryResults.spatial.render.begin",
+          endMarker: "mssql.queryResults.spatial.render.firstPaint",
+          component: "queryResults",
+          processRole: "webview",
+          withinMeasuredWindow: true,
+        },
+      ],
+    },
+  });
+}
+
+register({
+  implemented: true,
+  plannedMilestone: "SPA-9",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-spatial-unopened-points",
+    displayName: "Query Studio: 10k spatial points — Spatial tab unopened costs nothing",
+    tags: ["querystudio", "spatial", "webview", "negative-proof"],
+    profileMode: "warmed",
+    userSettings: SPATIAL_USER_SETTINGS,
+    setup: spatialSetup("queries/spatial-points-10k.sql"),
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [{ type: "queryStudioExecute", timeoutMs: 180000 }],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 10000 },
+      },
+      timeoutMs: 180000,
+    },
+    success: [
+      { type: "markerAbsent", name: "mssql.queryStudio.boot.spatialChunkRequested" },
+      { type: "markerAbsent", name: "mssql.queryResults.spatial.prepare.begin" },
+      { type: "markerAbsent", name: "mssql.queryResults.spatial.decode.begin" },
+      { type: "markerAbsent", name: "mssql.queryResults.spatial.render.begin" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [
+      { type: "command", command: "workbench.action.closeActiveEditor" },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
+registerSpatialActivation({
+  scenarioId: "querystudio-spatial-points-10k-offline",
+  displayName: "Query Studio: Spatial activation and first paint (10k points, offline)",
+  queryPath: "queries/spatial-points-10k.sql",
+  rows: 10000,
+});
+
+registerSpatialActivation({
+  scenarioId: "querystudio-spatial-points-100k",
+  displayName: "Query Studio: Spatial activation and first paint (100k points)",
+  queryPath: "queries/spatial-points-100k.sql",
+  rows: 100000,
+});
+
 // Pin then rerun: the measured window is the RERUN with a pinned snapshot
 // holding a lease — the previous store must demote (not dispose) and the
 // rerun must not regress. store.demote seen = the lease path exercised.

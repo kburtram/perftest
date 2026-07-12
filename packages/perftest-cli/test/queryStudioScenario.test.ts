@@ -343,3 +343,66 @@ describe("querystudio-vector scenarios (VEC-12)", () => {
     }
   });
 });
+
+describe("querystudio-spatial scenarios (SPA-9)", () => {
+  const unopened = getScenario("querystudio-spatial-unopened-points");
+  const points10k = getScenario("querystudio-spatial-points-10k-offline");
+  const points100k = getScenario("querystudio-spatial-points-100k");
+
+  it("registers gated exploratory unopened, 10k, and 100k scenarios", () => {
+    for (const entry of [unopened, points10k, points100k]) {
+      expect(entry).toBeDefined();
+      expect(entry!.implemented).toBe(true);
+      expect(entry!.plannedMilestone).toBe("SPA-9");
+      expect(scenarioMaturity(entry!)).toBe("exploratory");
+      expect(entry!.spec.userSettings?.["mssql.queryStudio.spatial.enabled"]).toBe(true);
+      expect(entry!.spec.tags).toContain("spatial");
+    }
+  });
+
+  it("unopened proves host, worker, chunk, and renderer absence", () => {
+    const absent = (unopened!.spec.success ?? [])
+      .filter((criterion) => criterion.type === "markerAbsent")
+      .map((criterion) => (criterion as { name: string }).name)
+      .sort();
+    expect(absent).toEqual([
+      "mssql.queryResults.spatial.decode.begin",
+      "mssql.queryResults.spatial.prepare.begin",
+      "mssql.queryResults.spatial.render.begin",
+      "mssql.queryStudio.boot.spatialChunkRequested",
+    ]);
+  });
+
+  it("activation scenarios execute in setup and drive the generic pane command", () => {
+    for (const entry of [points10k, points100k]) {
+      expect(entry!.spec.setup?.some((step) => step.type === "queryStudioExecute")).toBe(true);
+      expect(entry!.spec.measure.action).toContainEqual({
+        type: "command",
+        command: "mssql.perf.queryStudioActivateTab",
+        args: [{ tab: "spatial" }],
+        timeoutMs: 30000,
+      });
+      expect(entry!.spec.measure.end).toEqual({
+        type: "waitForMarker",
+        name: "mssql.queryResults.spatial.render.firstPaint",
+        attrs: { tier: "canvas" },
+      });
+    }
+  });
+
+  it("paired activation metrics are registry declared and window scoped", () => {
+    const registry = loadRegistry();
+    for (const entry of [points10k, points100k]) {
+      const paired = (entry!.spec.metrics ?? []).filter(
+        (metric) => metric.beginMarker && metric.endMarker,
+      );
+      for (const metric of paired) {
+        expect(isKnownMetricName(metric.name, registry)).toBe(true);
+        expect(registry.metrics.find((candidate) => candidate.name === metric.name)?.derivedFrom)
+          .toEqual([metric.beginMarker, metric.endMarker]);
+        expect(metric.withinMeasuredWindow).toBe(true);
+        expect(metric.official).toBe(false);
+      }
+    }
+  });
+});
