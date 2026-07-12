@@ -65,6 +65,26 @@ export function buildLaunchArgs(options: VscodeLaunchOptions): string[] {
   return args;
 }
 
+/**
+ * Build the child VS Code environment. The parent's Electron/VS Code launch
+ * hooks must be stripped: when the harness runs inside a VS Code integrated
+ * terminal (e.g. a WSL remote), `ELECTRON_RUN_AS_NODE` and the `VSCODE_*`
+ * IPC/NLS hooks are inherited, and the packaged VS Code binary re-executes
+ * itself as plain Node (exit code 9, `bad option: --user-data-dir`) instead of
+ * launching a window — every rep goes `invalid`. Mirrors what
+ * `@vscode/test-electron` does. The harness's own launch env (`overrides`,
+ * e.g. PERF_MODE/PERF_MARKER_URL) is applied last and always wins.
+ */
+export function buildChildEnv(overrides: Record<string, string>): NodeJS.ProcessEnv {
+  const base: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key === "ELECTRON_RUN_AS_NODE") continue;
+    if (key.startsWith("VSCODE_")) continue;
+    base[key] = value;
+  }
+  return { ...base, ...overrides };
+}
+
 export function spawnVscode(options: VscodeLaunchOptions, logger: HarnessLogger): LaunchedVscode {
   for (const dir of [options.userDataDir, options.extensionsDir, options.crashDir]) {
     mkdirSync(dir, { recursive: true });
@@ -77,7 +97,7 @@ export function spawnVscode(options: VscodeLaunchOptions, logger: HarnessLogger)
   logger.debug("vscode.launchArgs", undefined, { args });
 
   const child = spawn(options.executablePath, args, {
-    env: { ...process.env, ...options.env },
+    env: buildChildEnv(options.env),
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: false,
   });
