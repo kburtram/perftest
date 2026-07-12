@@ -357,6 +357,7 @@ describe("querystudio-spatial scenarios (SPA-9)", () => {
       expect(scenarioMaturity(entry!)).toBe("exploratory");
       expect(entry!.spec.userSettings?.["mssql.queryStudio.spatial.enabled"]).toBe(true);
       expect(entry!.spec.tags).toContain("spatial");
+      expect(entry!.spec.sql).toEqual({ connectionProfile: "default", cacheMode: "warm" });
     }
   });
 

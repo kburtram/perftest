@@ -2451,6 +2451,7 @@ function registerSpatialActivation(args: {
       displayName: args.displayName,
       tags: ["querystudio", "spatial", "webview", "offline"],
       profileMode: "warmed",
+      sql: { connectionProfile: "default", cacheMode: "warm" },
       userSettings: SPATIAL_USER_SETTINGS,
       setup: [
         ...spatialSetup(args.queryPath),
@@ -2544,6 +2545,7 @@ register({
     displayName: "Query Studio: 10k spatial points — Spatial tab unopened costs nothing",
     tags: ["querystudio", "spatial", "webview", "negative-proof"],
     profileMode: "warmed",
+    sql: { connectionProfile: "default", cacheMode: "warm" },
     userSettings: SPATIAL_USER_SETTINGS,
     setup: spatialSetup("queries/spatial-points-10k.sql"),
     measure: {
