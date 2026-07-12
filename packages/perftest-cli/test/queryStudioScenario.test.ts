@@ -386,7 +386,7 @@ describe("querystudio-spatial scenarios (SPA-9)", () => {
     }
     expect(points10k!.spec.measure.end).toEqual({
       type: "waitForMarker",
-      name: "mssql.queryResults.spatial.render.firstPaint",
+      name: "mssql.queryResults.spatial.render.settled",
       attrs: { tier: "canvas" },
     });
     expect(points100k!.spec.measure.end).toEqual({

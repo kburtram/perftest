@@ -2475,9 +2475,10 @@ function registerSpatialActivation(args: {
         ],
         end: {
           type: "waitForMarker",
-          name: args.settleOnGpu
-            ? "mssql.queryResults.spatial.render.settled"
-            : "mssql.queryResults.spatial.render.firstPaint",
+          // End only after the complete source has been prepared. Ending on
+          // first paint races the chunk pump and turns the required
+          // prepare.end marker into a cancellation during cleanup.
+          name: "mssql.queryResults.spatial.render.settled",
           attrs: { tier: args.settleOnGpu ? "gpuPoints" : "canvas" },
         },
         timeoutMs: 180000,
@@ -2491,15 +2492,11 @@ function registerSpatialActivation(args: {
           attrs: { outcome: "ok" },
         },
         { type: "markerSeen", name: "mssql.queryResults.spatial.render.firstPaint" },
-        ...(args.settleOnGpu
-          ? [
-              {
-                type: "markerSeen" as const,
-                name: "mssql.queryResults.spatial.render.settled",
-                attrs: { tier: "gpuPoints" },
-              },
-            ]
-          : []),
+        {
+          type: "markerSeen",
+          name: "mssql.queryResults.spatial.render.settled",
+          attrs: { tier: args.settleOnGpu ? "gpuPoints" : "canvas" },
+        },
         { type: "markerAbsent", name: "mssql.queryResults.spatial.prepare.cancel" },
         { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
       ],
