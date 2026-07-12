@@ -2440,6 +2440,7 @@ function registerSpatialActivation(args: {
   displayName: string;
   queryPath: string;
   rows: number;
+  settleOnGpu?: boolean;
 }): void {
   register({
     implemented: true,
@@ -2473,8 +2474,10 @@ function registerSpatialActivation(args: {
         ],
         end: {
           type: "waitForMarker",
-          name: "mssql.queryResults.spatial.render.firstPaint",
-          attrs: { tier: "canvas" },
+          name: args.settleOnGpu
+            ? "mssql.queryResults.spatial.render.settled"
+            : "mssql.queryResults.spatial.render.firstPaint",
+          attrs: { tier: args.settleOnGpu ? "gpuPoints" : "canvas" },
         },
         timeoutMs: 180000,
       },
@@ -2487,6 +2490,15 @@ function registerSpatialActivation(args: {
           attrs: { outcome: "ok" },
         },
         { type: "markerSeen", name: "mssql.queryResults.spatial.render.firstPaint" },
+        ...(args.settleOnGpu
+          ? [
+              {
+                type: "markerSeen" as const,
+                name: "mssql.queryResults.spatial.render.settled",
+                attrs: { tier: "gpuPoints" },
+              },
+            ]
+          : []),
         { type: "markerAbsent", name: "mssql.queryResults.spatial.prepare.cancel" },
         { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
       ],
@@ -2573,6 +2585,7 @@ registerSpatialActivation({
   displayName: "Query Studio: Spatial activation and first paint (100k points)",
   queryPath: "queries/spatial-points-100k.sql",
   rows: 100000,
+  settleOnGpu: true,
 });
 
 // Pin then rerun: the measured window is the RERUN with a pinned snapshot

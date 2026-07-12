@@ -382,12 +382,22 @@ describe("querystudio-spatial scenarios (SPA-9)", () => {
         args: [{ tab: "spatial" }],
         timeoutMs: 30000,
       });
-      expect(entry!.spec.measure.end).toEqual({
-        type: "waitForMarker",
-        name: "mssql.queryResults.spatial.render.firstPaint",
-        attrs: { tier: "canvas" },
-      });
     }
+    expect(points10k!.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryResults.spatial.render.firstPaint",
+      attrs: { tier: "canvas" },
+    });
+    expect(points100k!.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryResults.spatial.render.settled",
+      attrs: { tier: "gpuPoints" },
+    });
+    expect(points100k!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryResults.spatial.render.settled",
+      attrs: { tier: "gpuPoints" },
+    });
   });
 
   it("paired activation metrics are registry declared and window scoped", () => {
