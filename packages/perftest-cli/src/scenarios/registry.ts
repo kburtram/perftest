@@ -1399,6 +1399,7 @@ function registerQueryStudioInteractionScenario(spec: {
   ready: { name: string; attrs: Record<string, number> };
   actions: NonNullable<ScenarioSpec["measure"]>["action"];
   success: ScenarioSpec["success"];
+  tuningOverrides?: Record<string, unknown>;
 }): void {
   register({
     implemented: true,
@@ -1412,6 +1413,9 @@ function registerQueryStudioInteractionScenario(spec: {
       userSettings: {
         "mssql.sqlDataPlane.enabled": true,
         "mssql.queryStudio.enabled": true,
+        ...(spec.tuningOverrides
+          ? { "mssql.queryStudio.tuning.overrides": spec.tuningOverrides }
+          : {}),
       },
       sql: {
         database: "PerfHarness",
@@ -1594,7 +1598,50 @@ registerQueryStudioInteractionScenario({
     {
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3 },
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-copyall-large-cells-forced-spill",
+  displayName: "Query Studio interaction: copy large cells through forced spill",
+  tags: ["results-grid", "large-cells", "json", "xml", "clipboard", "copy", "spill"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  tuningOverrides: {
+    storeMemoryBytes: 1048576,
+    maxPendingSpillBytes: 1048576,
+    diagnosticsLevel: "verbose",
+  },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.write",
+      attrs: { encoding: "v8-v1" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.read",
+      attrs: { encoding: "v8-v1" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
     },
   ],
 });

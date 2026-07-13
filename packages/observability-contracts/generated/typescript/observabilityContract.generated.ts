@@ -826,9 +826,13 @@ export const OBS_CONTRACT: Registry = {
                 "pages": "structuralMetadata",
                 "spillWrites": "structuralMetadata",
                 "spillReads": "structuralMetadata",
+                "spillEncoding": "safeEnum",
                 "appendMsTotal": "structuralMetadata",
                 "spillWriteMsTotal": "structuralMetadata",
+                "spillSerializeMsTotal": "structuralMetadata",
+                "spillWriteIoMsTotal": "structuralMetadata",
                 "spillReadMsTotal": "structuralMetadata",
+                "spillDeserializeMsTotal": "structuralMetadata",
                 "materializeMsTotal": "structuralMetadata",
                 "windowCacheHits": "structuralMetadata",
                 "windowCacheMisses": "structuralMetadata",
@@ -1238,7 +1242,10 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "bytes": "structuralMetadata",
-                "ms": "structuralMetadata"
+                "ms": "structuralMetadata",
+                "serializeMs": "structuralMetadata",
+                "ioMs": "structuralMetadata",
+                "encoding": "safeEnum"
             },
             "attrsComplete": false,
             "notes": "Per-frame spill write (QO-2). Verbose diagnostics only."
@@ -1256,7 +1263,10 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "bytes": "structuralMetadata",
-                "ms": "structuralMetadata"
+                "ms": "structuralMetadata",
+                "ioMs": "structuralMetadata",
+                "deserializeMs": "structuralMetadata",
+                "encoding": "safeEnum"
             },
             "attrsComplete": false,
             "notes": "Per-frame spill read + decode (QO-2). Verbose diagnostics only."
@@ -1353,6 +1363,8 @@ export const OBS_CONTRACT: Registry = {
                 "fetchDecodeMs": "structuralMetadata",
                 "formatMs": "structuralMetadata",
                 "clipboardMs": "structuralMetadata",
+                "clipboardAttempts": "structuralMetadata",
+                "clipboardMode": "safeEnum",
                 "windowRows": "structuralMetadata",
                 "rows": "structuralMetadata",
                 "columns": "structuralMetadata",

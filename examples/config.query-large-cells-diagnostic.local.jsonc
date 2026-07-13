@@ -1,21 +1,18 @@
-// Query Studio semantic-interaction baseline: execute each deterministic
-// shape during setup, then measure product-owned tab/scroll/render actions.
-// Connection credentials come only from STS2_SQLSERVER_CONNSTRING.
+// Focused Query Studio large-value diagnostic. Query execution happens during
+// scenario setup for the interaction workloads, while STS page diagnostics,
+// process samples, row-store/cache markers, and exact interaction outcomes are
+// retained across the whole repetition. Connection credentials come only from
+// STS2_SQLSERVER_CONNSTRING.
 {
   "schemaVersion": 2,
   "runId": "auto",
-  "passType": "measurement",
+  "passType": "diagnostic",
   "repetitions": 3,
   "warmupRepetitions": 1,
   "scenarios": [
-    "querystudio-interaction-scroll-100k",
-    "querystudio-interaction-selectall-100k",
-    "querystudio-interaction-copyall-100k",
-    "querystudio-interaction-wide-1000x300",
     "querystudio-interaction-large-cells-20x1mb",
     "querystudio-interaction-copyall-large-cells",
-    "querystudio-interaction-copyall-large-cells-forced-spill",
-    "querystudio-interaction-100-resultsets"
+    "querystudio-interaction-copyall-large-cells-forced-spill"
   ],
   "vscode": {
     "version": "stable",
@@ -38,7 +35,8 @@
     "extraArgs": [],
     "env": {
       "MSSQL_SQLTOOLSSERVICE": "C:\\repos\\test\\sqltoolsservice\\src\\Microsoft.SqlTools.ServiceLayer\\bin\\Debug\\net10.0",
-      "PERF_DOTNET_PATH": "C:\\Program Files\\dotnet\\dotnet.exe"
+      "PERF_DOTNET_PATH": "C:\\Program Files\\dotnet\\dotnet.exe",
+      "STS_ENABLE_STS2": "1"
     }
   },
   "sql": {
@@ -49,7 +47,12 @@
     "connectionProfile": "default"
   },
   "environment": { "requireIdle": false },
-  "diagnostics": { "markers": true, "processSampler": true, "otel": "off" },
+  "diagnostics": {
+    "markers": true,
+    "processSampler": true,
+    "stsEnvelopeJournal": true,
+    "otel": "off"
+  },
   "store": { "type": "sqlite", "path": "./perf.db" },
   "regression": { "baseline": "none", "failOnRegression": false },
   "output": { "dir": "./perf-runs", "keepArtifacts": "always" }

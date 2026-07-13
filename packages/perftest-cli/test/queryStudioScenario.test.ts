@@ -420,6 +420,9 @@ describe("querystudio copy-all interaction", () => {
 describe("querystudio large-cell grid interaction", () => {
   const entry = getScenario("querystudio-interaction-large-cells-20x1mb");
   const copy = getScenario("querystudio-interaction-copyall-large-cells");
+  const forcedSpill = getScenario(
+    "querystudio-interaction-copyall-large-cells-forced-spill",
+  );
 
   it("drives the real grid over the bounded JSON/XML MAX fixture", () => {
     expect(entry).toBeDefined();
@@ -458,7 +461,31 @@ describe("querystudio large-cell grid interaction", () => {
     expect(copy!.spec.success).toContainEqual({
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3 },
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    });
+  });
+
+  it("forces eviction and proves exact copy after spill re-materialization", () => {
+    expect(forcedSpill).toBeDefined();
+    expect(forcedSpill!.spec.userSettings?.["mssql.queryStudio.tuning.overrides"]).toEqual({
+      storeMemoryBytes: 1048576,
+      maxPendingSpillBytes: 1048576,
+      diagnosticsLevel: "verbose",
+    });
+    expect(forcedSpill!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.write",
+      attrs: { encoding: "v8-v1" },
+    });
+    expect(forcedSpill!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.read",
+      attrs: { encoding: "v8-v1" },
+    });
+    expect(forcedSpill!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
     });
   });
 });
