@@ -99,7 +99,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.export.end` | marker | end | `mssql.queryStudio.export.begin` | queryStudio | extensionHost | sameProcessMonotonic | no | format:safeEnum, rows:structuralMetadata, bytes:structuralMetadata, canceled:structuralMetadata, streamed:structuralMetadata … |
 | `mssql.queryStudio.textView.capped` | webviewMark | instant | — | queryStudio | webview | epochAligned | no | totalRows:structuralMetadata, renderedRows:structuralMetadata … |
 | `mssql.queryStudio.plan.parse` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | plans:structuralMetadata, cacheHit:structuralMetadata, ms:structuralMetadata … |
-| `mssql.queryStudio.messagesPrepared` | webviewMark | instant | — | queryStudio | webview | epochAligned | no | messages:structuralMetadata, durationMs:structuralMetadata … |
+| `mssql.queryStudio.messagesPrepared` | webviewMark | instant | — | queryStudio | webview | epochAligned | no | messages:structuralMetadata, visibleRows:structuralMetadata, durationMs:structuralMetadata … |
+| `mssql.queryStudio.messages.window` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | startIndex:structuralMetadata, nextIndex:structuralMetadata, returned:structuralMetadata, total:structuralMetadata, textCharacters:structuralMetadata, hasMore:structuralMetadata, durationMs:structuralMetadata |
 | `mssql.queryStudio.messagesRendered` | webviewMark | instant | — | queryStudio | webview | epochAligned | no | messages:structuralMetadata … |
 | `mssql.queryStudio.cancel` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | msToAck:structuralMetadata, msToTerminal:structuralMetadata … |
 | `queryStudio.sync.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
