@@ -10,6 +10,7 @@
   "repetitions": 3,
   "warmupRepetitions": 1,
   "scenarios": [
+    "querystudio-query-scalar-results-focus",
     "querystudio-query-10k",
     "querystudio-query-100k-narrow",
     "querystudio-query-wide-1000x300",

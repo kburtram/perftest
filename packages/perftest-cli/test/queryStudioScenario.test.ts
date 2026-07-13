@@ -78,6 +78,7 @@ describe("querystudio scenario family conformance", () => {
   it("has the QO-9a result-shape scenarios registered", () => {
     const ids = family.map((s) => s.spec.scenarioId);
     for (const expected of [
+      "querystudio-query-scalar-results-focus",
       "querystudio-query-100k-narrow",
       "querystudio-query-wide-1000x300",
       "querystudio-query-large-cells",
@@ -86,6 +87,30 @@ describe("querystudio scenario family conformance", () => {
     ]) {
       expect(ids, `missing scenario: ${expected}`).toContain(expected);
     }
+  });
+
+  it("pins first-query and fast scalar focus to the post-paint Results tab", () => {
+    const scalar = getScenario("querystudio-query-scalar-results-focus")!;
+    expect(scalar.spec.setup).toContainEqual({
+      type: "openDocument",
+      path: "queries/select-scalar-100.sql",
+    });
+    expect(scalar.spec.setup).toContainEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+      timeoutMs: 30000,
+    });
+    expect(scalar.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+    });
+    expect(scalar.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+    });
   });
 
   it.each(family.map((s) => [s.spec.scenarioId, s] as const))(

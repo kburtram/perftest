@@ -1188,11 +1188,13 @@ interface QueryStudioShapeSpec {
   tags: string[];
   queryPath: string;
   /** attrs guard for the measured resultsRendered (or alternate end marker). */
-  end: { name: string; attrs: Record<string, number> };
-  success: Array<{ name: string; attrs?: Record<string, number> }>;
+  end: { name: string; attrs: Record<string, string | number | boolean> };
+  success: Array<{ name: string; attrs?: Record<string, string | number | boolean> }>;
   timeoutMs?: number;
   /** Include the submit→resultsRendered pair (skip for no-result-set shapes). */
   renderMetric?: boolean;
+  /** Require the connect readiness SELECT 1 to paint Results, not Messages. */
+  assertPreflightResultsFocus?: boolean;
   tuningOverrides?: Record<string, unknown>;
   scenarioIdSuffix?: string;
 }
@@ -1226,6 +1228,16 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
         { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
         { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
         { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        ...(shape.assertPreflightResultsFocus
+          ? [
+              {
+                type: "waitForMarker" as const,
+                name: "mssql.queryStudio.resultsRendered",
+                attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+                timeoutMs: 30000,
+              },
+            ]
+          : []),
       ],
       measure: {
         start: { type: "beforeFirstAction" },
@@ -1277,6 +1289,28 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
     },
   });
 }
+
+// Correctness sentinel for the fast-terminal tab race: the Messages snapshot
+// can arrive before result metadata, but both the first readiness query and a
+// successful SELECT 100 must visibly focus Results at the post-paint boundary.
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-scalar-results-focus",
+  displayName: "Query Studio: SELECT 100 focuses Results",
+  tags: ["querystudio", "query", "results-grid", "focus", "correctness"],
+  queryPath: "queries/select-scalar-100.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 1, resultSets: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  assertPreflightResultsFocus: true,
+});
 
 // Deep narrow results: 100k rows x 4 columns — spill, windowing, and
 // streaming-notification pressure. The pre-optimization baseline anchor.
