@@ -280,6 +280,11 @@ export type QueryStudioInteractionAction =
   | {
       kind: "scrollResultStack";
       target: "start" | "middle" | "end";
+    }
+  | {
+      kind: "selectGrid";
+      resultSetIndex: number;
+      selection: "all";
     };
 
 // ---------------------------------------------------------------------------

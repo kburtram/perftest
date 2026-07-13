@@ -344,6 +344,27 @@ describe("querystudio-vector scenarios (VEC-12)", () => {
   });
 });
 
+describe("querystudio select-all interaction", () => {
+  const entry = getScenario("querystudio-interaction-selectall-100k");
+
+  it("drives the closed product selection seam over the 100k fixture", () => {
+    expect(entry).toBeDefined();
+    expect(entry!.spec.setup).toContainEqual({
+      type: "openDocument",
+      path: "queries/select-100000.sql",
+    });
+    expect(entry!.spec.measure.action).toContainEqual({
+      type: "queryStudioInteract",
+      action: { kind: "selectGrid", resultSetIndex: 0, selection: "all" },
+    });
+    expect(entry!.spec.measure.end).toEqual({ type: "afterLastAction" });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.interaction.end",
+    });
+  });
+});
+
 describe("querystudio-spatial scenarios (SPA-9)", () => {
   const unopened = getScenario("querystudio-spatial-unopened-points");
   const points10k = getScenario("querystudio-spatial-points-10k-offline");

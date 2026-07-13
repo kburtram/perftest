@@ -33,6 +33,7 @@ export interface ScenarioStep {
     resultSetIndex?: number;
     axis?: string;
     target?: string;
+    selection?: string;
   };
   timeoutMs?: number;
 }

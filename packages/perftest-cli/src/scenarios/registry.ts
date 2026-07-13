@@ -1441,6 +1441,22 @@ registerQueryStudioInteractionScenario({
 });
 
 registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-selectall-100k",
+  displayName: "Query Studio interaction: select all 100k rows",
+  tags: ["results-grid", "large-results", "selection"],
+  queryPath: "queries/select-100000.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "selectGrid", resultSetIndex: 0, selection: "all" },
+    },
+  ],
+  success: [],
+});
+
+registerQueryStudioInteractionScenario({
   scenarioId: "querystudio-interaction-wide-1000x300",
   displayName: "Query Studio interaction: 300-column horizontal sweep",
   tags: ["results-grid", "wide", "horizontal-scroll"],

@@ -9,6 +9,7 @@
   "warmupRepetitions": 1,
   "scenarios": [
     "querystudio-interaction-scroll-100k",
+    "querystudio-interaction-selectall-100k",
     "querystudio-interaction-wide-1000x300",
     "querystudio-interaction-100-resultsets"
   ],
