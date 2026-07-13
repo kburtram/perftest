@@ -823,7 +823,10 @@
                 "pendingSpillBytesPeak": "structuralMetadata",
                 "windowCacheBytes": "structuralMetadata",
                 "windowCachePeakBytes": "structuralMetadata",
-                "windowCacheEvictions": "structuralMetadata"
+                "windowCacheEvictions": "structuralMetadata",
+                "windowCacheBypasses": "structuralMetadata",
+                "windowCacheOversizeSkips": "structuralMetadata",
+                "windowCacheMaxBytes": "structuralMetadata"
             },
             "attrsComplete": false,
             "notes": "Design 17.1 named this query.execute begin/end; frozen as submit/complete to mirror the classic query pair convention. Row-pipeline aggregates (pages/spill*/append*/materialize*/windowCache*) added by QO-2 attribution."
@@ -1136,10 +1139,16 @@
                 "pendingSpillBytes": "structuralMetadata",
                 "windowCacheBytes": "structuralMetadata",
                 "windowCacheEntries": "structuralMetadata",
-                "windowCacheEvictions": "structuralMetadata"
+                "windowCacheEvictions": "structuralMetadata",
+                "windowCacheBypasses": "structuralMetadata",
+                "windowCacheOversizeSkips": "structuralMetadata",
+                "windowCacheMaxBytes": "structuralMetadata",
+                "gridPreview": "structuralMetadata",
+                "sourceValueCharacters": "structuralMetadata",
+                "returnedValueCharacters": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "Window materialization plus page/window-cache state at completion. Per-cell null/non-empty count attrs emit only at verbose diagnostics."
+            "notes": "Window materialization plus page/window-cache state at completion. Grid previews report aggregate source/returned character counts; cache admission is terminal-only and bounded by entries plus retained bytes. Per-cell null/non-empty count attrs emit only at verbose diagnostics."
         },
         {
             "name": "mssql.queryStudio.state.push",
@@ -1281,6 +1290,7 @@
                 "returnedRows": "structuralMetadata",
                 "returnedColumns": "structuralMetadata",
                 "returnedCells": "structuralMetadata",
+                "valueMode": "safeEnum",
                 "projected": "structuralMetadata",
                 "ms": "structuralMetadata"
             },

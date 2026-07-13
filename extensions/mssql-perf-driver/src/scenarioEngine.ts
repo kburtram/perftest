@@ -567,25 +567,16 @@ async function executeStep(
           `queryStudioInteract failed: ${result?.error ?? "missing request id"}`,
         );
       }
-      const waits: Array<Promise<unknown>> = [
-        ctx.bus.wait(
-          "mssql.queryStudio.interaction.end",
-          { requestId: result.requestId },
-          timeoutMs,
-          issuedAt,
-        ),
-      ];
-      if (action.kind === "scrollGrid" && action.axis === "vertical") {
-        waits.push(
-          ctx.bus.wait(
-            "mssql.queryStudio.grid.render.complete",
-            undefined,
-            timeoutMs,
-            issuedAt,
-          ),
-        );
-      }
-      await Promise.all(waits);
+      // The product emits this request-correlated marker after the semantic
+      // action and the next paint. A second render/instance marker is not a
+      // valid completion requirement: scrolling can reuse an already-painted
+      // window or clamp inside a fully visible result set.
+      await ctx.bus.wait(
+        "mssql.queryStudio.interaction.end",
+        { requestId: result.requestId },
+        timeoutMs,
+        issuedAt,
+      );
       return;
     }
     case "webviewProbe": {

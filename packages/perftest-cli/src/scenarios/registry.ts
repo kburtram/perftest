@@ -1545,6 +1545,61 @@ registerQueryStudioInteractionScenario({
 });
 
 registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-large-cells-20x1mb",
+  displayName: "Query Studio interaction: 20 rows with two 1 MiB MAX cells",
+  tags: ["results-grid", "large-cells", "blob", "json", "xml"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "end" },
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.windowFetch.end",
+      attrs: { gridPreview: true },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.window.received",
+      attrs: { valueMode: "gridPreview" },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-copyall-large-cells",
+  displayName: "Query Studio interaction: copy 20 rows with two 1 MiB MAX cells",
+  tags: ["results-grid", "large-cells", "blob", "json", "xml", "clipboard", "copy"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3 },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
   scenarioId: "querystudio-interaction-100-resultsets",
   displayName: "Query Studio interaction: sweep 100 result sets",
   tags: ["results-grid", "resultsets", "lifecycle", "vertical-scroll"],

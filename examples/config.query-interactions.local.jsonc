@@ -12,6 +12,8 @@
     "querystudio-interaction-selectall-100k",
     "querystudio-interaction-copyall-100k",
     "querystudio-interaction-wide-1000x300",
+    "querystudio-interaction-large-cells-20x1mb",
+    "querystudio-interaction-copyall-large-cells",
     "querystudio-interaction-100-resultsets"
   ],
   "vscode": {

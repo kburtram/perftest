@@ -417,6 +417,52 @@ describe("querystudio copy-all interaction", () => {
   });
 });
 
+describe("querystudio large-cell grid interaction", () => {
+  const entry = getScenario("querystudio-interaction-large-cells-20x1mb");
+  const copy = getScenario("querystudio-interaction-copyall-large-cells");
+
+  it("drives the real grid over the bounded JSON/XML MAX fixture", () => {
+    expect(entry).toBeDefined();
+    expect(entry!.spec.setup).toContainEqual({
+      type: "openDocument",
+      path: "queries/large-cells-1mb.sql",
+    });
+    expect(entry!.spec.measure.action).toContainEqual({
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "end" },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.windowFetch.end",
+      attrs: { gridPreview: true },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.window.received",
+      attrs: { valueMode: "gridPreview" },
+    });
+  });
+
+  it("copies the same large-cell fixture through the exact-value path", () => {
+    expect(copy).toBeDefined();
+    expect(copy!.spec.measure.action).toContainEqual({
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    });
+    expect(copy!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3 },
+    });
+  });
+});
+
 describe("querystudio-spatial scenarios (SPA-9)", () => {
   const unopened = getScenario("querystudio-spatial-unopened-points");
   const points10k = getScenario("querystudio-spatial-points-10k-offline");
