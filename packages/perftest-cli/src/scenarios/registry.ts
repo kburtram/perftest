@@ -1457,6 +1457,34 @@ registerQueryStudioInteractionScenario({
 });
 
 registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-copyall-100k",
+  displayName: "Query Studio interaction: copy all 100k rows",
+  tags: ["results-grid", "large-results", "clipboard", "copy"],
+  queryPath: "queries/select-100000.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 100000, columns: 4 },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
   scenarioId: "querystudio-interaction-wide-1000x300",
   displayName: "Query Studio interaction: 300-column horizontal sweep",
   tags: ["results-grid", "wide", "horizontal-scroll"],

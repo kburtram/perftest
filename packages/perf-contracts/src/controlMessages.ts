@@ -285,6 +285,12 @@ export type QueryStudioInteractionAction =
       kind: "selectGrid";
       resultSetIndex: number;
       selection: "all";
+    }
+  | {
+      kind: "copyGrid";
+      resultSetIndex: number;
+      selection: "all";
+      includeHeaders: boolean;
     };
 
 // ---------------------------------------------------------------------------
