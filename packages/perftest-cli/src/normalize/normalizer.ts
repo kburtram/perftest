@@ -97,6 +97,23 @@ function markerPairDuration(
   };
 }
 
+function markerTimestamp(marker: Marker | undefined): bigint | undefined {
+  if (!marker) return undefined;
+  try {
+    return BigInt(marker.timestampUnixNs);
+  } catch {
+    return undefined;
+  }
+}
+
+function compareMarkerTime(a: Marker, b: Marker): number {
+  const aTime = markerTimestamp(a);
+  const bTime = markerTimestamp(b);
+  if (aTime === undefined) return bTime === undefined ? 0 : 1;
+  if (bTime === undefined) return -1;
+  return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+}
+
 export function normalizeRep(inputs: NormalizeInputs): PerfResult {
   const validations: ValidationRecord[] = [];
   const errors: ErrorRecord[] = [];
@@ -237,11 +254,20 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
   // (declared per metric): scenarios whose SETUP emits the same product
   // markers as the measured action (e.g. Query Studio's unmeasured session
   // preflight) must not have the setup pair timed as the metric.
-  const startIndex = inputs.markers.findIndex((m) => m.name === "scenario.start");
-  const endBoundIndex = inputs.markers.findIndex((m) => m.name === "scenario.end");
+  // Marker delivery is asynchronous across extension host and webviews. A
+  // preflight event can arrive after scenario.start in FILE ORDER while its
+  // event timestamp is correctly earlier. Scope and order by event time so
+  // delayed delivery cannot poison the measured pair.
+  const startNs = markerTimestamp(start);
+  const endNs = markerTimestamp(end);
   const windowMarkers =
-    startIndex >= 0 && endBoundIndex > startIndex
-      ? inputs.markers.slice(startIndex, endBoundIndex + 1)
+    startNs !== undefined && endNs !== undefined && endNs >= startNs
+      ? inputs.markers
+          .filter((marker) => {
+            const timestamp = markerTimestamp(marker);
+            return timestamp !== undefined && timestamp >= startNs && timestamp <= endNs;
+          })
+          .sort((a, b) => compareMarkerTime(a, b))
       : [];
   for (const metricSpec of inputs.spec?.metrics ?? []) {
     if (!metricSpec.beginMarker || !metricSpec.endMarker) {

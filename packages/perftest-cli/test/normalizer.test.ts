@@ -131,6 +131,7 @@ describe("normalizeRep", () => {
       baseInputs({
         markers: [
           marker("mssql.queryStudio.webview.health", {
+            timestampUnixNs: "999999999900000000",
             process: webview,
             attrs: { usedJsHeapBytes: 999 * 1024 * 1024, gridInstances: 99 },
           }),
@@ -233,7 +234,7 @@ describe("normalizeRep", () => {
     ).toBe("warning");
   });
 
-  it("withinMeasuredWindow scopes pair derivation past identical setup markers", () => {
+  it("withinMeasuredWindow rejects delayed preflight markers by event timestamp", () => {
     const spec: ScenarioSpec = {
       scenarioId: "test-scenario",
       displayName: "t",
@@ -259,12 +260,36 @@ describe("normalizeRep", () => {
         spec,
         markers: [
           // Setup preflight emits the SAME marker family before the window.
-          marker("mssql.queryStudio.query.submit", { monotonicNs: "100000000", phase: "begin" }),
-          marker("mssql.queryStudio.query.complete", { monotonicNs: "105000000", phase: "end" }),
-          marker("scenario.start", { monotonicNs: "1000000000" }),
-          marker("mssql.queryStudio.query.submit", { monotonicNs: "1010000000", phase: "begin" }),
-          marker("mssql.queryStudio.query.complete", { monotonicNs: "1510000000", phase: "end" }),
-          marker("scenario.end", { monotonicNs: "1600000000" }),
+          marker("mssql.queryStudio.query.submit", {
+            timestampUnixNs: "999999999900000000",
+            monotonicNs: "100000000",
+            phase: "begin",
+          }),
+          marker("scenario.start", {
+            timestampUnixNs: "1000000000000000000",
+            monotonicNs: "1000000000",
+          }),
+          // Its end arrives AFTER scenario.start in file order, but carries
+          // the correct pre-window event timestamp (the live rep-3 race).
+          marker("mssql.queryStudio.query.complete", {
+            timestampUnixNs: "999999999905000000",
+            monotonicNs: "105000000",
+            phase: "end",
+          }),
+          marker("mssql.queryStudio.query.submit", {
+            timestampUnixNs: "1000000000010000000",
+            monotonicNs: "1010000000",
+            phase: "begin",
+          }),
+          marker("mssql.queryStudio.query.complete", {
+            timestampUnixNs: "1000000000510000000",
+            monotonicNs: "1510000000",
+            phase: "end",
+          }),
+          marker("scenario.end", {
+            timestampUnixNs: "1000000000600000000",
+            monotonicNs: "1600000000",
+          }),
         ],
       }),
     );
