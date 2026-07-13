@@ -1557,11 +1557,33 @@ registerQueryStudioInteractionScenario({
     { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
     {
       type: "queryStudioInteract",
-      action: { kind: "scrollResultStack", target: "end" },
+      action: { kind: "selectGrid", resultSetIndex: 0, selection: "all" },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "sweepResultStack", steps: 32 },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollResultStack", target: "start" },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "selectGrid", resultSetIndex: 0, selection: "all" },
     },
   ],
   success: [
     { type: "markerSeen", name: "mssql.queryStudio.grid.instance.created" },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.results.block.visibility",
+      attrs: { mounted: false, reason: "viewport" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.interaction.end",
+      attrs: { action: "selectGrid", outcome: "alreadySelected" },
+    },
   ],
 });
 

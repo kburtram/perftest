@@ -584,15 +584,6 @@ async function executeStep(
             issuedAt,
           ),
         );
-      } else if (action.kind === "scrollResultStack") {
-        waits.push(
-          ctx.bus.wait(
-            "mssql.queryStudio.grid.instance.created",
-            undefined,
-            timeoutMs,
-            issuedAt,
-          ),
-        );
       }
       await Promise.all(waits);
       return;

@@ -1373,6 +1373,24 @@ export const OBS_CONTRACT: Registry = {
             "notes": "First real (non-placeholder) rows painted for a run's first grid — the user-perceived 'results are here' moment, tighter than resultsRendered (QO-2). Diagnostic until harness-proven stable."
         },
         {
+            "name": "mssql.queryStudio.results.block.visibility",
+            "kind": "webviewMark",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "webview"
+            ],
+            "timingClass": "epochAligned",
+            "measurementEligible": false,
+            "attrs": {
+                "resultSetId": "structuralMetadata",
+                "mounted": "structuralMetadata",
+                "reason": "safeEnum"
+            },
+            "attrsComplete": true,
+            "notes": "A stacked result block entered or left the viewport warm band. Leaving replaces the live grid with an equal-height placeholder while retaining panel-local grid state."
+        },
+        {
             "name": "mssql.queryStudio.run.observed",
             "kind": "webviewMark",
             "phase": "instant",
@@ -1452,10 +1470,11 @@ export const OBS_CONTRACT: Registry = {
                 "axis": "safeEnum",
                 "target": "safeEnum",
                 "resultSetIndex": "structuralMetadata",
+                "steps": "structuralMetadata",
                 "includeHeaders": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "A PERF_MODE-only semantic Query Studio interaction began. The contract permits relative scrolling, select-all, or copy-all against a result-set ordinal; pixels, selectors, SQL, identifiers, and cell values are unrepresentable."
+            "notes": "A PERF_MODE-only semantic Query Studio interaction began. The contract permits relative scrolling, a bounded paint-settled result-stack sweep, select-all, or copy-all against a result-set ordinal; pixels, selectors, SQL, identifiers, and cell values are unrepresentable."
         },
         {
             "name": "mssql.queryStudio.interaction.end",
@@ -1474,6 +1493,7 @@ export const OBS_CONTRACT: Registry = {
                 "axis": "safeEnum",
                 "target": "safeEnum",
                 "resultSetIndex": "structuralMetadata",
+                "steps": "structuralMetadata",
                 "includeHeaders": "structuralMetadata",
                 "outcome": "safeEnum",
                 "rafThrottled": "structuralMetadata"
