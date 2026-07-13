@@ -125,6 +125,64 @@ describe("normalizeRep", () => {
     expect(result.metrics.every((m) => !m.official)).toBe(true);
   });
 
+  it("normalizes measured-window Query Studio webview health checkpoints", () => {
+    const webview = { role: "webview", pid: 99, name: "queryStudio" };
+    const result = normalizeRep(
+      baseInputs({
+        markers: [
+          marker("mssql.queryStudio.webview.health", {
+            process: webview,
+            attrs: { usedJsHeapBytes: 999 * 1024 * 1024, gridInstances: 99 },
+          }),
+          marker("scenario.start", { monotonicNs: "1000000000" }),
+          marker("mssql.queryStudio.webview.health", {
+            process: webview,
+            attrs: {
+              checkpoint: "interactionPaint",
+              usedJsHeapBytes: 10 * 1024 * 1024,
+              totalJsHeapBytes: 30 * 1024 * 1024,
+              longestTaskMs: 55,
+              longTaskTotalMs: 80,
+              longTaskCount: 2,
+              gridInstances: 4,
+              mountedTabs: 2,
+              domNodes: 1000,
+            },
+          }),
+          marker("mssql.queryStudio.webview.health", {
+            process: webview,
+            attrs: {
+              checkpoint: "interactionPaint",
+              usedJsHeapBytes: 20 * 1024 * 1024,
+              totalJsHeapBytes: 40 * 1024 * 1024,
+              longestTaskMs: 75,
+              longTaskTotalMs: 120,
+              longTaskCount: 3,
+              gridInstances: 2,
+              mountedTabs: 3,
+              domNodes: 900,
+            },
+          }),
+          marker("scenario.end", { monotonicNs: "1250000000" }),
+        ],
+      }),
+    );
+
+    const value = (name: string) => result.metrics.find((metric) => metric.name === name)?.value;
+    expect(value("queryStudio.webview.usedJsHeap.peak")).toBe(20);
+    expect(value("queryStudio.webview.usedJsHeap.final")).toBe(20);
+    expect(value("queryStudio.webview.longestTask.peak")).toBe(75);
+    expect(value("queryStudio.webview.longTaskCount.final")).toBe(3);
+    expect(value("queryStudio.webview.gridInstances.peak")).toBe(4);
+    expect(value("queryStudio.webview.gridInstances.final")).toBe(2);
+    expect(value("queryStudio.webview.domNodes.final")).toBe(900);
+    expect(
+      result.metrics
+        .filter((metric) => metric.name.startsWith("queryStudio.webview."))
+        .every((metric) => metric.official === false),
+    ).toBe(true);
+  });
+
   it("derives declared marker-pair metrics and warns when markers are absent", () => {
     const spec: ScenarioSpec = {
       scenarioId: "test-scenario",

@@ -362,6 +362,102 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
     });
   }
 
+  // --- Query Studio webview health checkpoints ----------------------------
+  // Product-owned post-paint snapshots make renderer heap/long-task/grid/DOM
+  // state available even when a diagnostic CDP trace is disabled. Only the
+  // measured window participates, so an interaction scenario's setup query
+  // cannot pollute the reported resource state.
+  const health = windowMarkers.filter((m) => m.name === "mssql.queryStudio.webview.health");
+  const healthFields: Array<{
+    attr: string;
+    name: string;
+    unit: string;
+    scale: number;
+    summary: "max" | "final" | "both";
+  }> = [
+    {
+      attr: "usedJsHeapBytes",
+      name: "queryStudio.webview.usedJsHeap",
+      unit: "MB",
+      scale: 1 / (1024 * 1024),
+      summary: "both",
+    },
+    {
+      attr: "totalJsHeapBytes",
+      name: "queryStudio.webview.totalJsHeap",
+      unit: "MB",
+      scale: 1 / (1024 * 1024),
+      summary: "both",
+    },
+    {
+      attr: "longestTaskMs",
+      name: "queryStudio.webview.longestTask",
+      unit: "ms",
+      scale: 1,
+      summary: "max",
+    },
+    {
+      attr: "longTaskTotalMs",
+      name: "queryStudio.webview.longTaskTotal",
+      unit: "ms",
+      scale: 1,
+      summary: "final",
+    },
+    {
+      attr: "longTaskCount",
+      name: "queryStudio.webview.longTaskCount",
+      unit: "count",
+      scale: 1,
+      summary: "final",
+    },
+    {
+      attr: "gridInstances",
+      name: "queryStudio.webview.gridInstances",
+      unit: "count",
+      scale: 1,
+      summary: "both",
+    },
+    {
+      attr: "mountedTabs",
+      name: "queryStudio.webview.mountedTabs",
+      unit: "count",
+      scale: 1,
+      summary: "final",
+    },
+    {
+      attr: "domNodes",
+      name: "queryStudio.webview.domNodes",
+      unit: "count",
+      scale: 1,
+      summary: "both",
+    },
+  ];
+  for (const field of healthFields) {
+    const values = health.flatMap((m) =>
+      typeof m.attrs?.[field.attr] === "number" ? [m.attrs[field.attr] as number] : [],
+    );
+    if (values.length === 0) continue;
+    const addMetric = (suffix: "peak" | "final", raw: number): void => {
+      metrics.push({
+        name: `${field.name}.${suffix}`,
+        value: Number((raw * field.scale).toFixed(field.unit === "count" ? 0 : 2)),
+        unit: field.unit,
+        component: "queryStudio",
+        processRole: "webview",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        tags: { samples: values.length, scope: "measuredWindowPostPaint" },
+      });
+    };
+    if (field.summary === "max" || field.summary === "both") {
+      addMetric("peak", Math.max(...values));
+    }
+    if (field.summary === "final" || field.summary === "both") {
+      addMetric("final", values[values.length - 1]!);
+    }
+  }
+
   // Collector metrics: structurally incapable of being official (§12.2).
   for (const metric of inputs.extraMetrics ?? []) {
     metrics.push({ ...metric, official: false });
