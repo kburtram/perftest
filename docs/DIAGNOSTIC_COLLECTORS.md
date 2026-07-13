@@ -17,14 +17,20 @@ each collector and enforced by the pipeline.
 | `processSampler` | measurement + diagnostic | `process-samples.jsonl`; `process.peakWorkingSet` / `process.cpuTime` per role (vscodeMain, extensionHost, sts) | nothing (PowerShell CIM / ps) |
 | `stsEnvelopeJournal` | diagnostic | sts2 journal copies under `artifacts/sts2/`; `sts.rpc.<method>.duration` medians; `sts2.query.pipeline.*` stage, byte, and allocation aggregates | local STS build + `STS_ENABLE_STS2=1` (see STS_INSTRUMENTATION.md) |
 | `cdpExtHostProfile` | diagnostic | `artifacts/exthost.cpuprofile` (V8 sampling profile of the scenario window; open in VS Code/speedscope) | none — adds `--inspect-extensions=<port>` and drives the Node inspector protocol |
+| `cdpRendererTrace` | diagnostic | `artifacts/renderer.trace.json`; workbench renderer paint/layout/script totals | none — adds/reuses `--remote-debugging-port=<port>` and uses the workbench target's Chromium Tracing domain |
+| `cdpRendererProfile` | diagnostic | `artifacts/query-studio-webview.cpuprofile`; Query Studio webview sampled CPU/duration | none — reuses the debugging port, probes only MSSQL-owned iframe targets for the product DOM sentinel, and drives the V8 Profiler domain |
 | `dotnetTrace` | diagnostic | `artifacts/sts.nettrace` (EventPipe cpu-sampling of STS; finalizes when STS exits at teardown) | `dotnet tool install -g dotnet-trace` |
 | `wprEtw` | diagnostic | `artifacts/trace.etl` (system ETW, GeneralProfile, scenario window) | Windows Performance Toolkit + elevated session; warns + skips otherwise, and `wpr -cancel` on teardown guarantees no session leaks |
 
-Planned next (§14.3): `cdpRendererTrace`/`cdpRendererProfile` (needs
-`--remote-debugging-port` target discovery for the renderer), `otelMinimal`
-(OTLP receiver), `sqlServerXEvents` (server-side timing; task packet 7),
-`dotnetCounters` (needs a graceful-stop story for `dotnet-counters collect`
-on Windows).
+Planned next (§14.3): `otelMinimal` (OTLP receiver) and the remaining collector
+hardening/calibration work. Renderer tracing and Query Studio target profiling
+are diagnostic-only; neither contributes official regression numbers.
+
+Scenario-window collectors use an explicit two-phase driver handshake. They
+are fully armed before `scenario.start` is timestamped, keeping attach cost out
+of the measured interval, and they flush at `scenario.end` before success
+checks or editor cleanup can remove the webview target. A 60-second bounded
+driver wait fails the scenario instead of silently accepting a partial capture.
 
 ## Calibration entries (§12.3)
 
@@ -62,5 +68,6 @@ the §12.3 rule (uncalibrated ⇒ diagnostic-only) applied until this entry.
 `examples/config.fulldiag.local.jsonc` runs `query-10k-results` once with
 every implemented collector enabled — the one-command "give me everything"
 investigation pass. Its rep directory contains markers, process samples, the
-ext-host CPU profile, the STS EventPipe trace, the sts2 envelope journal, and
-(when elevated) the system ETL, all linked from report.html.
+ext-host and Query Studio webview CPU profiles, the workbench renderer trace,
+the STS EventPipe trace, the sts2 envelope journal, and (when elevated) the
+system ETL, all linked from report.html.

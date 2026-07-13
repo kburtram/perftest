@@ -12,6 +12,7 @@ export type ControlMessageKind =
   | "ready"
   | "startScenario"
   | "scenarioStarted"
+  | "scenarioBoundaryAck"
   | "marker"
   | "processDiscovered"
   | "scenarioCompleted"
@@ -63,7 +64,11 @@ export interface HelloMessage extends ControlMessageBase {
 export interface ReadyMessage extends ControlMessageBase {
   kind: "ready";
   payload: {
-    checks?: Array<{ name: string; status: "passed" | "warning" | "failed"; message?: string }>;
+    checks?: Array<{
+      name: string;
+      status: "passed" | "warning" | "failed";
+      message?: string;
+    }>;
   };
 }
 
@@ -99,6 +104,12 @@ export interface StartScenarioMessage extends ControlMessageBase {
 export interface ScenarioStartedMessage extends ControlMessageBase {
   kind: "scenarioStarted";
   payload: Record<string, never>;
+}
+
+/** Orchestrator → driver: scenario-window collectors armed or stopped. */
+export interface ScenarioBoundaryAckMessage extends ControlMessageBase {
+  kind: "scenarioBoundaryAck";
+  payload: { phase: "start" | "end" };
 }
 
 /** Any perf-mode process → orchestrator: a semantic marker. */
@@ -182,7 +193,12 @@ export interface CalibrationPingMessage extends ControlMessageBase {
 
 export interface CalibrationPongMessage extends ControlMessageBase {
   kind: "calibrationPong";
-  payload: { seq: number; t0UnixNs: string; e1UnixNs: string; e2UnixNs: string };
+  payload: {
+    seq: number;
+    t0UnixNs: string;
+    e1UnixNs: string;
+    e2UnixNs: string;
+  };
 }
 
 /** Either direction: protocol-level error report. */
@@ -196,6 +212,7 @@ export type ControlMessage =
   | ReadyMessage
   | StartScenarioMessage
   | ScenarioStartedMessage
+  | ScenarioBoundaryAckMessage
   | MarkerMessage
   | ProcessDiscoveredMessage
   | ScenarioCompletedMessage
@@ -272,10 +289,25 @@ export type QueryStudioInteractionAction =
 export type ScenarioStep =
   | { type: "command"; command: string; args?: unknown[]; timeoutMs?: number }
   | { type: "openDocument"; path: string; timeoutMs?: number }
-  | { type: "waitForMarker"; name: string; attrs?: Record<string, unknown>; timeoutMs?: number }
-  | { type: "waitForCommandCompletion"; command: string; args?: unknown[]; timeoutMs?: number }
+  | {
+      type: "waitForMarker";
+      name: string;
+      attrs?: Record<string, unknown>;
+      timeoutMs?: number;
+    }
+  | {
+      type: "waitForCommandCompletion";
+      command: string;
+      args?: unknown[];
+      timeoutMs?: number;
+    }
   | { type: "webviewProbe"; probe: string; assert?: string; timeoutMs?: number }
-  | { type: "objectExplorerProbe"; name?: string; assert?: string; timeoutMs?: number }
+  | {
+      type: "objectExplorerProbe";
+      name?: string;
+      assert?: string;
+      timeoutMs?: number;
+    }
   /** Expand an OE path (labels from the server root) via the real tree provider. */
   | { type: "oeExpand"; oePath: string[]; profile?: string; timeoutMs?: number }
   /**
@@ -339,7 +371,11 @@ export type ScenarioStep =
    * correlated webview paint. Vertical grid scrolls also await real grid
    * render completion; result-stack sweeps await a newly mounted grid.
    */
-  | { type: "queryStudioInteract"; action: QueryStudioInteractionAction; timeoutMs?: number }
+  | {
+      type: "queryStudioInteract";
+      action: QueryStudioInteractionAction;
+      timeoutMs?: number;
+    }
   /**
    * Deliberate busy-delay INSIDE a measured window. Exists solely so the
    * regression gate can be proven against a real slowdown (design §32 M6

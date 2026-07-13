@@ -1,26 +1,37 @@
 /**
  * cdpRendererTrace collector (Phase-2 M9, diagnostic only): Chromium trace of
- * the VS Code renderer across the scenario window, capturing paint/layout/
- * scripting work — including webview iframes (the results grid), which run
- * inside the renderer process.
+ * the VS Code workbench renderer across the scenario window, capturing
+ * paint/layout/scripting work. Chromium's Tracing domain is not exposed on
+ * VS Code's iframe webview targets; cdpRendererProfile samples the actual
+ * Query Studio target alongside this process-level trace.
  *
  * Mechanics: `--remote-debugging-port` (diagnostic launch flag), discover the
- * workbench page target via /json/list, Tracing.start on scenario.start with
+ * target inventory via /json/list, Tracing.start on scenario.start with
  * rendering categories, Tracing.end on scenario.end, buffer
  * Tracing.dataCollected events → artifacts/renderer.trace.json
  * (Perfetto/chrome://tracing compatible).
  *
  * Honesty: if the renderer target can't be found, a validation warning is
- * recorded and NO metrics are emitted. Derived totals are renderer-process-
- * wide for the window (webview + workbench), tagged as such — never presented
- * as grid-only numbers.
+ * recorded and NO metrics are emitted. Derived totals are target renderer-
+ * process-wide for the window and carry the selected scope; they are never
+ * presented as grid-only numbers.
  */
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ArtifactRef, Metric } from "@mssqlperf/contracts";
-import type { Collector, CollectorContext, CollectorValidation, MutableLaunchSpec } from "./types";
-import { CdpClient, discoverCdpTargets } from "./cdpClient";
+import type {
+  Collector,
+  CollectorContext,
+  CollectorValidation,
+  MutableLaunchSpec,
+} from "./types";
+import {
+  CdpClient,
+  discoverCdpTargets,
+  ensureCdpRemoteDebuggingPort,
+  type CdpTarget,
+} from "./cdpClient";
 
 const TRACE_CATEGORIES = [
   "devtools.timeline",
@@ -41,10 +52,57 @@ interface TraceEvent {
   cat?: string;
 }
 
+export type RendererTraceScope = "workbenchRendererProcessWindow";
+
+export function selectRendererTraceTarget(
+  targets: readonly CdpTarget[],
+): { target: CdpTarget; scope: RendererTraceScope } | undefined {
+  const debuggable = targets.filter((target) =>
+    Boolean(target.webSocketDebuggerUrl),
+  );
+  const workbench =
+    debuggable.find(
+      (target) =>
+        target.type === "page" &&
+        (target.url ?? "").startsWith("vscode-file://"),
+    ) ?? debuggable.find((target) => target.type === "page");
+  return workbench
+    ? { target: workbench, scope: "workbenchRendererProcessWindow" }
+    : undefined;
+}
+
+function summarizeTargets(
+  targets: readonly CdpTarget[],
+): Array<Record<string, unknown>> {
+  return targets.map((target) => {
+    let kind = "other";
+    try {
+      const url = new URL(target.url ?? "");
+      kind =
+        url.protocol === "vscode-webview:"
+          ? url.searchParams.get("extensionId") === "ms-mssql.mssql"
+            ? "mssqlWebview"
+            : "otherWebview"
+          : url.protocol === "vscode-file:"
+            ? "workbench"
+            : url.protocol.replace(":", "") || "other";
+    } catch {
+      // Keep the privacy-safe generic classification.
+    }
+    return {
+      type: target.type ?? "unknown",
+      kind,
+      debuggable: Boolean(target.webSocketDebuggerUrl),
+    };
+  });
+}
+
 export class CdpRendererTraceCollector implements Collector {
   readonly name = "cdpRendererTrace";
   readonly cost = "medium" as const;
-  readonly platforms = ["all"] as const as Array<"win32" | "linux" | "darwin" | "all">;
+  readonly platforms = ["all"] as const as Array<
+    "win32" | "linux" | "darwin" | "all"
+  >;
   readonly allowedPassTypes = ["diagnostic"] as const as Array<
     "measurement" | "diagnostic" | "calibration"
   >;
@@ -54,33 +112,39 @@ export class CdpRendererTraceCollector implements Collector {
   private traceEvents: TraceEvent[] = [];
   private tracing = false;
   private targetFound = false;
+  private targetScope: RendererTraceScope = "workbenchRendererProcessWindow";
   private failureReason: string | undefined;
 
-  async preLaunch(ctx: CollectorContext, launch: MutableLaunchSpec): Promise<void> {
-    this.port = 29000 + Math.floor(Math.random() * 10000);
-    launch.args.push(`--remote-debugging-port=${this.port}`);
-    ctx.logger.info("cdpRenderer.portRequested", undefined, { port: this.port });
+  async preLaunch(
+    ctx: CollectorContext,
+    launch: MutableLaunchSpec,
+  ): Promise<void> {
+    this.port = ensureCdpRemoteDebuggingPort(launch.args);
+    ctx.logger.info("cdpRenderer.portRequested", undefined, {
+      port: this.port,
+    });
   }
 
   async onScenarioStart(ctx: CollectorContext): Promise<void> {
     try {
       if (!this.client) {
         const targets = await discoverCdpTargets(this.port);
-        // The workbench window is a page target on a vscode-file:// URL.
-        const page =
-          targets.find(
-            (t) => t.type === "page" && (t.url ?? "").startsWith("vscode-file://"),
-          ) ?? targets.find((t) => t.type === "page");
-        if (!page?.webSocketDebuggerUrl) {
+        const selected = selectRendererTraceTarget(targets);
+        ctx.logger.info("cdpRenderer.targetsDiscovered", undefined, {
+          targets: summarizeTargets(targets),
+          selectedScope: selected?.scope ?? "none",
+        });
+        if (!selected?.target.webSocketDebuggerUrl) {
           this.failureReason = `no renderer page target among ${targets.length} CDP targets`;
           ctx.logger.warn("cdpRenderer.noTarget", this.failureReason, {
-            targets: targets.map((t) => `${t.type}:${(t.url ?? "").slice(0, 60)}`),
+            targetTypes: targets.map((target) => target.type ?? "unknown"),
           });
           return;
         }
         this.targetFound = true;
+        this.targetScope = selected.scope;
         this.client = new CdpClient();
-        await this.client.connect(page.webSocketDebuggerUrl);
+        await this.client.connect(selected.target.webSocketDebuggerUrl);
         this.client.on("Tracing.dataCollected", (params) => {
           const chunk = (params as { value?: TraceEvent[] })?.value;
           if (Array.isArray(chunk)) {
@@ -89,7 +153,10 @@ export class CdpRendererTraceCollector implements Collector {
         });
       }
       await this.client.send("Tracing.start", {
-        traceConfig: { includedCategories: TRACE_CATEGORIES, recordMode: "recordUntilFull" },
+        traceConfig: {
+          includedCategories: TRACE_CATEGORIES,
+          recordMode: "recordUntilFull",
+        },
         transferMode: "ReportEvents",
       });
       this.tracing = true;
@@ -106,18 +173,26 @@ export class CdpRendererTraceCollector implements Collector {
     }
     try {
       const complete = new Promise<void>((resolve) => {
-        this.client!.on("Tracing.tracingComplete", () => resolve());
-        setTimeout(resolve, 30_000); // bounded wait for buffered chunks
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const finish = () => {
+          if (timer) {
+            clearTimeout(timer);
+          }
+          resolve();
+        };
+        this.client!.on("Tracing.tracingComplete", finish);
+        timer = setTimeout(finish, 30_000); // bounded wait for buffered chunks
       });
       await this.client.send("Tracing.end");
       await complete;
-      this.tracing = false;
       ctx.logger.info("cdpRenderer.tracingStopped", undefined, {
         events: this.traceEvents.length,
       });
     } catch (error) {
       this.failureReason = String(error).slice(0, 300);
       ctx.logger.warn("cdpRenderer.stopFailed", this.failureReason);
+    } finally {
+      this.tracing = false;
     }
   }
 
@@ -128,9 +203,17 @@ export class CdpRendererTraceCollector implements Collector {
       return [];
     }
     const path = join(ctx.artifactsDir, "renderer.trace.json");
-    writeFileSync(path, JSON.stringify({ traceEvents: this.traceEvents }), "utf8");
+    writeFileSync(
+      path,
+      JSON.stringify({ traceEvents: this.traceEvents }),
+      "utf8",
+    );
     return [
-      { kind: "cdpRendererTrace", path: "artifacts/renderer.trace.json", retention: "on-regression" },
+      {
+        kind: "cdpRendererTrace",
+        path: "artifacts/renderer.trace.json",
+        retention: "on-regression",
+      },
     ];
   }
 
@@ -166,7 +249,7 @@ export class CdpRendererTraceCollector implements Collector {
         source: "cdp",
         official: false,
         lowerIsBetter: true,
-        tags: { scope: "rendererProcessWindow" },
+        tags: { scope: this.targetScope },
       });
     }
     if (longestTaskUs > 0) {
@@ -179,7 +262,7 @@ export class CdpRendererTraceCollector implements Collector {
         source: "cdp",
         official: false,
         lowerIsBetter: true,
-        tags: { scope: "rendererProcessWindow" },
+        tags: { scope: this.targetScope },
       });
     }
     return metrics;
@@ -188,7 +271,11 @@ export class CdpRendererTraceCollector implements Collector {
   postRunValidations(): CollectorValidation[] {
     if (this.failureReason) {
       return [
-        { name: "rendererTraceCapture", status: "warning", message: this.failureReason },
+        {
+          name: "rendererTraceCapture",
+          status: "warning",
+          message: this.failureReason,
+        },
       ];
     }
     if (this.targetFound && this.traceEvents.length > 0) {

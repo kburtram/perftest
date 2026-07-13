@@ -101,6 +101,10 @@ export interface EngineContext {
     phase: "instant" | "begin" | "end" | "counter",
     attrs?: Record<string, unknown>,
   ): void;
+  /** Emit scenario.end and wait until orchestrator collectors have stopped. */
+  emitScenarioEndMarker?: (attrs: Record<string, unknown>) => Promise<void>;
+  /** Arm scenario-window collectors before scenario.start is timestamped. */
+  prepareScenarioWindow?: () => Promise<void>;
   bus: MarkerBus;
   errors: string[];
   log(message: string): void;
@@ -141,6 +145,13 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
   const successChecks: StepOutcome[] = [];
   const deferred: Array<() => Promise<void>> = [];
   ctx.deferCleanup = (cleanup) => deferred.push(cleanup);
+  const emitScenarioEnd = async (attrs: Record<string, unknown>): Promise<void> => {
+    if (ctx.emitScenarioEndMarker) {
+      await ctx.emitScenarioEndMarker(attrs);
+    } else {
+      ctx.emitMarker("scenario.end", "instant", attrs);
+    }
+  };
 
   const runSteps = async (list: ScenarioStep[] | undefined, phase: string): Promise<void> => {
     for (const step of list ?? []) {
@@ -163,6 +174,10 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
 
     // Measured interval. scenario.start is emitted immediately before the
     // first action; scenario.end when the end condition resolves.
+    // Diagnostic collectors are armed before this timestamp so their setup
+    // cost is outside the measured interval and fast queries cannot outrun
+    // profiler/trace attachment.
+    await ctx.prepareScenarioWindow?.();
     const measureStartUnixNs = (BigInt(Date.now()) * 1000000n).toString();
     ctx.emitMarker("scenario.start", "instant", { scenarioId: spec.scenarioId });
     // Gate-proof hook: PERF_SYNTHETIC_DELAY_MS injects a real, transparent
@@ -194,14 +209,14 @@ export async function runScenario(spec: ScenarioSpec, ctx: EngineContext): Promi
           spec.measure.timeoutMs,
           measureStartUnixNs,
         );
-        ctx.emitMarker("scenario.end", "instant", {
+        await emitScenarioEnd({
           scenarioId: spec.scenarioId,
           endBasis: spec.measure.end.name,
           ...(syntheticDelayMs > 0 ? { syntheticDelayMs } : {}),
           ...(process.env["PERF_EXTRA_RUNQUERY"] === "1" ? { extraRunQuery: true } : {}),
         });
       } else {
-        ctx.emitMarker("scenario.end", "instant", {
+        await emitScenarioEnd({
           scenarioId: spec.scenarioId,
           endBasis: "afterLastAction",
           ...(syntheticDelayMs > 0 ? { syntheticDelayMs } : {}),

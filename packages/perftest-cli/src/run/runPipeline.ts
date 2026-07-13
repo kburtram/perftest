@@ -17,6 +17,7 @@ import {
   type ArtifactRef,
   type ConnectionProfileSpec,
   type GitRepoInfo,
+  type Marker,
   type PerfResult,
   type PassType,
   type ScenarioSpec,
@@ -27,6 +28,7 @@ import { ProcessSamplerCollector } from "../collectors/processSampler";
 import { StsEnvelopeJournalCollector } from "../collectors/stsEnvelopeJournal";
 import { CdpExtHostProfileCollector } from "../collectors/cdpExtHostProfile";
 import { CdpRendererTraceCollector } from "../collectors/cdpRendererTrace";
+import { CdpRendererProfileCollector } from "../collectors/cdpRendererProfile";
 import { CdpHeapSnapshotCollector } from "../collectors/cdpHeapSnapshot";
 import { GcDumpCollector } from "../collectors/gcDump";
 import { DotnetCountersCollector } from "../collectors/dotnetCounters";
@@ -397,6 +399,9 @@ function createCollectors(
   if (config.diagnostics.cdp?.extHostProfile === true) {
     collectors.push(new CdpExtHostProfileCollector());
   }
+  if (config.diagnostics.cdp?.rendererProfile === true) {
+    collectors.push(new CdpRendererProfileCollector());
+  }
   if (config.diagnostics.cdp?.rendererTrace === true) {
     collectors.push(new CdpRendererTraceCollector());
   }
@@ -531,6 +536,47 @@ async function executeRep(
     logger: logger.child("collectors"),
     ...(inputs.sqlExec ? { sqlExec: inputs.sqlExec } : {}),
   };
+  const scenarioStartHookPromises = new Map<string, Promise<unknown>>();
+  const scenarioEndHookPromises = new Map<string, Promise<unknown>>();
+  let scenarioStartAckPromise: Promise<void> | undefined;
+  let scenarioEndAckPromise: Promise<void> | undefined;
+  const dispatchScenarioStartHooks = (marker: Marker, acknowledgeDriver = false): void => {
+    for (const collector of collectors) {
+      if (!scenarioStartHookPromises.has(collector.name)) {
+        scenarioStartHookPromises.set(
+          collector.name,
+          collectorHook(collectorCtx.logger, collector, "onScenarioStart", () =>
+            collector.onScenarioStart?.(collectorCtx, marker),
+          ),
+        );
+      }
+    }
+    if (acknowledgeDriver && !scenarioStartAckPromise) {
+      scenarioStartAckPromise = Promise.all(scenarioStartHookPromises.values()).then(() => {
+        server.sendScenarioBoundaryAck("start");
+      });
+    }
+  };
+  const dispatchScenarioEndHooks = (marker: Marker, acknowledgeDriver = false): void => {
+    for (const collector of collectors) {
+      if (!scenarioEndHookPromises.has(collector.name)) {
+        scenarioEndHookPromises.set(
+          collector.name,
+          (async () => {
+            await scenarioStartHookPromises.get(collector.name);
+            return collectorHook(collectorCtx.logger, collector, "onScenarioEnd", () =>
+              collector.onScenarioEnd?.(collectorCtx, marker),
+            );
+          })(),
+        );
+      }
+    }
+    if (acknowledgeDriver && !scenarioEndAckPromise) {
+      scenarioEndAckPromise = Promise.all(scenarioEndHookPromises.values()).then(() => {
+        server.sendScenarioBoundaryAck("end");
+      });
+    }
+  };
   // STS self-reports its pid through the product marker; register on arrival.
   // Scenario-window collectors (CDP profiler, WPR) key off the scenario
   // boundary markers.
@@ -549,16 +595,17 @@ async function executeRep(
           collector.onProcessDiscovered?.(collectorCtx, stsProcess),
         );
       }
+    } else if (marker.name === "scenario.collectors.prepare") {
+      dispatchScenarioStartHooks(marker, true);
     } else if (marker.name === "scenario.start") {
-      for (const collector of collectors) {
-        void collectorHook(collectorCtx.logger, collector, "onScenarioStart", () =>
-          collector.onScenarioStart?.(collectorCtx, marker),
-        );
-      }
+      // Compatibility fallback for scenario hosts without the pre-measure
+      // collector barrier. Dispatch is idempotent when prepare already ran.
+      dispatchScenarioStartHooks(marker);
+    } else if (marker.name === "scenario.end") {
+      // Stop at the actual measured boundary. The driver waits for this ack
+      // before success checks and cleanup can remove the webview target.
+      dispatchScenarioEndHooks(marker, true);
     }
-    // scenario.end hooks are dispatched AWAITED by the pipeline after the
-    // outcome arrives (before shutdown) — slow stops (renderer trace flush,
-    // XEvents reads) must complete before VS Code is torn down.
   });
 
   // Collector validation + launch-spec amendment (§14.2 validate/preLaunch).
@@ -682,7 +729,9 @@ async function executeRep(
           }
         : inputs.sqlProfiles;
     server.startScenario(spec, traceId, rootTraceparent, artifactsDir, scenarioProfiles);
-    const outcomeTimeout = spec.measure.timeoutMs + 30_000;
+    // The driver holds completion until bounded scenario-window collectors
+    // have flushed, outside the measured interval.
+    const outcomeTimeout = spec.measure.timeoutMs + 65_000;
     outcome = await Promise.race([server.waitForScenarioOutcome(outcomeTimeout), exitEarly]);
 
     // Scenario-window collectors stop here, AWAITED, while VS Code and the
@@ -690,10 +739,9 @@ async function executeRep(
     const endMarker =
       sink.first("scenario.end") ?? sink.first("scenario.start") ?? undefined;
     if (endMarker) {
-      for (const collector of collectors) {
-        await collectorHook(collectorCtx.logger, collector, "onScenarioEnd", () =>
-          collector.onScenarioEnd?.(collectorCtx, endMarker),
-        );
+      dispatchScenarioEndHooks(endMarker);
+      for (const promise of scenarioEndHookPromises.values()) {
+        await promise;
       }
     }
   } catch (error) {

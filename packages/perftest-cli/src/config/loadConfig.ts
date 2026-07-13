@@ -80,7 +80,7 @@ const DIAGNOSTIC_RECIPES: Record<string, Partial<PerfConfig["diagnostics"]>> = {
   "ui-rendering": {
     markers: true,
     processSampler: true,
-    cdp: { extHostProfile: true, rendererTrace: true },
+    cdp: { extHostProfile: true, rendererTrace: true, rendererProfile: true },
   },
   // Was this STS, DacFx, SMO, SqlClient, or dispatcher bound?
   service: { markers: true, processSampler: true, dotnetCounters: true, dotnetTrace: true },
@@ -92,7 +92,7 @@ const DIAGNOSTIC_RECIPES: Record<string, Partial<PerfConfig["diagnostics"]>> = {
   full: {
     markers: true,
     processSampler: true,
-    cdp: { extHostProfile: true, rendererTrace: true },
+    cdp: { extHostProfile: true, rendererTrace: true, rendererProfile: true },
     dotnetCounters: true,
     dotnetTrace: true,
     sqlServerXEvents: true,

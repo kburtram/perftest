@@ -15,7 +15,38 @@ export interface CdpTarget {
   webSocketDebuggerUrl?: string;
 }
 
-export function listCdpTargets(port: number, timeoutMs = 2000): Promise<CdpTarget[]> {
+/** Reuse one Chromium debugging port when multiple CDP collectors are enabled. */
+export function ensureCdpRemoteDebuggingPort(args: string[]): number {
+  const existing = args.find((arg) =>
+    arg.startsWith("--remote-debugging-port="),
+  );
+  if (existing) {
+    const port = Number(existing.slice("--remote-debugging-port=".length));
+    if (Number.isInteger(port) && port > 0 && port <= 65_535) {
+      return port;
+    }
+  }
+  const port = 29_000 + Math.floor(Math.random() * 10_000);
+  args.push(`--remote-debugging-port=${port}`);
+  return port;
+}
+
+export function isMssqlWebviewTarget(target: CdpTarget): boolean {
+  try {
+    const url = new URL(target.url ?? "");
+    return (
+      url.protocol === "vscode-webview:" &&
+      url.searchParams.get("extensionId") === "ms-mssql.mssql"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function listCdpTargets(
+  port: number,
+  timeoutMs = 2000,
+): Promise<CdpTarget[]> {
   return new Promise((resolve, reject) => {
     const req = httpRequest(
       { host: "127.0.0.1", port, path: "/json/list", timeout: timeoutMs },
@@ -41,6 +72,42 @@ export function listCdpTargets(port: number, timeoutMs = 2000): Promise<CdpTarge
   });
 }
 
+export function getCdpBrowserWebSocketUrl(
+  port: number,
+  timeoutMs = 2000,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: "127.0.0.1", port, path: "/json/version", timeout: timeoutMs },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => (body += chunk));
+        res.on("end", () => {
+          try {
+            const value = JSON.parse(body) as { webSocketDebuggerUrl?: string };
+            if (!value.webSocketDebuggerUrl) {
+              reject(
+                new Error("CDP /json/version omitted webSocketDebuggerUrl"),
+              );
+              return;
+            }
+            resolve(value.webSocketDebuggerUrl);
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error(`CDP /json/version timed out on port ${port}`));
+    });
+    req.end();
+  });
+}
+
 export async function discoverCdpTargets(
   port: number,
   retries = 20,
@@ -58,7 +125,9 @@ export async function discoverCdpTargets(
     }
     await new Promise((r) => setTimeout(r, delayMs));
   }
-  throw new Error(`No CDP targets on port ${port}: ${String(lastError ?? "empty list")}`);
+  throw new Error(
+    `No CDP targets on port ${port}: ${String(lastError ?? "empty list")}`,
+  );
 }
 
 export class CdpClient {
@@ -68,7 +137,10 @@ export class CdpClient {
     number,
     { resolve: (result: unknown) => void; reject: (error: Error) => void }
   >();
-  private readonly eventHandlers = new Map<string, Array<(params: unknown) => void>>();
+  private readonly eventHandlers = new Map<
+    string,
+    Array<(params: unknown) => void>
+  >();
 
   connect(wsUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -96,7 +168,8 @@ export class CdpClient {
               }
             }
           } else if (message.method) {
-            for (const handler of this.eventHandlers.get(message.method) ?? []) {
+            for (const handler of this.eventHandlers.get(message.method) ??
+              []) {
               handler(message.params);
             }
           }
@@ -113,7 +186,29 @@ export class CdpClient {
     this.eventHandlers.set(method, list);
   }
 
-  send(method: string, params?: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
+  send(
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs = 30_000,
+  ): Promise<unknown> {
+    return this.sendInternal(method, params, timeoutMs);
+  }
+
+  sendToSession(
+    sessionId: string,
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs = 30_000,
+  ): Promise<unknown> {
+    return this.sendInternal(method, params, timeoutMs, sessionId);
+  }
+
+  private sendInternal(
+    method: string,
+    params: Record<string, unknown> | undefined,
+    timeoutMs: number,
+    sessionId?: string,
+  ): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
         reject(new Error("CDP socket not open"));
@@ -134,11 +229,24 @@ export class CdpClient {
           reject(error);
         },
       });
-      this.socket.send(JSON.stringify({ id, method, ...(params ? { params } : {}) }));
+      this.socket.send(
+        JSON.stringify({
+          id,
+          method,
+          ...(params ? { params } : {}),
+          ...(sessionId ? { sessionId } : {}),
+        }),
+      );
     });
   }
 
   close(): void {
+    const error = new Error("CDP client closed");
+    for (const pending of this.pending.values()) {
+      pending.reject(error);
+    }
+    this.pending.clear();
+    this.eventHandlers.clear();
     this.socket?.close();
     this.socket = undefined;
   }

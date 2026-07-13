@@ -44,6 +44,14 @@ export class ControlClient implements vscode.Disposable {
   private repId: number;
   private scenarioId: string;
   private disposed = false;
+  private scenarioBoundaryWait:
+    | {
+        phase: "start" | "end";
+        resolve: () => void;
+        reject: (error: Error) => void;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    | undefined;
 
   constructor(private readonly options: ControlClientOptions) {
     this.repId = options.repId;
@@ -66,7 +74,9 @@ export class ControlClient implements vscode.Disposable {
       const checks = [
         {
           name: "workspaceTrust",
-          status: vscode.workspace.isTrusted ? ("passed" as const) : ("warning" as const),
+          status: vscode.workspace.isTrusted
+            ? ("passed" as const)
+            : ("warning" as const),
         },
       ];
       this.send("ready", { checks });
@@ -112,12 +122,25 @@ export class ControlClient implements vscode.Disposable {
           scenario: ScenarioSpec;
           connectionProfiles?: Record<string, ConnectionProfileSpec>;
         };
-        await this.executeScenario(payload.scenario, payload.connectionProfiles);
+        await this.executeScenario(
+          payload.scenario,
+          payload.connectionProfiles,
+        );
         break;
       }
       case "marker": {
         const payload = message.payload as { marker: BusMarker };
         this.bus.deliver(payload.marker);
+        break;
+      }
+      case "scenarioBoundaryAck": {
+        const payload = message.payload as { phase: "start" | "end" };
+        const pending = this.scenarioBoundaryWait;
+        if (pending?.phase === payload.phase) {
+          clearTimeout(pending.timer);
+          this.scenarioBoundaryWait = undefined;
+          pending.resolve();
+        }
         break;
       }
       case "shutdown": {
@@ -126,7 +149,9 @@ export class ControlClient implements vscode.Disposable {
         break;
       }
       case "heartbeat":
-        this.send("heartbeat", { seq: (message.payload as { seq: number }).seq });
+        this.send("heartbeat", {
+          seq: (message.payload as { seq: number }).seq,
+        });
         break;
       default:
         this.log(`unexpected control message kind '${message.kind}'`);
@@ -145,7 +170,9 @@ export class ControlClient implements vscode.Disposable {
       try {
         const usage = process.memoryUsage();
         this.emitMarker("exthost.memory.rss", "counter", { value: usage.rss });
-        this.emitMarker("exthost.memory.heapUsed", "counter", { value: usage.heapUsed });
+        this.emitMarker("exthost.memory.heapUsed", "counter", {
+          value: usage.heapUsed,
+        });
       } catch {
         // never let telemetry break a scenario
       }
@@ -154,6 +181,11 @@ export class ControlClient implements vscode.Disposable {
     try {
       const result = await runScenario(spec, {
         emitMarker: (name, phase, attrs) => this.emitMarker(name, phase, attrs),
+        prepareScenarioWindow: () =>
+          this.waitForScenarioBoundary("start", "scenario.collectors.prepare", {
+            scenarioId: spec.scenarioId,
+          }),
+        emitScenarioEndMarker: (attrs) => this.emitScenarioEndMarker(attrs),
         bus: this.bus,
         errors,
         log: (m) => this.log(m),
@@ -196,11 +228,45 @@ export class ControlClient implements vscode.Disposable {
       phase,
       timestampUnixNs: nowUnixNs(),
       monotonicNs: process.hrtime.bigint().toString(),
-      process: { role: "extensionHost", pid: process.pid, name: "mssql-perf-driver" },
+      process: {
+        role: "extensionHost",
+        pid: process.pid,
+        name: "mssql-perf-driver",
+      },
       ...(attrs ? { attrs } : {}),
     };
     this.bus.deliver(marker as unknown as BusMarker);
     this.send("marker", { marker });
+  }
+
+  private emitScenarioEndMarker(attrs: Record<string, unknown>): Promise<void> {
+    return this.waitForScenarioBoundary("end", "scenario.end", attrs);
+  }
+
+  private waitForScenarioBoundary(
+    phase: "start" | "end",
+    markerName: string,
+    attrs: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.scenarioBoundaryWait) {
+      return Promise.reject(
+        new Error(`Scenario ${phase} boundary overlapped an active boundary wait`),
+      );
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.scenarioBoundaryWait?.timer === timer) {
+          this.scenarioBoundaryWait = undefined;
+        }
+        reject(
+          new Error(
+            `Timed out waiting for scenario ${phase} collector acknowledgement`,
+          ),
+        );
+      }, 60_000);
+      this.scenarioBoundaryWait = { phase, resolve, reject, timer };
+      this.emitMarker(markerName, "instant", attrs);
+    });
   }
 
   private send(kind: string, payload: unknown): void {
@@ -215,7 +281,11 @@ export class ControlClient implements vscode.Disposable {
       repId: this.repId,
       scenarioId: this.scenarioId,
       timestampUnixNs: nowUnixNs(),
-      sender: { role: "automationExtension", pid: process.pid, name: "mssql-perf-driver" },
+      sender: {
+        role: "automationExtension",
+        pid: process.pid,
+        name: "mssql-perf-driver",
+      },
       payload,
     };
     this.socket.send(JSON.stringify(envelope));
@@ -230,6 +300,15 @@ export class ControlClient implements vscode.Disposable {
       return;
     }
     this.disposed = true;
+    if (this.scenarioBoundaryWait) {
+      clearTimeout(this.scenarioBoundaryWait.timer);
+      this.scenarioBoundaryWait.reject(
+        new Error(
+          `Control client disposed at scenario ${this.scenarioBoundaryWait.phase} boundary`,
+        ),
+      );
+      this.scenarioBoundaryWait = undefined;
+    }
     this.socket?.close();
     this.socket = undefined;
   }

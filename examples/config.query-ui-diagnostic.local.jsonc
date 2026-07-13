@@ -1,19 +1,13 @@
-// M5: FULL diagnostic pass — every implemented collector at once.
-//   processSampler        CPU/RSS of owned processes
-//   stsEnvelopeJournal    sts2 envelope journal harvest + RPC latencies
-//   cdp.extHostProfile    V8 CPU profile of the extension host (scenario window)
-//   dotnetTrace           EventPipe cpu-sampling trace of STS
-//   wprEtw                system ETW (requires elevation; warns + skips otherwise)
-// All resulting metrics are official:false — diagnostic passes never gate.
-// Run from the perftest repo root:
-//   node packages/perftest-cli/dist/cli.js run --config examples/config.fulldiag.local.jsonc
+// Focused Query Studio renderer diagnostic. Query execution and first grid
+// paint are inside the measured window so the exact-webview CPU profile covers
+// grid construction while the workbench trace captures concurrent window work.
 {
   "schemaVersion": 2,
   "runId": "auto",
   "passType": "diagnostic",
   "repetitions": 1,
   "warmupRepetitions": 0,
-  "scenarios": ["connect-local-container", "query-10k-results"],
+  "scenarios": ["querystudio-query-wide-1000x300"],
   "vscode": {
     "version": "stable",
     "quality": "stable",
@@ -35,14 +29,13 @@
     "extraArgs": [],
     "env": {
       "MSSQL_SQLTOOLSSERVICE": "C:\\repos\\test\\sqltoolsservice\\src\\Microsoft.SqlTools.ServiceLayer\\bin\\Debug\\net10.0",
-      "PERF_DOTNET_PATH": "C:\\Program Files\\dotnet\\dotnet.exe",
-      "STS_ENABLE_STS2": "1"
+      "PERF_DOTNET_PATH": "C:\\Program Files\\dotnet\\dotnet.exe"
     }
   },
   "sql": {
     "provider": "external",
     "connectionStringEnv": "STS2_SQLSERVER_CONNSTRING",
-    "snapshot": "seed-v1",
+    "snapshot": "seed-v2",
     "cacheMode": "warm",
     "connectionProfile": "default"
   },
@@ -50,12 +43,7 @@
   "diagnostics": {
     "markers": true,
     "processSampler": true,
-    "stsEnvelopeJournal": true,
-    "sqlServerXEvents": true,
-    "captureSqlText": true,
-    "cdp": { "extHostProfile": true, "rendererTrace": true, "rendererProfile": true },
-    "dotnetTrace": true,
-    "wprEtw": true,
+    "cdp": { "extHostProfile": false, "rendererTrace": true, "rendererProfile": true },
     "otel": "off"
   },
   "store": { "type": "sqlite", "path": "./perf.db" },

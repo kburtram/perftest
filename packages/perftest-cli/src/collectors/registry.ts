@@ -33,6 +33,7 @@ export const PLANNED_COLLECTORS: Array<{ name: string; milestone: string }> = [
   { name: "otelMinimal", milestone: "M3" },
   { name: "cdpExtHostProfile", milestone: "M5" },
   { name: "cdpRendererTrace", milestone: "M5" },
+  { name: "cdpRendererProfile", milestone: "query-perf" },
   { name: "dotnetTrace", milestone: "M5" },
   { name: "wprEtw", milestone: "M5" },
   { name: "vscodeDiag", milestone: "M5" },

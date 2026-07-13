@@ -397,6 +397,11 @@ export class ControlServer {
     } as ControlMessage);
   }
 
+  sendScenarioBoundaryAck(phase: "start" | "end"): void {
+    this.options.logger.info("controlServer.scenarioBoundaryAck", undefined, { phase });
+    this.send({ ...this.envelope("scenarioBoundaryAck"), payload: { phase } } as ControlMessage);
+  }
+
   sendShutdown(reason: string): void {
     this.options.logger.info("controlServer.shutdown", undefined, { reason });
     if (this.driver && this.driver.readyState === WebSocket.OPEN) {
