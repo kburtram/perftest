@@ -1357,6 +1357,130 @@ registerQueryStudioShape({
   timeoutMs: 300000,
 });
 
+function registerQueryStudioInteractionScenario(spec: {
+  scenarioId: string;
+  displayName: string;
+  tags: string[];
+  queryPath: string;
+  ready: { name: string; attrs: Record<string, number> };
+  actions: NonNullable<ScenarioSpec["measure"]>["action"];
+  success: ScenarioSpec["success"];
+}): void {
+  register({
+    implemented: true,
+    plannedMilestone: "QP-2",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: spec.scenarioId,
+      displayName: spec.displayName,
+      tags: [...spec.tags, "querystudio", "interaction", "webview"],
+      profileMode: "warmed",
+      userSettings: {
+        "mssql.sqlDataPlane.enabled": true,
+        "mssql.queryStudio.enabled": true,
+      },
+      sql: {
+        database: "PerfHarness",
+        cacheMode: "warm",
+        connectionProfile: "default",
+      },
+      setup: [
+        ...ACTIVATE_STEPS,
+        { type: "openDocument", path: spec.queryPath },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        { type: "queryStudioExecute", timeoutMs: 300000 },
+        {
+          type: "waitForMarker",
+          name: spec.ready.name,
+          attrs: spec.ready.attrs,
+          timeoutMs: 300000,
+        },
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: spec.actions,
+        end: { type: "afterLastAction" },
+        timeoutMs: 300000,
+      },
+      success: [
+        ...(spec.success ?? []),
+        { type: "markerSeen", name: "mssql.queryStudio.interaction.end" },
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+      cleanup: [
+        { type: "command", command: "workbench.action.closeActiveEditor" },
+        ...CLEANUP_EXPLORER,
+      ],
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+      ],
+    },
+  });
+}
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-scroll-100k",
+  displayName: "Query Studio interaction: 100k-row vertical sweep",
+  tags: ["results-grid", "large-results", "vertical-scroll"],
+  queryPath: "queries/select-100000.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 100000 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "middle" },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "end" },
+    },
+  ],
+  success: [{ type: "markerSeen", name: "mssql.queryStudio.grid.render.complete" }],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-wide-1000x300",
+  displayName: "Query Studio interaction: 300-column horizontal sweep",
+  tags: ["results-grid", "wide", "horizontal-scroll"],
+  queryPath: "queries/wide-columns-1000.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 1000 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "horizontal", target: "end" },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "horizontal", target: "start" },
+    },
+  ],
+  success: [],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-100-resultsets",
+  displayName: "Query Studio interaction: sweep 100 result sets",
+  tags: ["results-grid", "resultsets", "lifecycle", "vertical-scroll"],
+  queryPath: "queries/hundred-result-sets.sql",
+  ready: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 500, resultSets: 100 },
+  },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollResultStack", target: "end" },
+    },
+  ],
+  success: [
+    { type: "markerSeen", name: "mssql.queryStudio.grid.instance.created" },
+  ],
+});
+
 // ---------------------------------------------------------------------------
 // QO-9b tuning spread: each axis point is a distinct scenarioId (the whole
 // pipeline/store/reports work unchanged) whose knobs ride

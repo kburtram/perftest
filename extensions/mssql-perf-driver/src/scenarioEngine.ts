@@ -26,6 +26,14 @@ export interface ScenarioStep {
   oePath?: string[];
   /** completionProbe: a suggestion label that must be present. */
   expect?: string;
+  /** queryStudioInteract: closed semantic result-surface action. */
+  action?: {
+    kind?: string;
+    tab?: string;
+    resultSetIndex?: number;
+    axis?: string;
+    target?: string;
+  };
   timeoutMs?: number;
 }
 
@@ -499,6 +507,78 @@ async function executeStep(
       if (result?.started === false) {
         throw new Error(`queryStudioExecute did not start: ${result.reason ?? "unknown reason"}`);
       }
+      return;
+    }
+    case "queryStudioInteract": {
+      const action = step.action;
+      if (!action?.kind) {
+        throw new Error("queryStudioInteract step missing action");
+      }
+      const issuedAt = (BigInt(Date.now()) * 1000000n).toString();
+      if (action.kind === "activateTab") {
+        const result = (await withTimeout(
+          Promise.resolve(
+            vscode.commands.executeCommand("mssql.perf.queryStudioActivateTab", {
+              tab: action.tab,
+            }),
+          ),
+          timeoutMs,
+          "mssql.perf.queryStudioActivateTab",
+        )) as { error?: string; requestId?: number } | undefined;
+        if (result?.error || result?.requestId === undefined) {
+          throw new Error(
+            `queryStudioInteract activateTab failed: ${result?.error ?? "missing request id"}`,
+          );
+        }
+        await ctx.bus.wait(
+          "mssql.queryStudio.tab.activation.end",
+          { requestId: result.requestId },
+          timeoutMs,
+          issuedAt,
+        );
+        return;
+      }
+
+      const result = (await withTimeout(
+        Promise.resolve(
+          vscode.commands.executeCommand("mssql.perf.queryStudioInteract", { action }),
+        ),
+        timeoutMs,
+        "mssql.perf.queryStudioInteract",
+      )) as { error?: string; requestId?: number } | undefined;
+      if (result?.error || result?.requestId === undefined) {
+        throw new Error(
+          `queryStudioInteract failed: ${result?.error ?? "missing request id"}`,
+        );
+      }
+      const waits: Array<Promise<unknown>> = [
+        ctx.bus.wait(
+          "mssql.queryStudio.interaction.end",
+          { requestId: result.requestId },
+          timeoutMs,
+          issuedAt,
+        ),
+      ];
+      if (action.kind === "scrollGrid" && action.axis === "vertical") {
+        waits.push(
+          ctx.bus.wait(
+            "mssql.queryStudio.grid.render.complete",
+            undefined,
+            timeoutMs,
+            issuedAt,
+          ),
+        );
+      } else if (action.kind === "scrollResultStack") {
+        waits.push(
+          ctx.bus.wait(
+            "mssql.queryStudio.grid.instance.created",
+            undefined,
+            timeoutMs,
+            issuedAt,
+          ),
+        );
+      }
+      await Promise.all(waits);
       return;
     }
     case "webviewProbe": {

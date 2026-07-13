@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest";
+import { normalizeQueryPipelineStats } from "../src/collectors/stsEnvelopeJournal";
+
+describe("stsEnvelopeJournal query pipeline normalization", () => {
+  it("sums additive stats, keeps the maximum payload, and excludes correlation ids", () => {
+    const metrics = normalizeQueryPipelineStats([
+      {
+        kind: "diag",
+        type: "sts2.query.stats",
+        payload: {
+          status: "succeeded",
+          pagesSent: 2,
+          stats: {
+            pages: 2,
+            rows: 100,
+            encodedBytes: 1_000,
+            maxEventPayloadBytes: 700,
+            rowsSerializeMsTotal: 1.25,
+            postBuildAllocatedBytes: 4_000,
+          },
+        },
+      },
+      {
+        kind: "diag",
+        type: "sts2.query.stats",
+        payload: {
+          pagesSent: 3,
+          stats: {
+            pages: 3,
+            rows: 150,
+            encodedBytes: 2_000,
+            maxEventPayloadBytes: 650,
+            rowsSerializeMsTotal: 2.5,
+            postBuildAllocatedBytes: 6_000,
+          },
+        },
+      },
+      { kind: "diag", type: "unrelated", payload: { stats: { rows: 999 } } },
+    ]);
+
+    const byName = new Map(metrics.map((metric) => [metric.name, metric]));
+    expect(byName.get("sts2.query.pipeline.pagesSent")?.value).toBe(5);
+    expect(byName.get("sts2.query.pipeline.rows")?.value).toBe(250);
+    expect(byName.get("sts2.query.pipeline.encodedBytes")?.value).toBe(3_000);
+    expect(byName.get("sts2.query.pipeline.maxEventPayloadBytes")?.value).toBe(700);
+    expect(byName.get("sts2.query.pipeline.rowsSerializeMsTotal")?.value).toBe(3.75);
+    expect(byName.get("sts2.query.pipeline.postBuildAllocatedBytes")?.value).toBe(10_000);
+    expect(byName.get("sts2.query.pipeline.rows")?.tags).toEqual({
+      samples: 2,
+      derivedFrom: "sts2.query.stats",
+    });
+    expect(JSON.stringify(metrics)).not.toContain("queryId");
+    expect(JSON.stringify(metrics)).not.toContain("connectionId");
+  });
+});

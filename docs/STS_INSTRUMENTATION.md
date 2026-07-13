@@ -59,6 +59,13 @@ failures swallowed; nothing touches stdout (the RPC channel).
   by `corr`; per-method median handler latencies are emitted as
   `sts.rpc.<method>.duration` metrics — always `official: false` (collector
   metrics are structurally incapable of being official).
+- Journaled `sts2.query.stats` diagnostics are flattened into
+  `sts2.query.pipeline.*` metrics. Additive fields sum across queries/batches;
+  `maxEventPayloadBytes` keeps its maximum. The metrics cover driver-read and
+  credit time, row serialization, UTF-8 measurement, null bitmap/page/event
+  construction, coordinator posting, exact payload bytes, cell/null counts,
+  and synchronous managed allocation deltas. Opaque query/connection ids,
+  status, SQL, and cell values are never promoted to metric tags.
 
 ### Local STS build
 

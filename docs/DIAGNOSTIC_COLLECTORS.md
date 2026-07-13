@@ -15,7 +15,7 @@ each collector and enforced by the pipeline.
 | Collector | Pass | What it produces | Requires |
 |---|---|---|---|
 | `processSampler` | measurement + diagnostic | `process-samples.jsonl`; `process.peakWorkingSet` / `process.cpuTime` per role (vscodeMain, extensionHost, sts) | nothing (PowerShell CIM / ps) |
-| `stsEnvelopeJournal` | diagnostic | sts2 journal copies under `artifacts/sts2/`; `sts.rpc.<method>.duration` medians | local STS build + `STS_ENABLE_STS2=1` (see STS_INSTRUMENTATION.md) |
+| `stsEnvelopeJournal` | diagnostic | sts2 journal copies under `artifacts/sts2/`; `sts.rpc.<method>.duration` medians; `sts2.query.pipeline.*` stage, byte, and allocation aggregates | local STS build + `STS_ENABLE_STS2=1` (see STS_INSTRUMENTATION.md) |
 | `cdpExtHostProfile` | diagnostic | `artifacts/exthost.cpuprofile` (V8 sampling profile of the scenario window; open in VS Code/speedscope) | none — adds `--inspect-extensions=<port>` and drives the Node inspector protocol |
 | `dotnetTrace` | diagnostic | `artifacts/sts.nettrace` (EventPipe cpu-sampling of STS; finalizes when STS exits at teardown) | `dotnet tool install -g dotnet-trace` |
 | `wprEtw` | diagnostic | `artifacts/trace.etl` (system ETW, GeneralProfile, scenario window) | Windows Performance Toolkit + elevated session; warns + skips otherwise, and `wpr -cancel` on teardown guarantees no session leaks |

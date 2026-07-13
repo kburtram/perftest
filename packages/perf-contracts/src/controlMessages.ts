@@ -249,6 +249,22 @@ export interface QueryStudioPerfActivateTabArgs {
   vector?: QueryStudioVectorPerfAction;
 }
 
+export type QueryStudioInteractionAction =
+  | {
+      kind: "activateTab";
+      tab: "results" | "messages" | "queryPlan" | "vector" | "spatial";
+    }
+  | {
+      kind: "scrollGrid";
+      resultSetIndex: number;
+      axis: "vertical" | "horizontal";
+      target: "start" | "middle" | "end";
+    }
+  | {
+      kind: "scrollResultStack";
+      target: "start" | "middle" | "end";
+    };
+
 // ---------------------------------------------------------------------------
 // Scenario model (design §7) — the spec shipped to the driver in startScenario.
 // ---------------------------------------------------------------------------
@@ -318,6 +334,12 @@ export type ScenarioStep =
    * mssql.perf.queryStudioExecute seam (backing document text by default).
    */
   | { type: "queryStudioExecute"; timeoutMs?: number }
+  /**
+   * Drive a semantic Query Studio result interaction and wait for the
+   * correlated webview paint. Vertical grid scrolls also await real grid
+   * render completion; result-stack sweeps await a newly mounted grid.
+   */
+  | { type: "queryStudioInteract"; action: QueryStudioInteractionAction; timeoutMs?: number }
   /**
    * Deliberate busy-delay INSIDE a measured window. Exists solely so the
    * regression gate can be proven against a real slowdown (design §32 M6

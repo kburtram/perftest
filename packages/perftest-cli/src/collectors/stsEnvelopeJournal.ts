@@ -21,7 +21,35 @@ interface Envelope {
   kind?: string;
   type?: string;
   corr?: string | number;
+  payload?: {
+    status?: unknown;
+    pagesSent?: unknown;
+    stats?: Record<string, unknown>;
+  };
 }
+
+const QUERY_PIPELINE_STAT_FIELDS = [
+  "pages",
+  "rows",
+  "cellSlots",
+  "nullCells",
+  "encodedBytes",
+  "eventPayloadBytes",
+  "maxEventPayloadBytes",
+  "readMsTotal",
+  "creditWaitMsTotal",
+  "encodeMsTotal",
+  "rowsSerializeMsTotal",
+  "utf8MeasureMsTotal",
+  "nullBitmapMsTotal",
+  "pageBodyBuildMsTotal",
+  "eventBuildMsTotal",
+  "postBuildMsTotal",
+  "postMsTotal",
+  "encodePrepAllocatedBytes",
+  "eventBuildAllocatedBytes",
+  "postBuildAllocatedBytes",
+] as const;
 
 export class StsEnvelopeJournalCollector implements Collector {
   readonly name = "stsEnvelopeJournal";
@@ -158,8 +186,55 @@ export class StsEnvelopeJournalCollector implements Collector {
         tags: { samples: sorted.length, derivedFrom: "sts2EnvelopeJournal" },
       });
     }
+    metrics.push(...normalizeQueryPipelineStats(this.collectedEnvelopes));
     return metrics;
   }
+}
+
+/**
+ * Flatten privacy-safe sts2.query.stats diagnostics into comparable metrics.
+ * Additive fields sum across queries/batches; the maximum payload field keeps
+ * its maximum. Opaque query/connection ids and status never become tags.
+ */
+export function normalizeQueryPipelineStats(envelopes: readonly Envelope[]): Metric[] {
+  const aggregates = new Map<string, number>();
+  let samples = 0;
+  for (const envelope of envelopes) {
+    if (envelope.kind !== "diag" || envelope.type !== "sts2.query.stats") continue;
+    const stats = envelope.payload?.stats;
+    if (!stats) continue;
+    samples++;
+    const pagesSent = numeric(envelope.payload?.pagesSent);
+    if (pagesSent !== undefined) {
+      aggregates.set("pagesSent", (aggregates.get("pagesSent") ?? 0) + pagesSent);
+    }
+    for (const field of QUERY_PIPELINE_STAT_FIELDS) {
+      const value = numeric(stats[field]);
+      if (value === undefined) continue;
+      if (field === "maxEventPayloadBytes") {
+        aggregates.set(field, Math.max(aggregates.get(field) ?? 0, value));
+      } else {
+        aggregates.set(field, (aggregates.get(field) ?? 0) + value);
+      }
+    }
+  }
+
+  return [...aggregates.entries()].map(([field, value]) => ({
+    name: `sts2.query.pipeline.${field}`,
+    value: Number(value.toFixed(field.endsWith("MsTotal") ? 3 : 0)),
+    unit: field.endsWith("MsTotal") ? "ms" : field.endsWith("Bytes") ? "bytes" : "count",
+    component: "sts",
+    processRole: "sts",
+    source: "otelSpan",
+    official: false,
+    lowerIsBetter:
+      field.endsWith("MsTotal") || field.endsWith("Bytes") || field === "maxEventPayloadBytes",
+    tags: { samples, derivedFrom: "sts2.query.stats" },
+  }));
+}
+
+function numeric(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function findSts2Dirs(root: string, results: string[], depth: number): void {
