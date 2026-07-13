@@ -1265,10 +1265,15 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "start": "structuralMetadata",
-                "count": "structuralMetadata"
+                "count": "structuralMetadata",
+                "columnStart": "structuralMetadata",
+                "columnCount": "structuralMetadata",
+                "totalColumns": "structuralMetadata",
+                "requestedCells": "structuralMetadata",
+                "projected": "structuralMetadata"
             },
-            "attrsComplete": false,
-            "notes": "Grid viewport window RPC issued from the webview data source (QO-2)."
+            "attrsComplete": true,
+            "notes": "Grid viewport window RPC issued from the webview data source with exact row/column projection cardinality (QO-2/QO-6)."
         },
         {
             "name": "mssql.queryStudio.grid.window.received",
@@ -1284,10 +1289,17 @@ export const OBS_CONTRACT: Registry = {
                 "resultSetId": "structuralMetadata",
                 "start": "structuralMetadata",
                 "count": "structuralMetadata",
+                "columnStart": "structuralMetadata",
+                "columnCount": "structuralMetadata",
+                "totalColumns": "structuralMetadata",
+                "returnedRows": "structuralMetadata",
+                "returnedColumns": "structuralMetadata",
+                "returnedCells": "structuralMetadata",
+                "projected": "structuralMetadata",
                 "ms": "structuralMetadata"
             },
-            "attrsComplete": false,
-            "notes": "Window RPC resolved in the webview; ms = request→receive round trip (QO-2)."
+            "attrsComplete": true,
+            "notes": "Window RPC resolved in the webview with exact returned projection cardinality; ms = request→receive round trip (QO-2/QO-6)."
         },
         {
             "name": "mssql.queryStudio.grid.copy.begin",
@@ -1353,7 +1365,9 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "rows": "structuralMetadata",
-                "columns": "structuralMetadata"
+                "columns": "structuralMetadata",
+                "fetchedColumns": "structuralMetadata",
+                "projected": "structuralMetadata"
             },
             "attrsComplete": false,
             "notes": "First real (non-placeholder) rows painted for a run's first grid — the user-perceived 'results are here' moment, tighter than resultsRendered (QO-2). Diagnostic until harness-proven stable."
@@ -1541,6 +1555,8 @@ export const OBS_CONTRACT: Registry = {
                 "resultSetId": "structuralMetadata",
                 "rows": "structuralMetadata",
                 "columns": "structuralMetadata",
+                "fetchedColumns": "structuralMetadata",
+                "projected": "structuralMetadata",
                 "msFromWindowReceived": "structuralMetadata"
             },
             "attrsComplete": false,

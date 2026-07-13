@@ -1535,7 +1535,13 @@ registerQueryStudioInteractionScenario({
       action: { kind: "scrollGrid", resultSetIndex: 0, axis: "horizontal", target: "start" },
     },
   ],
-  success: [],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.window.received",
+      attrs: { projected: true, totalColumns: 300 },
+    },
+  ],
 });
 
 registerQueryStudioInteractionScenario({
