@@ -1278,11 +1278,13 @@ interface QueryStudioShapeSpec {
   tags: string[];
   queryPath: string;
   /** attrs guard for the measured resultsRendered (or alternate end marker). */
-  end: { name: string; attrs: Record<string, number> };
-  success: Array<{ name: string; attrs?: Record<string, number> }>;
+  end: { name: string; attrs: Record<string, string | number | boolean> };
+  success: Array<{ name: string; attrs?: Record<string, string | number | boolean> }>;
   timeoutMs?: number;
   /** Include the submit→resultsRendered pair (skip for no-result-set shapes). */
   renderMetric?: boolean;
+  /** Require the connect readiness SELECT 1 to paint Results, not Messages. */
+  assertPreflightResultsFocus?: boolean;
   tuningOverrides?: Record<string, unknown>;
   scenarioIdSuffix?: string;
 }
@@ -1316,6 +1318,16 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
         { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
         { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
         { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        ...(shape.assertPreflightResultsFocus
+          ? [
+              {
+                type: "waitForMarker" as const,
+                name: "mssql.queryStudio.resultsRendered",
+                attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+                timeoutMs: 30000,
+              },
+            ]
+          : []),
       ],
       measure: {
         start: { type: "beforeFirstAction" },
@@ -1367,6 +1379,28 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
     },
   });
 }
+
+// Correctness sentinel for the fast-terminal tab race: the Messages snapshot
+// can arrive before result metadata, but both the first readiness query and a
+// successful SELECT 100 must visibly focus Results at the post-paint boundary.
+registerQueryStudioShape({
+  scenarioId: "querystudio-query-scalar-results-focus",
+  displayName: "Query Studio: SELECT 100 focuses Results",
+  tags: ["querystudio", "query", "results-grid", "focus", "correctness"],
+  queryPath: "queries/select-scalar-100.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 1, resultSets: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  assertPreflightResultsFocus: true,
+});
 
 // Deep narrow results: 100k rows x 4 columns — spill, windowing, and
 // streaming-notification pressure. The pre-optimization baseline anchor.
@@ -1455,6 +1489,7 @@ function registerQueryStudioInteractionScenario(spec: {
   ready: { name: string; attrs: Record<string, number> };
   actions: NonNullable<ScenarioSpec["measure"]>["action"];
   success: ScenarioSpec["success"];
+  tuningOverrides?: Record<string, unknown>;
 }): void {
   register({
     implemented: true,
@@ -1468,6 +1503,9 @@ function registerQueryStudioInteractionScenario(spec: {
       userSettings: {
         "mssql.sqlDataPlane.enabled": true,
         "mssql.queryStudio.enabled": true,
+        ...(spec.tuningOverrides
+          ? { "mssql.queryStudio.tuning.overrides": spec.tuningOverrides }
+          : {}),
       },
       sql: {
         database: "PerfHarness",
@@ -1591,7 +1629,111 @@ registerQueryStudioInteractionScenario({
       action: { kind: "scrollGrid", resultSetIndex: 0, axis: "horizontal", target: "start" },
     },
   ],
-  success: [],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.window.received",
+      attrs: { projected: true, totalColumns: 300 },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-large-cells-20x1mb",
+  displayName: "Query Studio interaction: 20 rows with two 1 MiB MAX cells",
+  tags: ["results-grid", "large-cells", "blob", "json", "xml"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "end" },
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.windowFetch.end",
+      attrs: { gridPreview: true },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.window.received",
+      attrs: { valueMode: "gridPreview" },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-copyall-large-cells",
+  displayName: "Query Studio interaction: copy 20 rows with two 1 MiB MAX cells",
+  tags: ["results-grid", "large-cells", "blob", "json", "xml", "clipboard", "copy"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-copyall-large-cells-forced-spill",
+  displayName: "Query Studio interaction: copy large cells through forced spill",
+  tags: ["results-grid", "large-cells", "json", "xml", "clipboard", "copy", "spill"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  tuningOverrides: {
+    storeMemoryBytes: 1048576,
+    maxPendingSpillBytes: 1048576,
+    diagnosticsLevel: "verbose",
+  },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.write",
+      attrs: { encoding: "v8-v1" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.read",
+      attrs: { encoding: "v8-v1" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    },
+  ],
 });
 
 registerQueryStudioInteractionScenario({
@@ -1607,11 +1749,33 @@ registerQueryStudioInteractionScenario({
     { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
     {
       type: "queryStudioInteract",
-      action: { kind: "scrollResultStack", target: "end" },
+      action: { kind: "selectGrid", resultSetIndex: 0, selection: "all" },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "sweepResultStack", steps: 32 },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "scrollResultStack", target: "start" },
+    },
+    {
+      type: "queryStudioInteract",
+      action: { kind: "selectGrid", resultSetIndex: 0, selection: "all" },
     },
   ],
   success: [
     { type: "markerSeen", name: "mssql.queryStudio.grid.instance.created" },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.results.block.visibility",
+      attrs: { mounted: false, reason: "viewport" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.interaction.end",
+      attrs: { action: "selectGrid", outcome: "alreadySelected" },
+    },
   ],
 });
 

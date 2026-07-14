@@ -78,6 +78,7 @@ describe("querystudio scenario family conformance", () => {
   it("has the QO-9a result-shape scenarios registered", () => {
     const ids = family.map((s) => s.spec.scenarioId);
     for (const expected of [
+      "querystudio-query-scalar-results-focus",
       "querystudio-query-100k-narrow",
       "querystudio-query-wide-1000x300",
       "querystudio-query-large-cells",
@@ -86,6 +87,30 @@ describe("querystudio scenario family conformance", () => {
     ]) {
       expect(ids, `missing scenario: ${expected}`).toContain(expected);
     }
+  });
+
+  it("pins first-query and fast scalar focus to the post-paint Results tab", () => {
+    const scalar = getScenario("querystudio-query-scalar-results-focus")!;
+    expect(scalar.spec.setup).toContainEqual({
+      type: "openDocument",
+      path: "queries/select-scalar-100.sql",
+    });
+    expect(scalar.spec.setup).toContainEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+      timeoutMs: 30000,
+    });
+    expect(scalar.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+    });
+    expect(scalar.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+    });
   });
 
   it.each(family.map((s) => [s.spec.scenarioId, s] as const))(
@@ -388,6 +413,79 @@ describe("querystudio copy-all interaction", () => {
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
       attrs: { outcome: "copied", rows: 100000, columns: 4 },
+    });
+  });
+});
+
+describe("querystudio large-cell grid interaction", () => {
+  const entry = getScenario("querystudio-interaction-large-cells-20x1mb");
+  const copy = getScenario("querystudio-interaction-copyall-large-cells");
+  const forcedSpill = getScenario(
+    "querystudio-interaction-copyall-large-cells-forced-spill",
+  );
+
+  it("drives the real grid over the bounded JSON/XML MAX fixture", () => {
+    expect(entry).toBeDefined();
+    expect(entry!.spec.setup).toContainEqual({
+      type: "openDocument",
+      path: "queries/large-cells-1mb.sql",
+    });
+    expect(entry!.spec.measure.action).toContainEqual({
+      type: "queryStudioInteract",
+      action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "end" },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.windowFetch.end",
+      attrs: { gridPreview: true },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.window.received",
+      attrs: { valueMode: "gridPreview" },
+    });
+  });
+
+  it("copies the same large-cell fixture through the exact-value path", () => {
+    expect(copy).toBeDefined();
+    expect(copy!.spec.measure.action).toContainEqual({
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    });
+    expect(copy!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    });
+  });
+
+  it("forces eviction and proves exact copy after spill re-materialization", () => {
+    expect(forcedSpill).toBeDefined();
+    expect(forcedSpill!.spec.userSettings?.["mssql.queryStudio.tuning.overrides"]).toEqual({
+      storeMemoryBytes: 1048576,
+      maxPendingSpillBytes: 1048576,
+      diagnosticsLevel: "verbose",
+    });
+    expect(forcedSpill!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.write",
+      attrs: { encoding: "v8-v1" },
+    });
+    expect(forcedSpill!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.read",
+      attrs: { encoding: "v8-v1" },
+    });
+    expect(forcedSpill!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
     });
   });
 });

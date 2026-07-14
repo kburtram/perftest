@@ -700,6 +700,43 @@ export const OBS_CONTRACT: Registry = {
             "notes": "Journaled STS v2 query-pipeline aggregate. The diagnostic contains opaque query/connection correlation fields plus the listed privacy-safe counts, bytes, timings, and managed allocation deltas; SQL and cell values are forbidden."
         },
         {
+            "name": "sts2.query.coordinator.stats",
+            "kind": "event",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "sqlToolsService"
+            ],
+            "timingClass": "epochAligned",
+            "measurementEligible": false,
+            "attrs": {
+                "status": "safeEnum",
+                "pages": "structuralMetadata",
+                "captureCanonicalBytes": "structuralMetadata",
+                "queueWaitMsTotal": "structuralMetadata",
+                "captureMsTotal": "structuralMetadata",
+                "captureAllocatedBytes": "structuralMetadata",
+                "inputEnvelopeBuildMsTotal": "structuralMetadata",
+                "inputEnvelopeBuildAllocatedBytes": "structuralMetadata",
+                "inputJournalMsTotal": "structuralMetadata",
+                "coreMsTotal": "structuralMetadata",
+                "coreAllocatedBytes": "structuralMetadata",
+                "outputEncodeMsTotal": "structuralMetadata",
+                "outputEncodeAllocatedBytes": "structuralMetadata",
+                "outputEnvelopeBuildMsTotal": "structuralMetadata",
+                "outputEnvelopeBuildAllocatedBytes": "structuralMetadata",
+                "outputJournalMsTotal": "structuralMetadata",
+                "outputActionMsTotal": "structuralMetadata",
+                "outputActionAllocatedBytes": "structuralMetadata",
+                "outputSubstitutionMsTotal": "structuralMetadata",
+                "outputSubstitutionAllocatedBytes": "structuralMetadata",
+                "outputGatewayEmitMsTotal": "structuralMetadata",
+                "outputGatewayEmitAllocatedBytes": "structuralMetadata"
+            },
+            "attrsComplete": false,
+            "notes": "Replay-ignored STS v2 runtime aggregate for post-driver coordinator stages. Opaque query correlation stays out of normalized tags; SQL and cell values are forbidden."
+        },
+        {
             "name": "import.linesSkipped",
             "kind": "event",
             "phase": "instant",
@@ -826,9 +863,13 @@ export const OBS_CONTRACT: Registry = {
                 "pages": "structuralMetadata",
                 "spillWrites": "structuralMetadata",
                 "spillReads": "structuralMetadata",
+                "spillEncoding": "safeEnum",
                 "appendMsTotal": "structuralMetadata",
                 "spillWriteMsTotal": "structuralMetadata",
+                "spillSerializeMsTotal": "structuralMetadata",
+                "spillWriteIoMsTotal": "structuralMetadata",
                 "spillReadMsTotal": "structuralMetadata",
+                "spillDeserializeMsTotal": "structuralMetadata",
                 "materializeMsTotal": "structuralMetadata",
                 "windowCacheHits": "structuralMetadata",
                 "windowCacheMisses": "structuralMetadata",
@@ -837,7 +878,10 @@ export const OBS_CONTRACT: Registry = {
                 "pendingSpillBytesPeak": "structuralMetadata",
                 "windowCacheBytes": "structuralMetadata",
                 "windowCachePeakBytes": "structuralMetadata",
-                "windowCacheEvictions": "structuralMetadata"
+                "windowCacheEvictions": "structuralMetadata",
+                "windowCacheBypasses": "structuralMetadata",
+                "windowCacheOversizeSkips": "structuralMetadata",
+                "windowCacheMaxBytes": "structuralMetadata"
             },
             "attrsComplete": false,
             "notes": "Design 17.1 named this query.execute begin/end; frozen as submit/complete to mirror the classic query pair convention. Row-pipeline aggregates (pages/spill*/append*/materialize*/windowCache*) added by QO-2 attribution."
@@ -870,11 +914,12 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "rows": "structuralMetadata",
                 "resultSets": "structuralMetadata",
+                "activeTab": "safeEnum",
                 "partial": "structuralMetadata",
                 "fromSpill": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "Semantic end of the user-perceived query; measurement-eligible via the harness calibrated plane only (same rule as classic renderComplete)."
+            "notes": "Semantic end of the user-perceived query; activeTab is sampled at the actual post-paint boundary. Measurement-eligible via the harness calibrated plane only (same rule as classic renderComplete)."
         },
         {
             "name": "mssql.queryStudio.boot.scriptStart",
@@ -1149,10 +1194,16 @@ export const OBS_CONTRACT: Registry = {
                 "pendingSpillBytes": "structuralMetadata",
                 "windowCacheBytes": "structuralMetadata",
                 "windowCacheEntries": "structuralMetadata",
-                "windowCacheEvictions": "structuralMetadata"
+                "windowCacheEvictions": "structuralMetadata",
+                "windowCacheBypasses": "structuralMetadata",
+                "windowCacheOversizeSkips": "structuralMetadata",
+                "windowCacheMaxBytes": "structuralMetadata",
+                "gridPreview": "structuralMetadata",
+                "sourceValueCharacters": "structuralMetadata",
+                "returnedValueCharacters": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "Window materialization plus page/window-cache state at completion. Per-cell null/non-empty count attrs emit only at verbose diagnostics."
+            "notes": "Window materialization plus page/window-cache state at completion. Grid previews report aggregate source/returned character counts; cache admission is terminal-only and bounded by entries plus retained bytes. Per-cell null/non-empty count attrs emit only at verbose diagnostics."
         },
         {
             "name": "mssql.queryStudio.state.push",
@@ -1228,7 +1279,10 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "bytes": "structuralMetadata",
-                "ms": "structuralMetadata"
+                "ms": "structuralMetadata",
+                "serializeMs": "structuralMetadata",
+                "ioMs": "structuralMetadata",
+                "encoding": "safeEnum"
             },
             "attrsComplete": false,
             "notes": "Per-frame spill write (QO-2). Verbose diagnostics only."
@@ -1246,7 +1300,10 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "bytes": "structuralMetadata",
-                "ms": "structuralMetadata"
+                "ms": "structuralMetadata",
+                "ioMs": "structuralMetadata",
+                "deserializeMs": "structuralMetadata",
+                "encoding": "safeEnum"
             },
             "attrsComplete": false,
             "notes": "Per-frame spill read + decode (QO-2). Verbose diagnostics only."
@@ -1264,10 +1321,15 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "start": "structuralMetadata",
-                "count": "structuralMetadata"
+                "count": "structuralMetadata",
+                "columnStart": "structuralMetadata",
+                "columnCount": "structuralMetadata",
+                "totalColumns": "structuralMetadata",
+                "requestedCells": "structuralMetadata",
+                "projected": "structuralMetadata"
             },
-            "attrsComplete": false,
-            "notes": "Grid viewport window RPC issued from the webview data source (QO-2)."
+            "attrsComplete": true,
+            "notes": "Grid viewport window RPC issued from the webview data source with exact row/column projection cardinality (QO-2/QO-6)."
         },
         {
             "name": "mssql.queryStudio.grid.window.received",
@@ -1283,10 +1345,18 @@ export const OBS_CONTRACT: Registry = {
                 "resultSetId": "structuralMetadata",
                 "start": "structuralMetadata",
                 "count": "structuralMetadata",
+                "columnStart": "structuralMetadata",
+                "columnCount": "structuralMetadata",
+                "totalColumns": "structuralMetadata",
+                "returnedRows": "structuralMetadata",
+                "returnedColumns": "structuralMetadata",
+                "returnedCells": "structuralMetadata",
+                "valueMode": "safeEnum",
+                "projected": "structuralMetadata",
                 "ms": "structuralMetadata"
             },
-            "attrsComplete": false,
-            "notes": "Window RPC resolved in the webview; ms = request→receive round trip (QO-2)."
+            "attrsComplete": true,
+            "notes": "Window RPC resolved in the webview with exact returned projection cardinality; ms = request→receive round trip (QO-2/QO-6)."
         },
         {
             "name": "mssql.queryStudio.grid.copy.begin",
@@ -1330,6 +1400,8 @@ export const OBS_CONTRACT: Registry = {
                 "fetchDecodeMs": "structuralMetadata",
                 "formatMs": "structuralMetadata",
                 "clipboardMs": "structuralMetadata",
+                "clipboardAttempts": "structuralMetadata",
+                "clipboardMode": "safeEnum",
                 "windowRows": "structuralMetadata",
                 "rows": "structuralMetadata",
                 "columns": "structuralMetadata",
@@ -1352,10 +1424,30 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "resultSetId": "structuralMetadata",
                 "rows": "structuralMetadata",
-                "columns": "structuralMetadata"
+                "columns": "structuralMetadata",
+                "fetchedColumns": "structuralMetadata",
+                "projected": "structuralMetadata"
             },
             "attrsComplete": false,
             "notes": "First real (non-placeholder) rows painted for a run's first grid — the user-perceived 'results are here' moment, tighter than resultsRendered (QO-2). Diagnostic until harness-proven stable."
+        },
+        {
+            "name": "mssql.queryStudio.results.block.visibility",
+            "kind": "webviewMark",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "webview"
+            ],
+            "timingClass": "epochAligned",
+            "measurementEligible": false,
+            "attrs": {
+                "resultSetId": "structuralMetadata",
+                "mounted": "structuralMetadata",
+                "reason": "safeEnum"
+            },
+            "attrsComplete": true,
+            "notes": "A stacked result block entered or left the viewport warm band. Leaving replaces the live grid with an equal-height placeholder while retaining panel-local grid state."
         },
         {
             "name": "mssql.queryStudio.run.observed",
@@ -1437,10 +1529,11 @@ export const OBS_CONTRACT: Registry = {
                 "axis": "safeEnum",
                 "target": "safeEnum",
                 "resultSetIndex": "structuralMetadata",
+                "steps": "structuralMetadata",
                 "includeHeaders": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "A PERF_MODE-only semantic Query Studio interaction began. The contract permits relative scrolling, select-all, or copy-all against a result-set ordinal; pixels, selectors, SQL, identifiers, and cell values are unrepresentable."
+            "notes": "A PERF_MODE-only semantic Query Studio interaction began. The contract permits relative scrolling, a bounded paint-settled result-stack sweep, select-all, or copy-all against a result-set ordinal; pixels, selectors, SQL, identifiers, and cell values are unrepresentable."
         },
         {
             "name": "mssql.queryStudio.interaction.end",
@@ -1459,6 +1552,7 @@ export const OBS_CONTRACT: Registry = {
                 "axis": "safeEnum",
                 "target": "safeEnum",
                 "resultSetIndex": "structuralMetadata",
+                "steps": "structuralMetadata",
                 "includeHeaders": "structuralMetadata",
                 "outcome": "safeEnum",
                 "rafThrottled": "structuralMetadata"
@@ -1540,6 +1634,8 @@ export const OBS_CONTRACT: Registry = {
                 "resultSetId": "structuralMetadata",
                 "rows": "structuralMetadata",
                 "columns": "structuralMetadata",
+                "fetchedColumns": "structuralMetadata",
+                "projected": "structuralMetadata",
                 "msFromWindowReceived": "structuralMetadata"
             },
             "attrsComplete": false,
@@ -1630,10 +1726,33 @@ export const OBS_CONTRACT: Registry = {
             "measurementEligible": false,
             "attrs": {
                 "messages": "structuralMetadata",
+                "visibleRows": "structuralMetadata",
                 "durationMs": "structuralMetadata"
             },
             "attrsComplete": false,
             "notes": "Messages display-prep pass (QO-2 retro-registration — emitted since the message-log memoization commit)."
+        },
+        {
+            "name": "mssql.queryStudio.messages.window",
+            "kind": "marker",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "extensionHost"
+            ],
+            "timingClass": "sameProcessMonotonic",
+            "measurementEligible": false,
+            "attrs": {
+                "startIndex": "structuralMetadata",
+                "nextIndex": "structuralMetadata",
+                "returned": "structuralMetadata",
+                "total": "structuralMetadata",
+                "textCharacters": "structuralMetadata",
+                "hasMore": "structuralMetadata",
+                "durationMs": "structuralMetadata"
+            },
+            "attrsComplete": true,
+            "notes": "Bounded Messages restore/catch-up window served by the extension host; live positioned notifications use the same absolute index space."
         },
         {
             "name": "mssql.queryStudio.messagesRendered",

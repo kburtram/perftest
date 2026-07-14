@@ -282,6 +282,10 @@ export type QueryStudioInteractionAction =
       target: "start" | "middle" | "end";
     }
   | {
+      kind: "sweepResultStack";
+      steps: number;
+    }
+  | {
       kind: "selectGrid";
       resultSetIndex: number;
       selection: "all";
@@ -380,7 +384,7 @@ export type ScenarioStep =
   /**
    * Drive a semantic Query Studio result interaction and wait for the
    * correlated webview paint. Vertical grid scrolls also await real grid
-   * render completion; result-stack sweeps await a newly mounted grid.
+   * render completion; result-stack moves/sweeps await a newly mounted grid.
    */
   | {
       type: "queryStudioInteract";

@@ -1,22 +1,18 @@
-// QO-9a result-shape baseline config (coding-docs/query-optimization):
-// the five new Query Studio shapes plus the existing 10k anchor, measured
-// pre-optimization so QO-4..QO-8 have honest before/after evidence.
-// Same environment shape as config.eval.local.jsonc (external SQL via
-// STS2_SQLSERVER_CONNSTRING, dev-path extensions, sqlite store).
+// Focused Query Studio large-value diagnostic. Query execution happens during
+// scenario setup for the interaction workloads, while STS page diagnostics,
+// process samples, row-store/cache markers, and exact interaction outcomes are
+// retained across the whole repetition. Connection credentials come only from
+// STS2_SQLSERVER_CONNSTRING.
 {
   "schemaVersion": 2,
   "runId": "auto",
-  "passType": "measurement",
+  "passType": "diagnostic",
   "repetitions": 3,
   "warmupRepetitions": 1,
   "scenarios": [
-    "querystudio-query-scalar-results-focus",
-    "querystudio-query-10k",
-    "querystudio-query-100k-narrow",
-    "querystudio-query-wide-1000x300",
-    "querystudio-query-large-cells",
-    "querystudio-query-10k-messages",
-    "querystudio-query-100-resultsets"
+    "querystudio-interaction-large-cells-20x1mb",
+    "querystudio-interaction-copyall-large-cells",
+    "querystudio-interaction-copyall-large-cells-forced-spill"
   ],
   "vscode": {
     "version": "stable",
@@ -39,7 +35,8 @@
     "extraArgs": [],
     "env": {
       "MSSQL_SQLTOOLSSERVICE": "C:\\repos\\test\\sqltoolsservice\\src\\Microsoft.SqlTools.ServiceLayer\\bin\\Debug\\net10.0",
-      "PERF_DOTNET_PATH": "C:\\Program Files\\dotnet\\dotnet.exe"
+      "PERF_DOTNET_PATH": "C:\\Program Files\\dotnet\\dotnet.exe",
+      "STS_ENABLE_STS2": "1"
     }
   },
   "sql": {
@@ -50,7 +47,12 @@
     "connectionProfile": "default"
   },
   "environment": { "requireIdle": false },
-  "diagnostics": { "markers": true, "processSampler": true, "otel": "off" },
+  "diagnostics": {
+    "markers": true,
+    "processSampler": true,
+    "stsEnvelopeJournal": true,
+    "otel": "off"
+  },
   "store": { "type": "sqlite", "path": "./perf.db" },
   "regression": { "baseline": "none", "failOnRegression": false },
   "output": { "dir": "./perf-runs", "keepArtifacts": "always" }
