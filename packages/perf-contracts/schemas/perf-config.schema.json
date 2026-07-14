@@ -227,6 +227,18 @@
         "dotnetTrace": {
           "type": "boolean"
         },
+        "dotnetTraceProfile": {
+          "enum": [
+            "cpu",
+            "gc-verbose",
+            "gc-collect"
+          ]
+        },
+        "dotnetTraceDurationSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
         "wprEtw": {
           "type": "boolean"
         },
