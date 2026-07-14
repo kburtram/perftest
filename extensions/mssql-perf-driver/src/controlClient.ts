@@ -173,6 +173,12 @@ export class ControlClient implements vscode.Disposable {
         this.emitMarker("exthost.memory.heapUsed", "counter", {
           value: usage.heapUsed,
         });
+        this.emitMarker("exthost.memory.external", "counter", {
+          value: usage.external,
+        });
+        this.emitMarker("exthost.memory.arrayBuffers", "counter", {
+          value: usage.arrayBuffers ?? 0,
+        });
       } catch {
         // never let telemetry break a scenario
       }

@@ -53,7 +53,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.schemaCompare.compare.end` | marker | end | `mssql.schemaCompare.compare.begin` | schemaCompare | extensionHost | sameProcessMonotonic | yes | differences:structuralMetadata, error:structuralMetadata … |
 | `scenario.start` | marker | begin | `scenario.end` | harness | harness, extensionHost | sameProcessMonotonic | yes | scenarioId:structuralMetadata … |
 | `scenario.end` | marker | end | `scenario.start` | harness | harness, extensionHost | sameProcessMonotonic | yes | status:safeEnum … |
-| `system.rich.snapshot` | richMetric | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | heapUsedMB:diagnosticMetric, rssMB:diagnosticMetric, eventLoopP95Ms:diagnosticMetric, cpuUserMs:diagnosticMetric, cpuSystemMs:diagnosticMetric … |
+| `system.rich.snapshot` | richMetric | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | heapUsedMB:diagnosticMetric, rssMB:diagnosticMetric, externalMB:diagnosticMetric, arrayBuffersMB:diagnosticMetric, eventLoopP95Ms:diagnosticMetric, cpuUserMs:diagnosticMetric, cpuSystemMs:diagnosticMetric … |
+| `exthost.memory.*` | marker | — | — | harness | extensionHost | derived | no | value:diagnosticMetric |
 | `sessionDiag.enabled` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | captureMode:safeEnum … |
 | `sessionDiag.disabled` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no |  … |
 | `sessionDiag.elevated` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | durationMinutes:structuralMetadata … |

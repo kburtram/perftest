@@ -125,6 +125,43 @@ describe("normalizeRep", () => {
     expect(result.metrics.every((m) => !m.official)).toBe(true);
   });
 
+  it("normalizes extension-host external and ArrayBuffer counter peaks", () => {
+    const mib = 1024 * 1024;
+    const result = normalizeRep(
+      baseInputs({
+        markers: [
+          marker("scenario.start", { monotonicNs: "1000000000" }),
+          marker("exthost.memory.external", {
+            phase: "counter",
+            attrs: { value: 12 * mib },
+          }),
+          marker("exthost.memory.arrayBuffers", {
+            phase: "counter",
+            attrs: { value: 3 * mib },
+          }),
+          marker("exthost.memory.external", {
+            phase: "counter",
+            attrs: { value: 20 * mib },
+          }),
+          marker("exthost.memory.arrayBuffers", {
+            phase: "counter",
+            attrs: { value: 5 * mib },
+          }),
+          marker("scenario.end", { monotonicNs: "1250000000" }),
+        ],
+      }),
+    );
+    const metric = (name: string) => result.metrics.find((candidate) => candidate.name === name);
+    expect(metric("exthost.memory.external.peak")).toMatchObject({
+      value: 20,
+      unit: "MB",
+      official: false,
+    });
+    expect(metric("exthost.memory.external.final")?.value).toBe(20);
+    expect(metric("exthost.memory.arrayBuffers.peak")?.value).toBe(5);
+    expect(metric("exthost.memory.arrayBuffers.final")?.value).toBe(5);
+  });
+
   it("normalizes measured-window Query Studio webview health checkpoints", () => {
     const webview = { role: "webview", pid: 99, name: "queryStudio" };
     const result = normalizeRep(

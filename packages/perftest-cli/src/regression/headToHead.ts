@@ -118,6 +118,8 @@ const COMPARABLE_DIAGNOSTIC_METRICS = [
   "process.dataPlane.cpuTime",
   "process.dataPlane.peakWorkingSet",
   "exthost.memory.heapUsed.peak",
+  "exthost.memory.external.peak",
+  "exthost.memory.arrayBuffers.peak",
   "exthost.memory.rss.peak",
   "queryStudio.webview.usedJsHeap.peak",
   "queryStudio.webview.totalJsHeap.peak",
