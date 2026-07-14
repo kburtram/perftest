@@ -67,6 +67,28 @@ describe("querystudio-query-10k scenario registration", () => {
 describe("Query Studio backend A/B registration (TSQ2-12)", () => {
   const sts2 = getScenario("querystudio-query-10k-sts2");
   const tsNative = getScenario("querystudio-query-10k-tsnative");
+  const expandedShapes = [
+    {
+      id: "querystudio-query-100k-narrow",
+      fixture: "queries/select-100000-backend-ab.sql",
+      endAttrs: { rows: 100000, resultSets: 1, activeTab: "results" },
+    },
+    {
+      id: "querystudio-query-wide-1000x300",
+      fixture: "queries/wide-columns-1000.sql",
+      endAttrs: { rows: 1000, resultSets: 1, activeTab: "results" },
+    },
+    {
+      id: "querystudio-query-large-cells",
+      fixture: "queries/large-cells-1mb.sql",
+      endAttrs: { rows: 20, resultSets: 1, activeTab: "results" },
+    },
+    {
+      id: "querystudio-query-100-resultsets",
+      fixture: "queries/hundred-result-sets.sql",
+      endAttrs: { rows: 500, resultSets: 100, activeTab: "results" },
+    },
+  ] as const;
 
   function fixtureOf(entry: NonNullable<typeof sts2>): string | undefined {
     return (
@@ -156,6 +178,75 @@ describe("Query Studio backend A/B registration (TSQ2-12)", () => {
       });
     }
   });
+
+  it.each(expandedShapes)(
+    "registers provider-identical $id pressure-shape pairs with exact provenance and focus oracles",
+    ({ id, fixture, endAttrs }) => {
+      const pair = [
+        {
+          entry: getScenario(`${id}-sts2`),
+          setting: "sts2-local",
+          provenance: "sts2-jsonrpc",
+        },
+        {
+          entry: getScenario(`${id}-tsnative`),
+          setting: "ts-native",
+          provenance: "ts-native",
+        },
+      ] as const;
+
+      expect(pair[0].entry).toBeDefined();
+      expect(pair[1].entry).toBeDefined();
+      expect(normalizeBackendIdentity(pair[0].entry!)).toEqual(
+        normalizeBackendIdentity(pair[1].entry!),
+      );
+
+      for (const { entry, setting, provenance } of pair) {
+        expect(scenarioMaturity(entry!)).toBe("exploratory");
+        expect(entry!.spec.tags).toContain("backend-ab");
+        expect(fixtureOf(entry!)).toBe(fixture);
+        expect(entry!.spec.userSettings?.["mssql.sqlDataPlane.backend"]).toBe(setting);
+        expect(entry!.spec.setup).toContainEqual({
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+          timeoutMs: 30000,
+        });
+        expect(entry!.spec.measure.end).toEqual({
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: endAttrs,
+        });
+        for (const [name, attrs] of [
+          ["mssql.queryStudio.connect.ready", { backend: provenance }],
+          ["mssql.queryStudio.query.submit", { backend: provenance }],
+          ["mssql.queryStudio.query.firstPage", { backend: provenance }],
+          [
+            "mssql.queryStudio.query.complete",
+            { backend: provenance, status: "succeeded", errors: 0 },
+          ],
+        ] as const) {
+          expect(entry!.spec.success).toContainEqual({ type: "markerSeen", name, attrs });
+        }
+        expect(entry!.spec.success).toContainEqual({
+          type: "markerSeen",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: endAttrs,
+        });
+        expect(entry!.spec.metrics).toContainEqual(
+          expect.objectContaining({
+            name: "mssql.queryStudio.query.toFirstPage",
+            beginMarker: "mssql.queryStudio.query.submit",
+            endMarker: "mssql.queryStudio.query.firstPage",
+            withinMeasuredWindow: true,
+          }),
+        );
+        expect(entry!.spec.metrics).toContainEqual(
+          expect.objectContaining({ name: "scenario.wallclock", official: true }),
+        );
+      }
+    },
+  );
 });
 
 /**

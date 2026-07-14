@@ -1336,10 +1336,44 @@ interface QueryStudioShapeSpec {
   assertPreflightResultsFocus?: boolean;
   tuningOverrides?: Record<string, unknown>;
   scenarioIdSuffix?: string;
+  /** Optional activation-time provider selector plus truthful bound identity. */
+  backend?: {
+    suffix: "sts2" | "tsnative";
+    setting: "sts2-local" | "ts-native";
+    provenance: "sts2-jsonrpc" | "ts-native";
+  };
 }
 
 function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
   const timeoutMs = shape.timeoutMs ?? 180000;
+  const backendCriteria: NonNullable<ScenarioSpec["success"]> = shape.backend
+    ? [
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.connect.ready",
+          attrs: { backend: shape.backend.provenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.submit",
+          attrs: { backend: shape.backend.provenance },
+        },
+        ...(shape.renderMetric !== false
+          ? [
+              {
+                type: "markerSeen" as const,
+                name: "mssql.queryStudio.query.firstPage",
+                attrs: { backend: shape.backend.provenance },
+              },
+            ]
+          : []),
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.complete",
+          attrs: { backend: shape.backend.provenance, status: "succeeded", errors: 0 },
+        },
+      ]
+    : [];
   register({
     implemented: true,
     plannedMilestone: "QO-9a",
@@ -1352,6 +1386,7 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
       userSettings: {
         "mssql.sqlDataPlane.enabled": true,
         "mssql.queryStudio.enabled": true,
+        ...(shape.backend ? { "mssql.sqlDataPlane.backend": shape.backend.setting } : {}),
         ...(shape.tuningOverrides
           ? { "mssql.queryStudio.tuning.overrides": shape.tuningOverrides }
           : {}),
@@ -1385,6 +1420,7 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
         timeoutMs,
       },
       success: [
+        ...backendCriteria,
         ...shape.success.map((proof) => ({
           type: "markerSeen" as const,
           name: proof.name,
@@ -1397,7 +1433,30 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
         ...CLEANUP_EXPLORER,
       ],
       metrics: [
-        { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+        {
+          name: "scenario.wallclock",
+          source: "marker",
+          // Maturity controls gating; official here only says the sample owns
+          // a trustworthy driver-plane clock. Backend pairs need that one
+          // anchor so the non-gating head-to-head report can select them.
+          official: shape.backend !== undefined,
+          lowerIsBetter: true,
+        },
+        ...(shape.backend && shape.renderMetric !== false
+          ? [
+              {
+                name: "mssql.queryStudio.query.toFirstPage",
+                source: "marker" as const,
+                official: false,
+                lowerIsBetter: true,
+                beginMarker: "mssql.queryStudio.query.submit",
+                endMarker: "mssql.queryStudio.query.firstPage",
+                component: "queryStudio",
+                processRole: "extensionHost" as const,
+                withinMeasuredWindow: true,
+              },
+            ]
+          : []),
         {
           name: "mssql.queryStudio.query.toComplete",
           source: "marker",
@@ -1427,6 +1486,38 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
       ],
     },
   });
+}
+
+const QUERY_STUDIO_BACKEND_VARIANTS = [
+  {
+    suffix: "sts2",
+    setting: "sts2-local",
+    provenance: "sts2-jsonrpc",
+  },
+  {
+    suffix: "tsnative",
+    setting: "ts-native",
+    provenance: "ts-native",
+  },
+] as const;
+
+/** Register an identical-oracle provider pair from one shape definition. */
+function registerQueryStudioBackendShapePair(
+  shape: Omit<
+    QueryStudioShapeSpec,
+    "assertPreflightResultsFocus" | "backend" | "scenarioIdSuffix"
+  >,
+): void {
+  for (const backend of QUERY_STUDIO_BACKEND_VARIANTS) {
+    registerQueryStudioShape({
+      ...shape,
+      scenarioIdSuffix: `-${backend.suffix}`,
+      displayName: `${shape.displayName} [backend=${backend.setting}]`,
+      tags: [...shape.tags, "backend-ab"],
+      assertPreflightResultsFocus: true,
+      backend,
+    });
+  }
 }
 
 // Correctness sentinel for the fast-terminal tab race: the Messages snapshot
@@ -1526,6 +1617,93 @@ registerQueryStudioShape({
   success: [
     { name: "mssql.queryStudio.query.complete", attrs: { rows: 500, resultSets: 100 } },
     { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 500, resultSets: 100 } },
+  ],
+  timeoutMs: 300000,
+});
+
+// TSQ2-12 expanded provider matrix. These retain one SQL fixture and one
+// semantic oracle per pair; the only launch/runtime difference is provider
+// selection and its expected truthful provenance. Raw DECIMAL(18,4) and
+// vector type identity remain separate capability-policy tests.
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-100k-narrow",
+  displayName: "Query Studio: 100k provider-neutral narrow rows",
+  tags: ["querystudio", "query", "results-grid", "large-results", "webview"],
+  queryPath: "queries/select-100000-backend-ab.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 100000, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    {
+      name: "mssql.queryStudio.query.complete",
+      attrs: { rows: 100000, resultSets: 1 },
+    },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 100000, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  timeoutMs: 300000,
+});
+
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-wide-1000x300",
+  displayName: "Query Studio: 1000 rows x 300 columns",
+  tags: ["querystudio", "query", "results-grid", "wide", "webview"],
+  queryPath: "queries/wide-columns-1000.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 1000, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 1000, resultSets: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 1000, resultSets: 1, activeTab: "results" },
+    },
+    {
+      name: "mssql.queryStudio.grid.firstVisibleRowsPainted",
+      attrs: { columns: 300, projected: true },
+    },
+  ],
+  timeoutMs: 300000,
+});
+
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-large-cells",
+  displayName: "Query Studio: 20 rows with ~1 MiB JSON/XML cells",
+  tags: ["querystudio", "query", "blob", "content", "webview"],
+  queryPath: "queries/large-cells-1mb.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 20, resultSets: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  timeoutMs: 300000,
+});
+
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-100-resultsets",
+  displayName: "Query Studio: 100 result sets",
+  tags: ["querystudio", "query", "results-grid", "resultsets", "webview"],
+  queryPath: "queries/hundred-result-sets.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 500, resultSets: 100, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 500, resultSets: 100 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 500, resultSets: 100, activeTab: "results" },
+    },
   ],
   timeoutMs: 300000,
 });
