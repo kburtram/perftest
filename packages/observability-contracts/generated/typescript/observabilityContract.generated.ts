@@ -727,7 +727,11 @@ export const OBS_CONTRACT: Registry = {
                 "outputEnvelopeBuildAllocatedBytes": "structuralMetadata",
                 "outputJournalMsTotal": "structuralMetadata",
                 "outputActionMsTotal": "structuralMetadata",
-                "outputActionAllocatedBytes": "structuralMetadata"
+                "outputActionAllocatedBytes": "structuralMetadata",
+                "outputSubstitutionMsTotal": "structuralMetadata",
+                "outputSubstitutionAllocatedBytes": "structuralMetadata",
+                "outputGatewayEmitMsTotal": "structuralMetadata",
+                "outputGatewayEmitAllocatedBytes": "structuralMetadata"
             },
             "attrsComplete": false,
             "notes": "Replay-ignored STS v2 runtime aggregate for post-driver coordinator stages. Opaque query correlation stays out of normalized tags; SQL and cell values are forbidden."
