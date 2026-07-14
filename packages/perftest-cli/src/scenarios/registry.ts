@@ -1015,6 +1015,96 @@ register({
   },
 });
 
+// ---------------------------------------------------------------------------
+// TSQ2-12 backend A/B pair: identical fixture, SQL, markers, and metrics —
+// the ONLY delta is the activation-time provider selection (pre-launch
+// userSettings; `mssql.sqlDataPlane.backend` binds future sessions). Compare
+// with `head-to-head --baseline-scenario querystudio-query-10k-sts2
+// --candidate-scenario querystudio-query-10k-tsnative`. Non-gating
+// (exploratory) until baselines are reviewed. Backend is deliberately NOT in
+// environmentHash (userSettings are excluded), so run-vs-run `compare` also
+// pairs them. Resource-fairness note for reports: sts2-local spends CPU in
+// the STS process; ts-native spends it in the extension host — compare
+// TOTALS, and treat missing sts.query.pipeline.* lanes for ts-native as
+// structurally inapplicable, not as zero.
+// ---------------------------------------------------------------------------
+function registerQueryStudio10kBackendVariant(suffix: string, backend: string): void {
+  register({
+    implemented: true,
+    plannedMilestone: "TSQ2-12",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: `querystudio-query-10k-${suffix}`,
+      displayName: `Query Studio: 10000 rows [backend=${backend}]`,
+      tags: ["querystudio", "query", "results-grid", "webview", "backend-ab"],
+      profileMode: "warmed",
+      userSettings: {
+        "mssql.sqlDataPlane.enabled": true,
+        "mssql.queryStudio.enabled": true,
+        "mssql.sqlDataPlane.backend": backend,
+      },
+      sql: {
+        database: "PerfHarness",
+        cacheMode: "warm",
+        connectionProfile: "default",
+      },
+      setup: [
+        ...ACTIVATE_STEPS,
+        { type: "openDocument", path: "queries/select-10000.sql" },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: [{ type: "queryStudioExecute", timeoutMs: 120000 }],
+        end: {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: { rows: 10000 },
+        },
+        timeoutMs: 120000,
+      },
+      success: [
+        { type: "markerSeen", name: "mssql.queryStudio.query.complete", attrs: { rows: 10000 } },
+        { type: "markerSeen", name: "mssql.queryStudio.resultsRendered", attrs: { rows: 10000 } },
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+      cleanup: [
+        { type: "command", command: "workbench.action.closeActiveEditor" },
+        ...CLEANUP_EXPLORER,
+      ],
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+        {
+          name: "mssql.queryStudio.query.toComplete",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryStudio.query.submit",
+          endMarker: "mssql.queryStudio.query.complete",
+          component: "queryStudio",
+          processRole: "extensionHost",
+          withinMeasuredWindow: true,
+        },
+        {
+          name: "mssql.queryStudio.query.toRender",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryStudio.query.submit",
+          endMarker: "mssql.queryStudio.resultsRendered",
+          component: "queryStudio",
+          processRole: "boundary",
+          withinMeasuredWindow: true,
+        },
+      ],
+    },
+  });
+}
+registerQueryStudio10kBackendVariant("sts2", "sts2-local");
+registerQueryStudio10kBackendVariant("tsnative", "ts-native");
+
 // QS-3 heavy content shapes — Query Studio twins of the classic
 // query-wide-columns / query-blob-xml scenarios: SAME fixture documents,
 // SAME provisioned server, measured through the QS data plane with the same
