@@ -33,6 +33,22 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.tableDesigner.publish.end` | marker | end | `mssql.tableDesigner.publish.begin` | tableDesigner | extensionHost | sameProcessMonotonic | yes | error:structuralMetadata, reason:safeEnum … |
 | `mssql.schemaDesigner.init.begin` | marker | begin | `mssql.schemaDesigner.init.end` | schemaDesigner | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.schemaDesigner.init.end` | marker | end | `mssql.schemaDesigner.init.begin` | schemaDesigner | extensionHost | sameProcessMonotonic | yes | tableCount:structuralMetadata, error:structuralMetadata, reason:safeEnum … |
+| `mssql.schemaDesigner.ready` | webviewMark | instant | — | schemaDesigner | webview | epochAligned | yes | tableCount:structuralMetadata … |
+| `mssql.schemaVisualizer.open.begin` | marker | begin | `mssql.schemaVisualizer.open.end` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.schemaVisualizer.open.end` | marker | end | `mssql.schemaVisualizer.open.begin` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes | tableCount:structuralMetadata, columnCount:structuralMetadata, fkCount:structuralMetadata, generation:structuralMetadata, freshness:safeEnum, source:safeEnum, validation:safeEnum, error:structuralMetadata, reason:safeEnum … |
+| `mssql.schemaVisualizer.modelReady` | webviewMark | instant | — | schemaVisualizer | webview | epochAligned | yes | tableCount:structuralMetadata … |
+| `mssql.schemaVisualizer.layout.begin` | webviewMark | begin | `mssql.schemaVisualizer.layout.end` | schemaVisualizer | webview | epochAligned | yes |  … |
+| `mssql.schemaVisualizer.layout.end` | webviewMark | end | `mssql.schemaVisualizer.layout.begin` | schemaVisualizer | webview | epochAligned | yes | nodeCount:structuralMetadata, edgeCount:structuralMetadata, layoutMode:safeEnum, canceled:structuralMetadata … |
+| `mssql.schemaVisualizer.ready` | webviewMark | instant | — | schemaVisualizer | webview | epochAligned | yes | renderedTables:structuralMetadata, renderedEdges:structuralMetadata, totalTables:structuralMetadata, layoutMode:safeEnum, subsetMode:safeEnum … |
+| `mssql.schemaVisualizer.refresh.begin` | marker | begin | `mssql.schemaVisualizer.refresh.end` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.schemaVisualizer.refresh.end` | marker | end | `mssql.schemaVisualizer.refresh.begin` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, fingerprintChanged:structuralMetadata … |
+| `mssql.schemaVisualizer.driftDetected` | marker | instant | — | schemaVisualizer | extensionHost | sameProcessMonotonic | no | dirty:structuralMetadata … |
+| `mssql.schemaVisualizer.rebase.begin` | marker | begin | `mssql.schemaVisualizer.rebase.end` | schemaVisualizer | extensionHost | sameProcessMonotonic | no |  … |
+| `mssql.schemaVisualizer.rebase.end` | marker | end | `mssql.schemaVisualizer.rebase.begin` | schemaVisualizer | extensionHost | sameProcessMonotonic | no | outcome:safeEnum, operationCount:structuralMetadata, conflictCount:structuralMetadata … |
+| `mssql.schemaVisualizer.commit.handoff.begin` | marker | begin | `mssql.schemaVisualizer.commit.handoff.end` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.schemaVisualizer.commit.handoff.end` | marker | end | `mssql.schemaVisualizer.commit.handoff.begin` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, operationCount:structuralMetadata, correlatedCount:structuralMetadata, conflictCount:structuralMetadata, dataLoss:structuralMetadata, error:structuralMetadata, reason:safeEnum … |
+| `mssql.schemaVisualizer.publish.begin` | marker | begin | `mssql.schemaVisualizer.publish.end` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.schemaVisualizer.publish.end` | marker | end | `mssql.schemaVisualizer.publish.begin` | schemaVisualizer | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, error:structuralMetadata, reason:safeEnum … |
 | `mssql.schemaCompare.compare.begin` | marker | begin | `mssql.schemaCompare.compare.end` | schemaCompare | extensionHost | sameProcessMonotonic | yes |  … |
 | `mssql.schemaCompare.compare.end` | marker | end | `mssql.schemaCompare.compare.begin` | schemaCompare | extensionHost | sameProcessMonotonic | yes | differences:structuralMetadata, error:structuralMetadata … |
 | `scenario.start` | marker | begin | `scenario.end` | harness | harness, extensionHost | sameProcessMonotonic | yes | scenarioId:structuralMetadata … |
@@ -188,6 +204,12 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.oe.expand` | objectExplorer | `mssql.oe.expand.begin` → `mssql.oe.expand.end` |
 | `mssql.tableDesigner.init` | tableDesigner | `mssql.tableDesigner.init.begin` → `mssql.tableDesigner.init.end` |
 | `mssql.schemaDesigner.init` | schemaDesigner | `mssql.schemaDesigner.init.begin` → `mssql.schemaDesigner.init.end` |
+| `mssql.schemaDesigner.init.toReady` | schemaDesigner | `mssql.schemaDesigner.init.begin` → `mssql.schemaDesigner.ready` |
+| `mssql.schemaVisualizer.open` | schemaVisualizer | `mssql.schemaVisualizer.open.begin` → `mssql.schemaVisualizer.open.end` |
+| `mssql.schemaVisualizer.open.toReady` | schemaVisualizer | `mssql.schemaVisualizer.open.begin` → `mssql.schemaVisualizer.ready` |
+| `mssql.schemaVisualizer.layout` | schemaVisualizer | `mssql.schemaVisualizer.layout.begin` → `mssql.schemaVisualizer.layout.end` |
+| `mssql.schemaVisualizer.commit.handoff` | schemaVisualizer | `mssql.schemaVisualizer.commit.handoff.begin` → `mssql.schemaVisualizer.commit.handoff.end` |
+| `mssql.schemaVisualizer.publish` | schemaVisualizer | `mssql.schemaVisualizer.publish.begin` → `mssql.schemaVisualizer.publish.end` |
 | `mssql.queryStudio.open` | queryStudio | `mssql.queryStudio.open.begin` → `mssql.queryStudio.open.end` |
 | `mssql.queryStudio.connect` | queryStudio | `mssql.queryStudio.connect.begin` → `mssql.queryStudio.connect.ready` |
 | `mssql.queryStudio.query.toComplete` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.complete` |
