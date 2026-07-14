@@ -1016,9 +1016,12 @@ register({
 });
 
 // ---------------------------------------------------------------------------
-// TSQ2-12 backend A/B pair: identical fixture, SQL, markers, and metrics —
-// the ONLY delta is the activation-time provider selection (pre-launch
-// userSettings; `mssql.sqlDataPlane.backend` binds future sessions). Compare
+// TSQ2-12 backend A/B pair: identical provider-neutral fixture, SQL, markers,
+// and metrics — the ONLY runtime delta is the activation-time provider
+// selection (pre-launch userSettings; `mssql.sqlDataPlane.backend` binds
+// future sessions). The raw DECIMAL(18,4) fidelity-policy difference has a
+// separate correctness oracle and is not allowed to invalidate this transport
+// and render comparison. Compare
 // with `head-to-head --baseline-scenario querystudio-query-10k-sts2
 // --candidate-scenario querystudio-query-10k-tsnative`. Non-gating
 // (exploratory) until baselines are reviewed. Backend is deliberately NOT in
@@ -1028,20 +1031,24 @@ register({
 // TOTALS, and treat missing sts.query.pipeline.* lanes for ts-native as
 // structurally inapplicable, not as zero.
 // ---------------------------------------------------------------------------
-function registerQueryStudio10kBackendVariant(suffix: string, backend: string): void {
+function registerQueryStudio10kBackendVariant(
+  suffix: string,
+  backendSetting: string,
+  backendProvenance: string,
+): void {
   register({
     implemented: true,
     plannedMilestone: "TSQ2-12",
     maturity: "exploratory",
     spec: {
       scenarioId: `querystudio-query-10k-${suffix}`,
-      displayName: `Query Studio: 10000 rows [backend=${backend}]`,
+      displayName: `Query Studio: 10000 rows [backend=${backendSetting}]`,
       tags: ["querystudio", "query", "results-grid", "webview", "backend-ab"],
       profileMode: "warmed",
       userSettings: {
         "mssql.sqlDataPlane.enabled": true,
         "mssql.queryStudio.enabled": true,
-        "mssql.sqlDataPlane.backend": backend,
+        "mssql.sqlDataPlane.backend": backendSetting,
       },
       sql: {
         database: "PerfHarness",
@@ -1050,7 +1057,7 @@ function registerQueryStudio10kBackendVariant(suffix: string, backend: string): 
       },
       setup: [
         ...ACTIVATE_STEPS,
-        { type: "openDocument", path: "queries/select-10000.sql" },
+        { type: "openDocument", path: "queries/select-10000-backend-ab.sql" },
         { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
         { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
         { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
@@ -1061,13 +1068,41 @@ function registerQueryStudio10kBackendVariant(suffix: string, backend: string): 
         end: {
           type: "waitForMarker",
           name: "mssql.queryStudio.resultsRendered",
-          attrs: { rows: 10000 },
+          attrs: { rows: 10000, resultSets: 1, activeTab: "results" },
         },
         timeoutMs: 120000,
       },
       success: [
-        { type: "markerSeen", name: "mssql.queryStudio.query.complete", attrs: { rows: 10000 } },
-        { type: "markerSeen", name: "mssql.queryStudio.resultsRendered", attrs: { rows: 10000 } },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.connect.ready",
+          attrs: { backend: backendProvenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.submit",
+          attrs: { backend: backendProvenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.firstPage",
+          attrs: { backend: backendProvenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.complete",
+          attrs: {
+            rows: 10000,
+            errors: 0,
+            status: "succeeded",
+            backend: backendProvenance,
+          },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: { rows: 10000, resultSets: 1, activeTab: "results" },
+        },
         { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
       ],
       cleanup: [
@@ -1076,6 +1111,17 @@ function registerQueryStudio10kBackendVariant(suffix: string, backend: string): 
       ],
       metrics: [
         { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+        {
+          name: "mssql.queryStudio.query.toFirstPage",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryStudio.query.submit",
+          endMarker: "mssql.queryStudio.query.firstPage",
+          component: "queryStudio",
+          processRole: "extensionHost",
+          withinMeasuredWindow: true,
+        },
         {
           name: "mssql.queryStudio.query.toComplete",
           source: "marker",
@@ -1102,8 +1148,11 @@ function registerQueryStudio10kBackendVariant(suffix: string, backend: string): 
     },
   });
 }
-registerQueryStudio10kBackendVariant("sts2", "sts2-local");
-registerQueryStudio10kBackendVariant("tsnative", "ts-native");
+// The selector and the bound adapter identity are intentionally distinct for
+// local STS2: `sts2-local` chooses the provider, while SessionInfo truthfully
+// reports the transport implementation as `sts2-jsonrpc`.
+registerQueryStudio10kBackendVariant("sts2", "sts2-local", "sts2-jsonrpc");
+registerQueryStudio10kBackendVariant("tsnative", "ts-native", "ts-native");
 
 // QS-3 heavy content shapes — Query Studio twins of the classic
 // query-wide-columns / query-blob-xml scenarios: SAME fixture documents,

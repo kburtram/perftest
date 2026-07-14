@@ -1,6 +1,7 @@
 // TSQ2-12 backend A/B: sts2-local vs ts-native on IDENTICAL Query Studio
-// 10k-row scenarios (same fixture, markers, metrics; only the pre-launch
-// backend setting differs). Non-gating exploratory baseline.
+// 10k-row scenarios (same provider-neutral fixture, markers, metrics; only
+// the pre-launch backend setting differs). Raw DECIMAL(18,4) fidelity remains
+// a separate correctness oracle. Non-gating exploratory baseline.
 // Run from the perftest repo root:
 //   node packages/perftest-cli/dist/cli.js run --config examples/config.backend-ab.local.jsonc
 // Then:

@@ -37,6 +37,59 @@ export const DEFAULT_PHASE_MAP: PhaseMapping[] = [
   },
 ];
 
+interface PhaseFamily {
+  phase: string;
+  baselineCandidates: string[];
+  candidateCandidates: string[];
+}
+
+/**
+ * Resolve each side from what the selected scenarios actually recorded. This
+ * preserves the classic-vs-Query-Studio default while making Query-Studio
+ * backend A/B pairs compare like-for-like instead of looking for absent
+ * classic-editor metrics on the baseline side.
+ */
+const AUTO_PHASE_FAMILIES: PhaseFamily[] = [
+  {
+    phase: "submit → first accepted page",
+    baselineCandidates: ["mssql.queryStudio.query.toFirstPage"],
+    candidateCandidates: ["mssql.queryStudio.query.toFirstPage"],
+  },
+  {
+    phase: "submit → complete",
+    baselineCandidates: ["mssql.query.toComplete", "mssql.queryStudio.query.toComplete"],
+    candidateCandidates: ["mssql.queryStudio.query.toComplete", "mssql.query.toComplete"],
+  },
+  {
+    phase: "submit → render",
+    baselineCandidates: ["mssql.query.toRender", "mssql.queryStudio.query.toRender"],
+    candidateCandidates: ["mssql.queryStudio.query.toRender", "mssql.query.toRender"],
+  },
+];
+
+/** High-signal non-gating diagnostics worth putting beside every A/B. */
+const COMPARABLE_DIAGNOSTIC_METRICS = [
+  "process.dataPlane.cpuTime",
+  "process.dataPlane.peakWorkingSet",
+  "exthost.memory.heapUsed.peak",
+  "exthost.memory.rss.peak",
+  "queryStudio.webview.usedJsHeap.peak",
+  "queryStudio.webview.totalJsHeap.peak",
+  "queryStudio.webview.longestTask.peak",
+  "queryStudio.webview.longTaskTotal.final",
+  "queryStudio.webview.longTaskCount.final",
+  "queryStudio.webview.domNodes.peak",
+  "sqlDataPlane.tsNative.query.duration",
+  "sqlDataPlane.tsNative.query.firstMetadata",
+  "sqlDataPlane.tsNative.query.firstPageProduced",
+  "sqlDataPlane.tsNative.query.firstPageAccepted",
+  "sqlDataPlane.tsNative.query.encode",
+  "sqlDataPlane.tsNative.query.sinkWait",
+  "sqlDataPlane.tsNative.query.pause.backpressure",
+  "sqlDataPlane.tsNative.query.pause.cpuYield",
+  "sqlDataPlane.tsNative.query.maxSynchronousSlice",
+] as const;
+
 export interface MetricSamples {
   name: string;
   unit: string;
@@ -86,8 +139,25 @@ export interface HeadToHeadReport {
   official: OfficialComparison[];
   /** Marker-semantics phases mapped across metric families. */
   phases: PhaseComparison[];
+  /** Shared resources plus provider-specific stage diagnostics (non-gating). */
+  diagnostics: OfficialComparison[];
   /** Honesty notes: env mismatches, missing metrics, plane caveats. */
   notes: string[];
+}
+
+function inferPhaseMappings(
+  baseline: ReadonlyMap<string, MetricSamples>,
+  candidate: ReadonlyMap<string, MetricSamples>,
+): PhaseMapping[] {
+  return AUTO_PHASE_FAMILIES.map((family) => ({
+    phase: family.phase,
+    baselineMetric:
+      family.baselineCandidates.find((name) => baseline.has(name)) ??
+      family.baselineCandidates[0]!,
+    candidateMetric:
+      family.candidateCandidates.find((name) => candidate.has(name)) ??
+      family.candidateCandidates[0]!,
+  }));
 }
 
 interface MetricRow {
@@ -265,7 +335,7 @@ export function headToHead(
   const baselineAll = new Map(baseline.metrics.map((m) => [m.name, m]));
   const candidateAll = new Map(candidate.metrics.map((m) => [m.name, m]));
   const phases: PhaseComparison[] = [];
-  for (const mapping of options.phases ?? DEFAULT_PHASE_MAP) {
+  for (const mapping of options.phases ?? inferPhaseMappings(baselineAll, candidateAll)) {
     const b = baselineAll.get(mapping.baselineMetric);
     const c = candidateAll.get(mapping.candidateMetric);
     if (!b && !c) {
@@ -297,12 +367,27 @@ export function headToHead(
     });
   }
 
-  const report: HeadToHeadReport = { baseline, candidate, official, phases, notes };
+  const diagnostics: OfficialComparison[] = [];
+  for (const name of COMPARABLE_DIAGNOSTIC_METRICS) {
+    const b = baselineAll.get(name);
+    const c = candidateAll.get(name);
+    if (!b && !c) continue;
+    diagnostics.push({
+      metric: name,
+      unit: (b ?? c)!.unit,
+      ...(b ? { baseline: b.summary } : {}),
+      ...(c ? { candidate: c.summary } : {}),
+      ...delta(b?.summary, c?.summary),
+    });
+  }
+
+  const report: HeadToHeadReport = { baseline, candidate, official, phases, diagnostics, notes };
   span.end({
     baselineRun: baseline.runId,
     candidateRun: candidate.runId,
     officialCount: official.length,
     phaseCount: phases.length,
+    diagnosticCount: diagnostics.length,
   });
   return report;
 }
@@ -350,6 +435,21 @@ export function renderHeadToHeadConsole(report: HeadToHeadReport): string {
     lines.push(
       `${p.phase.padEnd(20)} ${`${p.baselineMetric} → ${p.candidateMetric}`.padEnd(64)} ${fmtMs(p.baseline?.median, p.unit).padEnd(12)} ${fmtMs(p.candidate?.median, p.unit).padEnd(12)} ${fmtDelta(p.deltaAbs, p.deltaPct, p.unit)}`,
     );
+  }
+  if (report.diagnostics.length > 0) {
+    lines.push("");
+    lines.push("Resource / provider diagnostics (non-gating)");
+    lines.push(
+      "metric                                       base med     cand med     delta",
+    );
+    lines.push(
+      "-------------------------------------------- ------------ ------------ ---------------------",
+    );
+    for (const metric of report.diagnostics) {
+      lines.push(
+        `${metric.metric.padEnd(44)} ${fmtMs(metric.baseline?.median, metric.unit).padEnd(12)} ${fmtMs(metric.candidate?.median, metric.unit).padEnd(12)} ${fmtDelta(metric.deltaAbs, metric.deltaPct, metric.unit)}`,
+      );
+    }
   }
   if (report.notes.length > 0) {
     lines.push("");

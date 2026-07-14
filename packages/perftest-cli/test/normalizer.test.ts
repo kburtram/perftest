@@ -298,6 +298,68 @@ describe("normalizeRep", () => {
     expect(toComplete?.value).toBeCloseTo(500);
   });
 
+  it("projects the measured ts-native terminal into diagnostic stage metrics", () => {
+    const result = normalizeRep(
+      baseInputs({
+        markers: [
+          marker("sqlDataPlane.tsNative.query.terminal", {
+            timestampUnixNs: "999999999900000000",
+            attrs: { durationMs: 1, encodeMsTotal: 99 },
+          }),
+          marker("scenario.start", { timestampUnixNs: "1000000000000000000" }),
+          marker("mssql.queryStudio.query.submit", {
+            timestampUnixNs: "1000000000050000000",
+            phase: "begin",
+          }),
+          marker("sqlDataPlane.tsNative.query.terminal", {
+            timestampUnixNs: "1000000000100000000",
+            attrs: {
+              queryStatus: "succeeded",
+              durationMs: 152.536,
+              firstMetadataMs: 4.16,
+              firstPageProducedMs: 23.52,
+              firstPageAcceptedMs: 24.06,
+              encodeMsTotal: 20.05,
+              sinkWaitMsTotal: 6.67,
+              pauseMsBackpressure: 1.25,
+              pauseMsCpuYield: 0.5,
+              maxSynchronousSliceMs: 12.05,
+              logicalEncodedBytes: 2_901_127,
+              pages: 12,
+              driverEvents: 10_100,
+              yields: 3,
+            },
+          }),
+          marker("mssql.queryStudio.query.complete", {
+            timestampUnixNs: "1000000000150000000",
+            phase: "end",
+          }),
+          // A later provider-owned metadata query must never replace the
+          // measured user query's terminal attribution.
+          marker("sqlDataPlane.tsNative.query.terminal", {
+            timestampUnixNs: "1000000000170000000",
+            attrs: { durationMs: 2.3, encodeMsTotal: 0, rows: 0 },
+          }),
+          marker("scenario.end", { timestampUnixNs: "1000000000200000000" }),
+        ],
+      }),
+    );
+
+    const byName = new Map(result.metrics.map((metric) => [metric.name, metric]));
+    expect(byName.get("sqlDataPlane.tsNative.query.duration")?.value).toBe(152.54);
+    expect(byName.get("sqlDataPlane.tsNative.query.encode")?.value).toBe(20.05);
+    expect(byName.get("sqlDataPlane.tsNative.query.logicalEncodedBytes")?.value).toBe(2_901_127);
+    expect(byName.get("sqlDataPlane.tsNative.query.pages")?.value).toBe(12);
+    expect(byName.get("sqlDataPlane.tsNative.query.duration")?.official).toBe(false);
+    expect(byName.get("sqlDataPlane.tsNative.query.duration")?.eligibility?.diagnosticOnly).toBe(
+      true,
+    );
+    expect(byName.get("sqlDataPlane.tsNative.query.duration")?.tags).toEqual({
+      basis: "tsNativeTerminalAggregate",
+      queryStatus: "succeeded",
+    });
+  });
+
   it("infrastructure error => invalid with the error recorded", () => {
     const result = normalizeRep(
       baseInputs({

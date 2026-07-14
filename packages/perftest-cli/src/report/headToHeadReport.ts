@@ -145,6 +145,27 @@ export function renderHeadToHeadHtml(report: HeadToHeadReport): string {
     ]),
   );
 
+  const diagnosticTable = dataTable(
+    [
+      { label: "Resource / provider metric" },
+      { label: "Baseline median", numeric: true },
+      { label: "Baseline p95", numeric: true },
+      { label: "Candidate median", numeric: true },
+      { label: "Candidate p95", numeric: true },
+      { label: "Delta", numeric: true },
+      { label: "Reps B / C", numeric: true },
+    ],
+    report.diagnostics.map((metric) => [
+      `<span class="mono">${esc(metric.metric)}</span>`,
+      fmt(metric.baseline?.median, metric.unit),
+      fmt(metric.baseline?.p95, metric.unit),
+      fmt(metric.candidate?.median, metric.unit),
+      fmt(metric.candidate?.p95, metric.unit),
+      deltaPill(metric.deltaAbs, metric.deltaPct, metric.unit),
+      `${metric.baseline?.samples ?? 0} / ${metric.candidate?.samples ?? 0}`,
+    ]),
+  );
+
   const notesHtml =
     `<ul style="margin:0;padding-left:18px;">` +
     report.notes.map((note) => `<li>${esc(note)}</li>`).join("") +
@@ -164,6 +185,12 @@ export function renderHeadToHeadHtml(report: HeadToHeadReport): string {
       "Phase breakdown",
       "marker pairs with shared semantics across the two code paths",
       phaseTable,
+    ),
+    section(
+      "Resource & provider diagnostics",
+      "non-gating totals and provider-stage attribution",
+      diagnosticTable,
+      { pills: [pill("diagnostic", "info")] },
     ),
     section("Notes", "honesty first", notesHtml),
   ].join("\n<div class=\"spacer\"></div>\n");

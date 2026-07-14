@@ -17,6 +17,7 @@ import type { ArtifactRef, Metric } from "@mssqlperf/contracts";
 import type { Collector, CollectorContext, ProcessRegistry } from "./types";
 
 const SAMPLE_INTERVAL_MS = 500;
+const DATA_PLANE_ROLES = new Set(["extensionHost", "sts"]);
 
 interface ProcessSample {
   timestampUnixNs: string;
@@ -263,6 +264,60 @@ export class ProcessSamplerCollector implements Collector {
         official: false,
         lowerIsBetter: true,
         tags: { pid, samples: samples.length },
+      });
+    }
+
+    // Provider-fair A/B resource view. STS2 splits work between the extension
+    // host and a service process while ts-native keeps it in the extension
+    // host; comparing either role alone is structurally misleading. RSS is
+    // summed at each shared sampling timestamp before taking the peak (not a
+    // sum of independently-timed per-process peaks), while CPU deltas are
+    // additive across the data-plane processes.
+    const dataPlaneSamples = this.samples.filter((sample) => DATA_PLANE_ROLES.has(sample.role));
+    if (dataPlaneSamples.length > 0) {
+      const rssByTimestamp = new Map<string, number>();
+      const roles = new Set<string>();
+      let totalCpuDelta = 0;
+      for (const samples of byPid.values()) {
+        if (!DATA_PLANE_ROLES.has(samples[0]!.role)) continue;
+        roles.add(samples[0]!.role);
+        if (samples.length > 1) {
+          totalCpuDelta +=
+            samples[samples.length - 1]!.cpuSeconds - samples[0]!.cpuSeconds;
+        }
+      }
+      for (const sample of dataPlaneSamples) {
+        rssByTimestamp.set(
+          sample.timestampUnixNs,
+          (rssByTimestamp.get(sample.timestampUnixNs) ?? 0) + sample.workingSetBytes,
+        );
+      }
+      const peakRss = Math.max(...rssByTimestamp.values());
+      const tags = {
+        roles: [...roles].sort().join("+"),
+        timestamps: rssByTimestamp.size,
+      };
+      metrics.push({
+        name: "process.dataPlane.peakWorkingSet",
+        value: Math.round(peakRss / 1024 / 1024),
+        unit: "MB",
+        component: "process",
+        processRole: "dataPlaneTotal",
+        source: "processSampler",
+        official: false,
+        lowerIsBetter: true,
+        tags,
+      });
+      metrics.push({
+        name: "process.dataPlane.cpuTime",
+        value: Number(totalCpuDelta.toFixed(3)),
+        unit: "s",
+        component: "process",
+        processRole: "dataPlaneTotal",
+        source: "processSampler",
+        official: false,
+        lowerIsBetter: true,
+        tags,
       });
     }
     return metrics;

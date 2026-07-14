@@ -14,7 +14,7 @@ each collector and enforced by the pipeline.
 
 | Collector | Pass | What it produces | Requires |
 |---|---|---|---|
-| `processSampler` | measurement + diagnostic | `process-samples.jsonl`; `process.peakWorkingSet` / `process.cpuTime` per role (vscodeMain, extensionHost, sts) | nothing (PowerShell CIM / ps) |
+| `processSampler` | measurement + diagnostic | `process-samples.jsonl`; `process.peakWorkingSet` / `process.cpuTime` per process, plus provider-fair `process.dataPlane.peakWorkingSet` / `process.dataPlane.cpuTime` totals across extensionHost + sts | nothing (PowerShell CIM / ps) |
 | `stsEnvelopeJournal` | diagnostic | sts2 journal copies under `artifacts/sts2/`; `sts.rpc.<method>.duration` medians; `sts2.query.pipeline.*` stage, byte, and allocation aggregates | local STS build + `STS_ENABLE_STS2=1` (see STS_INSTRUMENTATION.md) |
 | `cdpExtHostProfile` | diagnostic | `artifacts/exthost.cpuprofile` (V8 sampling profile of the scenario window; open in VS Code/speedscope) | none — adds `--inspect-extensions=<port>` and drives the Node inspector protocol |
 | `cdpRendererTrace` | diagnostic | `artifacts/renderer.trace.json`; workbench renderer paint/layout/script totals | none — adds/reuses `--remote-debugging-port=<port>` and uses the workbench target's Chromium Tracing domain |
