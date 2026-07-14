@@ -35,6 +35,10 @@ export interface MultiplexerTransportSnapshot {
   sts2: Record<string, unknown>;
 }
 
+export interface RpcTransportSnapshot extends Record<string, unknown> {
+  schema: "sts2.rpc.transport.stats/1";
+}
+
 const QUERY_PIPELINE_STAT_FIELDS = [
   "pages",
   "rows",
@@ -124,6 +128,35 @@ const MULTIPLEXER_TRANSPORT_STAT_FIELDS = [
   "stdoutFlushMsTotal",
 ] as const;
 
+const RPC_TRANSPORT_STAT_FIELDS = [
+  "messages",
+  "bytes",
+  "maxMessageBytes",
+  "bufferRequests",
+  "maxBufferSizeHint",
+  "serializeMsTotal",
+  "serializeAllocatedBytes",
+  "serializationFailures",
+  "writeCalls",
+  "writeMsTotal",
+  "writeAllocatedBytes",
+  "framingCopyMsTotal",
+  "framingCopyAllocatedBytes",
+  "writeFailures",
+  "flushCalls",
+  "flushMsTotal",
+  "flushFailures",
+  "rowMessages",
+  "rowBytes",
+  "rowSerializeMsTotal",
+  "rowSerializeAllocatedBytes",
+  "rowWriteMsTotal",
+  "rowWriteAllocatedBytes",
+  "rowFramingCopyMsTotal",
+  "rowFramingCopyAllocatedBytes",
+  "rowFlushMsTotal",
+] as const;
+
 export class StsEnvelopeJournalCollector implements Collector {
   readonly name = "stsEnvelopeJournal";
   readonly cost = "low" as const;
@@ -136,6 +169,7 @@ export class StsEnvelopeJournalCollector implements Collector {
   private startedAtMs = 0;
   private collectedEnvelopes: Envelope[] = [];
   private collectedTransportStats: MultiplexerTransportSnapshot[] = [];
+  private collectedRpcTransportStats: RpcTransportSnapshot[] = [];
 
   async postLaunch(): Promise<void> {
     this.startedAtMs = Date.now();
@@ -198,6 +232,10 @@ export class StsEnvelopeJournalCollector implements Collector {
         for (const file of readdirSync(dest)) {
           if (file.endsWith(".jsonl")) {
             this.parseSegment(join(dest, file), ctx);
+          } else if (file === "sts2-rpc-transport.log") {
+            this.collectedRpcTransportStats.push(
+              ...parseRpcTransportStatsLog(readFileSync(join(dest, file), "utf8")),
+            );
           }
         }
       } catch (error) {
@@ -233,6 +271,7 @@ export class StsEnvelopeJournalCollector implements Collector {
       envelopes: this.collectedEnvelopes.length,
       multiplexerLogs: freshMultiplexerLogs.length,
       transportSnapshots: this.collectedTransportStats.length,
+      rpcTransportSnapshots: this.collectedRpcTransportStats.length,
     });
     return artifacts;
   }
@@ -306,6 +345,7 @@ export class StsEnvelopeJournalCollector implements Collector {
     metrics.push(...normalizeQueryPipelineStats(this.collectedEnvelopes));
     metrics.push(...normalizeQueryCoordinatorStats(this.collectedEnvelopes));
     metrics.push(...normalizeMultiplexerTransportStats(this.collectedTransportStats));
+    metrics.push(...normalizeRpcTransportStats(this.collectedRpcTransportStats));
     return metrics;
   }
 }
@@ -448,6 +488,62 @@ export function parseMultiplexerTransportStatsLog(text: string): MultiplexerTran
         // Snapshots are cumulative. Keep only the latest checkpoint from one
         // process log so repeated queries and final shutdown cannot overcount.
         latest = parsed as unknown as MultiplexerTransportSnapshot;
+      }
+    } catch {
+      // A truncated trailing diagnostic must not invalidate the repetition.
+    }
+  }
+  return latest ? [latest] : [];
+}
+
+/** Flatten cumulative, content-free StreamJsonRpc formatter/copy/flush snapshots. */
+export function normalizeRpcTransportStats(snapshots: readonly RpcTransportSnapshot[]): Metric[] {
+  const aggregates = new Map<string, number>();
+  for (const snapshot of snapshots) {
+    for (const field of RPC_TRANSPORT_STAT_FIELDS) {
+      const value = numeric(snapshot[field]);
+      if (value === undefined) continue;
+      if (field === "maxMessageBytes" || field === "maxBufferSizeHint") {
+        aggregates.set(field, Math.max(aggregates.get(field) ?? 0, value));
+      } else {
+        aggregates.set(field, (aggregates.get(field) ?? 0) + value);
+      }
+    }
+  }
+
+  return [...aggregates.entries()].map(([field, value]) => {
+    const isMilliseconds = field.endsWith("MsTotal");
+    const isBytes = field.toLowerCase().includes("bytes") || field === "maxBufferSizeHint";
+    return {
+      name: `sts2.rpcTransport.${field}`,
+      value: Number(value.toFixed(isMilliseconds ? 3 : 0)),
+      unit: isMilliseconds ? "ms" : isBytes ? "bytes" : "count",
+      component: "sts",
+      processRole: "sts",
+      source: "otelSpan",
+      official: false,
+      lowerIsBetter:
+        isMilliseconds ||
+        field.includes("AllocatedBytes") ||
+        field.endsWith("Failures") ||
+        field === "bufferRequests",
+      tags: { samples: snapshots.length, derivedFrom: "sts2RpcTransportLog" },
+    } satisfies Metric;
+  });
+}
+
+/** Parse only the latest cumulative checkpoint from one RPC transport log. */
+export function parseRpcTransportStatsLog(text: string): RpcTransportSnapshot[] {
+  let latest: RpcTransportSnapshot | undefined;
+  for (const line of text.split("\n")) {
+    const marker = "[rpcTransportStats] ";
+    const index = line.indexOf(marker);
+    if (index < 0) continue;
+    try {
+      const parsed = JSON.parse(line.slice(index + marker.length).trim()) as Record<string, unknown>;
+      if (parsed["schema"] === "sts2.rpc.transport.stats/1") {
+        // Snapshots are cumulative; repeated query terminals must not be summed.
+        latest = parsed as RpcTransportSnapshot;
       }
     } catch {
       // A truncated trailing diagnostic must not invalidate the repetition.
