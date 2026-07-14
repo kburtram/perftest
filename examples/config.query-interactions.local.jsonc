@@ -8,6 +8,7 @@
   "repetitions": 3,
   "warmupRepetitions": 1,
   "scenarios": [
+    "querystudio-query-scalar-results-focus",
     "querystudio-interaction-scroll-100k",
     "querystudio-interaction-selectall-100k",
     "querystudio-interaction-copyall-10k-messages",
