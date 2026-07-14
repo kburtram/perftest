@@ -219,6 +219,11 @@ describe("headToHead", () => {
           values: [130, 140, 150],
           timePlane: "epoch",
         },
+        {
+          name: "mssql.queryStudio.grid.copy",
+          values: [60, 62, 64],
+          timePlane: "monotonic",
+        },
         { name: "process.dataPlane.cpuTime", values: [2.5, 2.6, 2.7] },
         { name: "process.dataPlane.peakWorkingSet", values: [520, 525, 530] },
       ];
@@ -248,9 +253,10 @@ describe("headToHead", () => {
         "submit → first accepted page",
         "submit → complete",
         "submit → render",
+        "grid exact copy",
       ]);
       for (const phase of report.phases) {
-        expect(phase.baselineMetric).toContain("mssql.queryStudio.query.");
+        expect(phase.baselineMetric).toContain("mssql.queryStudio.");
         expect(phase.candidateMetric).toBe(phase.baselineMetric);
         expect(phase.deltaPct).toBeCloseTo(-20);
       }

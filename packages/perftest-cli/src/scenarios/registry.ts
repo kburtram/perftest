@@ -1321,6 +1321,12 @@ register({
 // baselines mature. `tuningOverrides` (QO-9b spreads) inject per-combo knobs
 // via mssql.queryStudio.tuning.overrides in userSettings.
 // ---------------------------------------------------------------------------
+type QueryStudioBackend = {
+  suffix: "sts2" | "tsnative";
+  setting: "sts2-local" | "ts-native";
+  provenance: "sts2-jsonrpc" | "ts-native";
+};
+
 interface QueryStudioShapeSpec {
   scenarioId: string;
   displayName: string;
@@ -1337,11 +1343,7 @@ interface QueryStudioShapeSpec {
   tuningOverrides?: Record<string, unknown>;
   scenarioIdSuffix?: string;
   /** Optional activation-time provider selector plus truthful bound identity. */
-  backend?: {
-    suffix: "sts2" | "tsnative";
-    setting: "sts2-local" | "ts-native";
-    provenance: "sts2-jsonrpc" | "ts-native";
-  };
+  backend?: QueryStudioBackend;
 }
 
 function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
@@ -1488,7 +1490,7 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
   });
 }
 
-const QUERY_STUDIO_BACKEND_VARIANTS = [
+const QUERY_STUDIO_BACKEND_VARIANTS: readonly QueryStudioBackend[] = [
   {
     suffix: "sts2",
     setting: "sts2-local",
@@ -1708,7 +1710,7 @@ registerQueryStudioBackendShapePair({
   timeoutMs: 300000,
 });
 
-function registerQueryStudioInteractionScenario(spec: {
+interface QueryStudioInteractionSpec {
   scenarioId: string;
   displayName: string;
   tags: string[];
@@ -1717,7 +1719,39 @@ function registerQueryStudioInteractionScenario(spec: {
   actions: NonNullable<ScenarioSpec["measure"]>["action"];
   success: ScenarioSpec["success"];
   tuningOverrides?: Record<string, unknown>;
-}): void {
+  /** Additional registered metrics whose boundaries occur inside the interaction action. */
+  additionalMetrics?: NonNullable<ScenarioSpec["metrics"]>;
+  /** Optional activation-time provider selector plus truthful bound identity. */
+  backend?: QueryStudioBackend;
+  /** Require the connection readiness SELECT 1 to paint Results, not Messages. */
+  assertPreflightResultsFocus?: boolean;
+}
+
+function registerQueryStudioInteractionScenario(spec: QueryStudioInteractionSpec): void {
+  const backendCriteria: NonNullable<ScenarioSpec["success"]> = spec.backend
+    ? [
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.connect.ready",
+          attrs: { backend: spec.backend.provenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.submit",
+          attrs: { backend: spec.backend.provenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.firstPage",
+          attrs: { backend: spec.backend.provenance },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.complete",
+          attrs: { backend: spec.backend.provenance, status: "succeeded", errors: 0 },
+        },
+      ]
+    : [];
   register({
     implemented: true,
     plannedMilestone: "QP-2",
@@ -1730,6 +1764,7 @@ function registerQueryStudioInteractionScenario(spec: {
       userSettings: {
         "mssql.sqlDataPlane.enabled": true,
         "mssql.queryStudio.enabled": true,
+        ...(spec.backend ? { "mssql.sqlDataPlane.backend": spec.backend.setting } : {}),
         ...(spec.tuningOverrides
           ? { "mssql.queryStudio.tuning.overrides": spec.tuningOverrides }
           : {}),
@@ -1745,6 +1780,16 @@ function registerQueryStudioInteractionScenario(spec: {
         { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
         { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
         { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        ...(spec.assertPreflightResultsFocus
+          ? [
+              {
+                type: "waitForMarker" as const,
+                name: "mssql.queryStudio.resultsRendered",
+                attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+                timeoutMs: 30000,
+              },
+            ]
+          : []),
         { type: "queryStudioExecute", timeoutMs: 300000 },
         {
           type: "waitForMarker",
@@ -1760,6 +1805,7 @@ function registerQueryStudioInteractionScenario(spec: {
         timeoutMs: 300000,
       },
       success: [
+        ...backendCriteria,
         ...(spec.success ?? []),
         { type: "markerSeen", name: "mssql.queryStudio.interaction.end" },
         { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
@@ -1769,10 +1815,32 @@ function registerQueryStudioInteractionScenario(spec: {
         ...CLEANUP_EXPLORER,
       ],
       metrics: [
-        { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+        {
+          name: "scenario.wallclock",
+          source: "marker",
+          official: spec.backend !== undefined,
+          lowerIsBetter: true,
+        },
+        ...(spec.additionalMetrics ?? []),
       ],
     },
   });
+}
+
+/** Register an identical-oracle provider pair for a measured result interaction. */
+function registerQueryStudioBackendInteractionPair(
+  spec: Omit<QueryStudioInteractionSpec, "backend" | "assertPreflightResultsFocus">,
+): void {
+  for (const backend of QUERY_STUDIO_BACKEND_VARIANTS) {
+    registerQueryStudioInteractionScenario({
+      ...spec,
+      scenarioId: `${spec.scenarioId}-${backend.suffix}`,
+      displayName: `${spec.displayName} [backend=${backend.setting}]`,
+      tags: [...spec.tags, "backend-ab"],
+      assertPreflightResultsFocus: true,
+      backend,
+    });
+  }
 }
 
 registerQueryStudioInteractionScenario({
@@ -1959,6 +2027,71 @@ registerQueryStudioInteractionScenario({
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
       attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    },
+  ],
+});
+
+// The result-shape backend pairs prove transport and first paint. This pair
+// adds the equally important host-side reclamation path: both providers must
+// evict the same complete values, re-materialize them from the RowStore, and
+// produce the exact same user-visible copy without selecting Messages.
+registerQueryStudioBackendInteractionPair({
+  scenarioId: "querystudio-interaction-copyall-large-cells-forced-spill",
+  displayName: "Query Studio interaction: exact large-cell copy through forced spill",
+  tags: ["results-grid", "large-cells", "json", "xml", "clipboard", "copy", "spill"],
+  queryPath: "queries/large-cells-1mb.sql",
+  ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 20 } },
+  tuningOverrides: {
+    storeMemoryBytes: 1048576,
+    maxPendingSpillBytes: 1048576,
+    diagnosticsLevel: "verbose",
+  },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+    {
+      type: "queryStudioInteract",
+      action: {
+        kind: "copyGrid",
+        resultSetIndex: 0,
+        selection: "all",
+        includeHeaders: true,
+      },
+      timeoutMs: 300000,
+    },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.write",
+      attrs: { encoding: "v8-v1" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.read",
+      attrs: { encoding: "v8-v1" },
+    },
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.grid.copy.end",
+      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+    },
+  ],
+  additionalMetrics: [
+    {
+      name: "mssql.queryStudio.grid.copy",
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      beginMarker: "mssql.queryStudio.grid.copy.begin",
+      endMarker: "mssql.queryStudio.grid.copy.end",
+      component: "queryStudio",
+      processRole: "webview",
+      withinMeasuredWindow: true,
     },
   ],
 });

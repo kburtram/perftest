@@ -247,6 +247,100 @@ describe("Query Studio backend A/B registration (TSQ2-12)", () => {
       }
     },
   );
+
+  it("pairs forced spill and exact large-cell copy across providers without weakening readiness", () => {
+    const pair = [
+      {
+        entry: getScenario("querystudio-interaction-copyall-large-cells-forced-spill-sts2"),
+        setting: "sts2-local",
+        provenance: "sts2-jsonrpc",
+      },
+      {
+        entry: getScenario("querystudio-interaction-copyall-large-cells-forced-spill-tsnative"),
+        setting: "ts-native",
+        provenance: "ts-native",
+      },
+    ] as const;
+
+    expect(pair[0].entry).toBeDefined();
+    expect(pair[1].entry).toBeDefined();
+    expect(normalizeBackendIdentity(pair[0].entry!)).toEqual(
+      normalizeBackendIdentity(pair[1].entry!),
+    );
+
+    for (const { entry, setting, provenance } of pair) {
+      expect(scenarioMaturity(entry!)).toBe("exploratory");
+      expect(entry!.spec.tags).toContain("backend-ab");
+      expect(fixtureOf(entry!)).toBe("queries/large-cells-1mb.sql");
+      expect(entry!.spec.userSettings?.["mssql.sqlDataPlane.backend"]).toBe(setting);
+      expect(entry!.spec.userSettings?.["mssql.queryStudio.tuning.overrides"]).toEqual({
+        storeMemoryBytes: 1048576,
+        maxPendingSpillBytes: 1048576,
+        diagnosticsLevel: "verbose",
+      });
+      expect(entry!.spec.setup).toContainEqual({
+        type: "waitForMarker",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 1, resultSets: 1, activeTab: "results" },
+        timeoutMs: 30000,
+      });
+      for (const [name, attrs] of [
+        ["mssql.queryStudio.connect.ready", { backend: provenance }],
+        ["mssql.queryStudio.query.submit", { backend: provenance }],
+        ["mssql.queryStudio.query.firstPage", { backend: provenance }],
+        [
+          "mssql.queryStudio.query.complete",
+          { backend: provenance, status: "succeeded", errors: 0 },
+        ],
+      ] as const) {
+        expect(entry!.spec.success).toContainEqual({ type: "markerSeen", name, attrs });
+      }
+      expect(entry!.spec.success).toContainEqual({
+        type: "markerSeen",
+        name: "mssql.queryStudio.resultsRendered",
+        attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+      });
+      expect(entry!.spec.success).toContainEqual({
+        type: "markerSeen",
+        name: "mssql.queryStudio.rows.spill.write",
+        attrs: { encoding: "v8-v1" },
+      });
+      expect(entry!.spec.success).toContainEqual({
+        type: "markerSeen",
+        name: "mssql.queryStudio.rows.spill.read",
+        attrs: { encoding: "v8-v1" },
+      });
+      expect(entry!.spec.success).toContainEqual({
+        type: "markerSeen",
+        name: "mssql.queryStudio.grid.copy.end",
+        attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+      });
+      expect(entry!.spec.measure.action).toContainEqual({
+        type: "queryStudioInteract",
+        action: {
+          kind: "copyGrid",
+          resultSetIndex: 0,
+          selection: "all",
+          includeHeaders: true,
+        },
+        timeoutMs: 300000,
+      });
+      expect(entry!.spec.metrics).toContainEqual(
+        expect.objectContaining({ name: "scenario.wallclock", official: true }),
+      );
+      expect(entry!.spec.metrics).toContainEqual({
+        name: "mssql.queryStudio.grid.copy",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.grid.copy.begin",
+        endMarker: "mssql.queryStudio.grid.copy.end",
+        component: "queryStudio",
+        processRole: "webview",
+        withinMeasuredWindow: true,
+      });
+    }
+  });
 });
 
 /**

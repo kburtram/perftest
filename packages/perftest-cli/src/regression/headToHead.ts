@@ -102,6 +102,17 @@ const AUTO_PHASE_FAMILIES: PhaseFamily[] = [
   },
 ];
 
+/**
+ * An interaction-only phase. It is inferred only when either selected run
+ * actually recorded it, so ordinary query A/B reports do not acquire a
+ * misleading "missing copy" note.
+ */
+const GRID_COPY_PHASE: PhaseFamily = {
+  phase: "grid exact copy",
+  baselineCandidates: ["mssql.queryStudio.grid.copy"],
+  candidateCandidates: ["mssql.queryStudio.grid.copy"],
+};
+
 /** High-signal non-gating diagnostics worth putting beside every A/B. */
 const COMPARABLE_DIAGNOSTIC_METRICS = [
   "process.dataPlane.cpuTime",
@@ -184,7 +195,13 @@ function inferPhaseMappings(
   baseline: ReadonlyMap<string, MetricSamples>,
   candidate: ReadonlyMap<string, MetricSamples>,
 ): PhaseMapping[] {
-  return AUTO_PHASE_FAMILIES.map((family) => ({
+  const families = [
+    ...AUTO_PHASE_FAMILIES,
+    ...(baseline.has("mssql.queryStudio.grid.copy") || candidate.has("mssql.queryStudio.grid.copy")
+      ? [GRID_COPY_PHASE]
+      : []),
+  ];
+  return families.map((family) => ({
     phase: family.phase,
     baselineMetric:
       family.baselineCandidates.find((name) => baseline.has(name)) ??

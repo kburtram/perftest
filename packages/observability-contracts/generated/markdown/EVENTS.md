@@ -217,6 +217,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.query.toComplete` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.complete` |
 | `mssql.queryStudio.query.toFirstPage` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.firstPage` |
 | `mssql.queryStudio.query.toRender` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.resultsRendered` |
+| `mssql.queryStudio.grid.copy` | queryStudio | `mssql.queryStudio.grid.copy.begin` → `mssql.queryStudio.grid.copy.end` |
 | `sqlDataPlane.tsNative.query.duration` | sqlDataPlane | `sqlDataPlane.tsNative.query.terminal` |
 | `sqlDataPlane.tsNative.query.firstMetadata` | sqlDataPlane | `sqlDataPlane.tsNative.query.terminal` |
 | `sqlDataPlane.tsNative.query.firstPageProduced` | sqlDataPlane | `sqlDataPlane.tsNative.query.terminal` |
