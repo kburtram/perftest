@@ -313,7 +313,15 @@ describe("Query Studio backend A/B registration (TSQ2-12)", () => {
       expect(entry!.spec.success).toContainEqual({
         type: "markerSeen",
         name: "mssql.queryStudio.grid.copy.end",
-        attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+        attrs: {
+          outcome: "copied",
+          rows: 20,
+          columns: 3,
+          characters: 2621556,
+          copyRoute: "hostDirect",
+          clipboardMode: "hostDirect",
+          hostRowFetches: 1,
+        },
       });
       expect(entry!.spec.measure.action).toContainEqual({
         type: "queryStudioInteract",
@@ -740,7 +748,15 @@ describe("querystudio large-cell grid interaction", () => {
     expect(copy!.spec.success).toContainEqual({
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+      attrs: {
+        outcome: "copied",
+        rows: 20,
+        columns: 3,
+        characters: 2621556,
+        copyRoute: "hostDirect",
+        clipboardMode: "hostDirect",
+        hostRowFetches: 1,
+      },
     });
   });
 
@@ -764,7 +780,15 @@ describe("querystudio large-cell grid interaction", () => {
     expect(forcedSpill!.spec.success).toContainEqual({
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+      attrs: {
+        outcome: "copied",
+        rows: 20,
+        columns: 3,
+        characters: 2621556,
+        copyRoute: "hostDirect",
+        clipboardMode: "hostDirect",
+        hostRowFetches: 1,
+      },
     });
   });
 });

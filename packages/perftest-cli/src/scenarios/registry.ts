@@ -1983,7 +1983,15 @@ registerQueryStudioInteractionScenario({
     {
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+      attrs: {
+        outcome: "copied",
+        rows: 20,
+        columns: 3,
+        characters: 2621556,
+        copyRoute: "hostDirect",
+        clipboardMode: "hostDirect",
+        hostRowFetches: 1,
+      },
     },
   ],
 });
@@ -2026,7 +2034,15 @@ registerQueryStudioInteractionScenario({
     {
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+      attrs: {
+        outcome: "copied",
+        rows: 20,
+        columns: 3,
+        characters: 2621556,
+        copyRoute: "hostDirect",
+        clipboardMode: "hostDirect",
+        hostRowFetches: 1,
+      },
     },
   ],
 });
@@ -2078,7 +2094,15 @@ registerQueryStudioBackendInteractionPair({
     {
       type: "markerSeen",
       name: "mssql.queryStudio.grid.copy.end",
-      attrs: { outcome: "copied", rows: 20, columns: 3, characters: 2621556 },
+      attrs: {
+        outcome: "copied",
+        rows: 20,
+        columns: 3,
+        characters: 2621556,
+        copyRoute: "hostDirect",
+        clipboardMode: "hostDirect",
+        hostRowFetches: 1,
+      },
     },
   ],
   additionalMetrics: [
