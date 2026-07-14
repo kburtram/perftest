@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeQueryCoordinatorStats, normalizeQueryPipelineStats } from "../src/collectors/stsEnvelopeJournal";
+import {
+  normalizeMultiplexerTransportStats,
+  normalizeQueryCoordinatorStats,
+  normalizeQueryPipelineStats,
+  parseMultiplexerTransportStatsLog,
+} from "../src/collectors/stsEnvelopeJournal";
 
 describe("stsEnvelopeJournal query pipeline normalization", () => {
   it("sums additive stats, keeps the maximum payload, and excludes correlation ids", () => {
@@ -94,5 +99,27 @@ describe("stsEnvelopeJournal query pipeline normalization", () => {
       derivedFrom: "sts2.query.coordinator.stats",
     });
     expect(JSON.stringify(metrics)).not.toContain("q-private");
+  });
+
+  it("parses and normalizes content-free multiplexer transport summaries", () => {
+    const line =
+      '2026-07-14T00:00:00.0000000+00:00 [transportStats] {"schema":"sts2.transport.stats/1","legacy":{"outboundFrames":2,"outboundFrameBytes":200},"sts2":{"outboundFrames":20,"outboundFrameBytes":5900000,"maxOutboundFrameBytes":300000,"pipeSegments":40,"multiSegmentFrames":20,"materializedFrames":20,"materializedBytes":5900000,"materializeMsTotal":2.75,"materializeAllocatedBytes":5901000,"stdoutWriteMsTotal":8.5}}';
+    const snapshots = parseMultiplexerTransportStatsLog(
+      ["ignored private-canary", line, "[transportStats] {truncated"].join("\n"),
+    );
+    expect(snapshots).toHaveLength(1);
+
+    const metrics = normalizeMultiplexerTransportStats(snapshots);
+    const byName = new Map(metrics.map((metric) => [metric.name, metric]));
+    expect(byName.get("sts2.transport.sts2.outboundFrames")?.value).toBe(20);
+    expect(byName.get("sts2.transport.sts2.outboundFrameBytes")?.value).toBe(5_900_000);
+    expect(byName.get("sts2.transport.sts2.maxOutboundFrameBytes")?.value).toBe(300_000);
+    expect(byName.get("sts2.transport.sts2.materializeMsTotal")?.value).toBe(2.75);
+    expect(byName.get("sts2.transport.sts2.materializeAllocatedBytes")?.tags).toEqual({
+      samples: 1,
+      derivedFrom: "sts2MultiplexerLog",
+    });
+    expect(byName.get("sts2.transport.legacy.outboundFrames")?.value).toBe(2);
+    expect(JSON.stringify(metrics)).not.toContain("private-canary");
   });
 });

@@ -29,6 +29,12 @@ interface Envelope {
   };
 }
 
+export interface MultiplexerTransportSnapshot {
+  schema: "sts2.transport.stats/1";
+  legacy: Record<string, unknown>;
+  sts2: Record<string, unknown>;
+}
+
 const QUERY_PIPELINE_STAT_FIELDS = [
   "pages",
   "rows",
@@ -76,6 +82,36 @@ const QUERY_COORDINATOR_STAT_FIELDS = [
   "outputGatewayEmitAllocatedBytes",
 ] as const;
 
+const MULTIPLEXER_TRANSPORT_STAT_FIELDS = [
+  "readCalls",
+  "maxBufferedBytes",
+  "headerParseCalls",
+  "headerParseMsTotal",
+  "headerParseAllocatedBytes",
+  "partialFrameWaits",
+  "outboundFrames",
+  "outboundFrameBytes",
+  "maxOutboundFrameBytes",
+  "largeObjectFrames",
+  "pipeSegments",
+  "singleSegmentFrames",
+  "multiSegmentFrames",
+  "materializedFrames",
+  "materializedBytes",
+  "materializeMsTotal",
+  "materializeAllocatedBytes",
+  "inspectMsTotal",
+  "inspectAllocatedBytes",
+  "inspectParseFailures",
+  "rewrittenFrames",
+  "stdoutLockWaitMsTotal",
+  "stdoutWriteCalls",
+  "stdoutWriteBytes",
+  "stdoutWriteMsTotal",
+  "stdoutFlushCalls",
+  "stdoutFlushMsTotal",
+] as const;
+
 export class StsEnvelopeJournalCollector implements Collector {
   readonly name = "stsEnvelopeJournal";
   readonly cost = "low" as const;
@@ -87,6 +123,7 @@ export class StsEnvelopeJournalCollector implements Collector {
 
   private startedAtMs = 0;
   private collectedEnvelopes: Envelope[] = [];
+  private collectedTransportStats: MultiplexerTransportSnapshot[] = [];
 
   async postLaunch(): Promise<void> {
     this.startedAtMs = Date.now();
@@ -101,12 +138,14 @@ export class StsEnvelopeJournalCollector implements Collector {
       join(ctx.repDir, "..", "..", "profile", "vscode-user-data"), // warmed profile location
     ];
     const journalDirs: string[] = [];
+    const multiplexerLogs: string[] = [];
     for (const root of roots) {
       if (existsSync(root)) {
         findSts2Dirs(root, journalDirs, 0);
+        findMultiplexerLogs(root, multiplexerLogs, 0);
       }
     }
-    const fresh = journalDirs.filter((dir) => {
+    const fresh = [...new Set(journalDirs)].filter((dir) => {
       try {
         return statSync(dir).mtimeMs >= this.startedAtMs - 5000;
       } catch {
@@ -117,8 +156,19 @@ export class StsEnvelopeJournalCollector implements Collector {
       ctx.logger.warn("stsEnvelopeJournal.noJournals", "no sts2 journal directories found", {
         searched: roots,
       });
-      return [];
     }
+
+    const freshMultiplexerLogs = [...new Set(multiplexerLogs)].filter((path) => {
+      try {
+        // The mux file is created after VS Code launch and updated at each query
+        // terminal. Unlike a journal directory, it needs no timestamp slack;
+        // slack can accidentally pull the preceding warmed-profile process into
+        // a fast next repetition and double every cumulative counter.
+        return statSync(path).mtimeMs >= this.startedAtMs - 250;
+      } catch {
+        return false;
+      }
+    });
 
     const artifacts: ArtifactRef[] = [];
     const outRoot = join(ctx.artifactsDir, "sts2");
@@ -144,9 +194,33 @@ export class StsEnvelopeJournalCollector implements Collector {
         });
       }
     }
+
+    if (freshMultiplexerLogs.length > 0) {
+      const muxOutRoot = join(ctx.artifactsDir, "sts2-multiplexer");
+      mkdirSync(muxOutRoot, { recursive: true });
+      for (const path of freshMultiplexerLogs) {
+        const name = path.split(/[\\/]/).slice(-1)[0] ?? "sts2-mux.log";
+        const dest = join(muxOutRoot, name);
+        try {
+          cpSync(path, dest);
+          artifacts.push({
+            kind: "sts2MultiplexerLog",
+            path: `artifacts/sts2-multiplexer/${name}`,
+            retention: "always",
+          });
+          this.collectedTransportStats.push(
+            ...parseMultiplexerTransportStatsLog(readFileSync(dest, "utf8")),
+          );
+        } catch (error) {
+          ctx.logger.warn("stsEnvelopeJournal.multiplexerCopyFailed", String(error), { path });
+        }
+      }
+    }
     ctx.logger.info("stsEnvelopeJournal.collected", undefined, {
       journalDirs: fresh.length,
       envelopes: this.collectedEnvelopes.length,
+      multiplexerLogs: freshMultiplexerLogs.length,
+      transportSnapshots: this.collectedTransportStats.length,
     });
     return artifacts;
   }
@@ -219,6 +293,7 @@ export class StsEnvelopeJournalCollector implements Collector {
     }
     metrics.push(...normalizeQueryPipelineStats(this.collectedEnvelopes));
     metrics.push(...normalizeQueryCoordinatorStats(this.collectedEnvelopes));
+    metrics.push(...normalizeMultiplexerTransportStats(this.collectedTransportStats));
     return metrics;
   }
 }
@@ -298,8 +373,83 @@ export function normalizeQueryCoordinatorStats(envelopes: readonly Envelope[]): 
   }));
 }
 
+/** Flatten aggregate, content-free multiplexer shutdown snapshots by virtual channel. */
+export function normalizeMultiplexerTransportStats(
+  snapshots: readonly MultiplexerTransportSnapshot[],
+): Metric[] {
+  const metrics: Metric[] = [];
+  for (const channel of ["sts2", "legacy"] as const) {
+    const aggregates = new Map<string, number>();
+    let samples = 0;
+    for (const snapshot of snapshots) {
+      const stats = snapshot[channel];
+      samples++;
+      for (const field of MULTIPLEXER_TRANSPORT_STAT_FIELDS) {
+        const value = numeric(stats[field]);
+        if (value === undefined) continue;
+        if (field === "maxBufferedBytes" || field === "maxOutboundFrameBytes") {
+          aggregates.set(field, Math.max(aggregates.get(field) ?? 0, value));
+        } else {
+          aggregates.set(field, (aggregates.get(field) ?? 0) + value);
+        }
+      }
+    }
+
+    for (const [field, value] of aggregates) {
+      const isMilliseconds = field.endsWith("MsTotal");
+      const isBytes = field.endsWith("Bytes");
+      metrics.push({
+        name: `sts2.transport.${channel}.${field}`,
+        value: Number(value.toFixed(isMilliseconds ? 3 : 0)),
+        unit: isMilliseconds ? "ms" : isBytes ? "bytes" : "count",
+        component: "sts",
+        processRole: "sts",
+        source: "otelSpan",
+        official: false,
+        lowerIsBetter:
+          isMilliseconds ||
+          field.includes("AllocatedBytes") ||
+          field.startsWith("materialized") ||
+          field === "partialFrameWaits" ||
+          field === "inspectParseFailures",
+        tags: { samples, derivedFrom: "sts2MultiplexerLog" },
+      });
+    }
+  }
+  return metrics;
+}
+
+/** Parse only the stable aggregate diagnostic; all other mux diagnostics are ignored. */
+export function parseMultiplexerTransportStatsLog(text: string): MultiplexerTransportSnapshot[] {
+  let latest: MultiplexerTransportSnapshot | undefined;
+  for (const line of text.split("\n")) {
+    const marker = "[transportStats] ";
+    const index = line.indexOf(marker);
+    if (index < 0) continue;
+    try {
+      const parsed = JSON.parse(line.slice(index + marker.length).trim()) as Record<string, unknown>;
+      if (
+        parsed["schema"] === "sts2.transport.stats/1" &&
+        isRecord(parsed["legacy"]) &&
+        isRecord(parsed["sts2"])
+      ) {
+        // Snapshots are cumulative. Keep only the latest checkpoint from one
+        // process log so repeated queries and final shutdown cannot overcount.
+        latest = parsed as unknown as MultiplexerTransportSnapshot;
+      }
+    } catch {
+      // A truncated trailing diagnostic must not invalidate the repetition.
+    }
+  }
+  return latest ? [latest] : [];
+}
+
 function numeric(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function findSts2Dirs(root: string, results: string[], depth: number): void {
@@ -326,6 +476,24 @@ function findSts2Dirs(root: string, results: string[], depth: number): void {
       }
     } else {
       findSts2Dirs(full, results, depth + 1);
+    }
+  }
+}
+
+function findMultiplexerLogs(root: string, results: string[], depth: number): void {
+  if (depth > 8) return;
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = join(root, entry.name);
+    if (entry.isDirectory()) {
+      findMultiplexerLogs(full, results, depth + 1);
+    } else if (entry.isFile() && /^sts2-mux-\d+\.log$/u.test(entry.name)) {
+      results.push(full);
     }
   }
 }
