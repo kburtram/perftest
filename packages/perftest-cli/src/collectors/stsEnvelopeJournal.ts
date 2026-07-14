@@ -25,6 +25,7 @@ interface Envelope {
     status?: unknown;
     pagesSent?: unknown;
     stats?: Record<string, unknown>;
+    [key: string]: unknown;
   };
 }
 
@@ -49,6 +50,30 @@ const QUERY_PIPELINE_STAT_FIELDS = [
   "encodePrepAllocatedBytes",
   "eventBuildAllocatedBytes",
   "postBuildAllocatedBytes",
+] as const;
+
+const QUERY_COORDINATOR_STAT_FIELDS = [
+  "pages",
+  "captureCanonicalBytes",
+  "queueWaitMsTotal",
+  "captureMsTotal",
+  "captureAllocatedBytes",
+  "inputEnvelopeBuildMsTotal",
+  "inputEnvelopeBuildAllocatedBytes",
+  "inputJournalMsTotal",
+  "coreMsTotal",
+  "coreAllocatedBytes",
+  "outputEncodeMsTotal",
+  "outputEncodeAllocatedBytes",
+  "outputEnvelopeBuildMsTotal",
+  "outputEnvelopeBuildAllocatedBytes",
+  "outputJournalMsTotal",
+  "outputActionMsTotal",
+  "outputActionAllocatedBytes",
+  "outputSubstitutionMsTotal",
+  "outputSubstitutionAllocatedBytes",
+  "outputGatewayEmitMsTotal",
+  "outputGatewayEmitAllocatedBytes",
 ] as const;
 
 export class StsEnvelopeJournalCollector implements Collector {
@@ -114,7 +139,9 @@ export class StsEnvelopeJournalCollector implements Collector {
           }
         }
       } catch (error) {
-        ctx.logger.warn("stsEnvelopeJournal.copyFailed", String(error), { dir });
+        ctx.logger.warn("stsEnvelopeJournal.copyFailed", String(error), {
+          dir,
+        });
       }
     }
     ctx.logger.info("stsEnvelopeJournal.collected", undefined, {
@@ -136,7 +163,9 @@ export class StsEnvelopeJournalCollector implements Collector {
         }
       }
     } catch (error) {
-      ctx.logger.warn("stsEnvelopeJournal.parseFailed", String(error), { path });
+      ctx.logger.warn("stsEnvelopeJournal.parseFailed", String(error), {
+        path,
+      });
     }
   }
 
@@ -165,7 +194,9 @@ export class StsEnvelopeJournalCollector implements Collector {
       }
     }
     if (unmatched > 0) {
-      ctx.logger.debug("stsEnvelopeJournal.unmatchedResponses", undefined, { unmatched });
+      ctx.logger.debug("stsEnvelopeJournal.unmatchedResponses", undefined, {
+        unmatched,
+      });
     }
     const metrics: Metric[] = [];
     for (const [method, values] of durations) {
@@ -187,6 +218,7 @@ export class StsEnvelopeJournalCollector implements Collector {
       });
     }
     metrics.push(...normalizeQueryPipelineStats(this.collectedEnvelopes));
+    metrics.push(...normalizeQueryCoordinatorStats(this.collectedEnvelopes));
     return metrics;
   }
 }
@@ -227,9 +259,42 @@ export function normalizeQueryPipelineStats(envelopes: readonly Envelope[]): Met
     processRole: "sts",
     source: "otelSpan",
     official: false,
-    lowerIsBetter:
-      field.endsWith("MsTotal") || field.endsWith("Bytes") || field === "maxEventPayloadBytes",
+    lowerIsBetter: field.endsWith("MsTotal") || field.endsWith("Bytes") || field === "maxEventPayloadBytes",
     tags: { samples, derivedFrom: "sts2.query.stats" },
+  }));
+}
+
+/**
+ * Flatten replay-ignored, privacy-safe post-driver coordinator metrics. Every
+ * field is additive across query pages/queries; opaque ids and status stay out
+ * of metric tags.
+ */
+export function normalizeQueryCoordinatorStats(envelopes: readonly Envelope[]): Metric[] {
+  const aggregates = new Map<string, number>();
+  let samples = 0;
+  for (const envelope of envelopes) {
+    if (envelope.kind !== "metric" || envelope.type !== "sts2.query.coordinator.stats" || !envelope.payload) {
+      continue;
+    }
+    samples++;
+    for (const field of QUERY_COORDINATOR_STAT_FIELDS) {
+      const value = numeric(envelope.payload[field]);
+      if (value !== undefined) {
+        aggregates.set(field, (aggregates.get(field) ?? 0) + value);
+      }
+    }
+  }
+
+  return [...aggregates.entries()].map(([field, value]) => ({
+    name: `sts2.query.coordinator.${field}`,
+    value: Number(value.toFixed(field.endsWith("MsTotal") ? 3 : 0)),
+    unit: field.endsWith("MsTotal") ? "ms" : field.endsWith("Bytes") ? "bytes" : "count",
+    component: "sts",
+    processRole: "sts",
+    source: "otelSpan",
+    official: false,
+    lowerIsBetter: field.endsWith("MsTotal") || field.endsWith("Bytes"),
+    tags: { samples, derivedFrom: "sts2.query.coordinator.stats" },
   }));
 }
 
