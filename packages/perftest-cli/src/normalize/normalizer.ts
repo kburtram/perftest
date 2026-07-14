@@ -484,6 +484,111 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
     }
   }
 
+  // --- ts-native engine terminal aggregates -------------------------------
+  // The provider emits exactly one privacy-safe diagnostic event per query.
+  // Project the measured-window terminal's attributes into result metrics so
+  // A/B reports and historical queries do not need to re-parse markers.jsonl.
+  // `source: derived` without a derivation block is deliberate: these remain
+  // diagnostic-only even in a passing measurement rep.
+  const measuredQueryCompleteIndex = windowMarkers.findIndex(
+    (marker) => marker.name === "mssql.queryStudio.query.complete",
+  );
+  const precedingQueryMarkers =
+    measuredQueryCompleteIndex >= 0 ? windowMarkers.slice(0, measuredQueryCompleteIndex) : [];
+  const reversedSubmitIndex = [...precedingQueryMarkers]
+    .reverse()
+    .findIndex((marker) => marker.name === "mssql.queryStudio.query.submit");
+  const measuredQuerySubmitIndex =
+    reversedSubmitIndex >= 0 ? precedingQueryMarkers.length - 1 - reversedSubmitIndex : -1;
+  const nativeTerminal =
+    measuredQuerySubmitIndex >= 0 && measuredQueryCompleteIndex > measuredQuerySubmitIndex
+      ? [...windowMarkers.slice(measuredQuerySubmitIndex + 1, measuredQueryCompleteIndex + 1)]
+          .reverse()
+          .find((marker) => marker.name === "sqlDataPlane.tsNative.query.terminal")
+      : undefined;
+  if (nativeTerminal) {
+    const nativeFields: Array<{
+      attr: string;
+      name: string;
+      unit: string;
+      digits: number;
+    }> = [
+      { attr: "durationMs", name: "sqlDataPlane.tsNative.query.duration", unit: "ms", digits: 2 },
+      {
+        attr: "firstMetadataMs",
+        name: "sqlDataPlane.tsNative.query.firstMetadata",
+        unit: "ms",
+        digits: 2,
+      },
+      {
+        attr: "firstPageProducedMs",
+        name: "sqlDataPlane.tsNative.query.firstPageProduced",
+        unit: "ms",
+        digits: 2,
+      },
+      {
+        attr: "firstPageAcceptedMs",
+        name: "sqlDataPlane.tsNative.query.firstPageAccepted",
+        unit: "ms",
+        digits: 2,
+      },
+      { attr: "encodeMsTotal", name: "sqlDataPlane.tsNative.query.encode", unit: "ms", digits: 2 },
+      { attr: "sinkWaitMsTotal", name: "sqlDataPlane.tsNative.query.sinkWait", unit: "ms", digits: 2 },
+      {
+        attr: "pauseMsBackpressure",
+        name: "sqlDataPlane.tsNative.query.pause.backpressure",
+        unit: "ms",
+        digits: 2,
+      },
+      {
+        attr: "pauseMsCpuYield",
+        name: "sqlDataPlane.tsNative.query.pause.cpuYield",
+        unit: "ms",
+        digits: 2,
+      },
+      {
+        attr: "maxSynchronousSliceMs",
+        name: "sqlDataPlane.tsNative.query.maxSynchronousSlice",
+        unit: "ms",
+        digits: 2,
+      },
+      {
+        attr: "logicalEncodedBytes",
+        name: "sqlDataPlane.tsNative.query.logicalEncodedBytes",
+        unit: "bytes",
+        digits: 0,
+      },
+      { attr: "pages", name: "sqlDataPlane.tsNative.query.pages", unit: "count", digits: 0 },
+      {
+        attr: "driverEvents",
+        name: "sqlDataPlane.tsNative.query.driverEvents",
+        unit: "count",
+        digits: 0,
+      },
+      { attr: "yields", name: "sqlDataPlane.tsNative.query.yields", unit: "count", digits: 0 },
+    ];
+    for (const field of nativeFields) {
+      const raw = nativeTerminal.attrs?.[field.attr];
+      if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+      metrics.push({
+        name: field.name,
+        value: Number(raw.toFixed(field.digits)),
+        unit: field.unit,
+        component: "sqlDataPlane",
+        processRole: nativeTerminal.process.role,
+        source: "derived",
+        official: false,
+        lowerIsBetter: true,
+        tags: {
+          basis: "tsNativeTerminalAggregate",
+          ...(typeof nativeTerminal.attrs?.["queryStatus"] === "string"
+            ? { queryStatus: nativeTerminal.attrs["queryStatus"] as string }
+            : {}),
+        },
+      });
+    }
+  }
+
   // Collector metrics: structurally incapable of being official (§12.2).
   for (const metric of inputs.extraMetrics ?? []) {
     metrics.push({ ...metric, official: false });

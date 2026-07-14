@@ -64,6 +64,100 @@ describe("querystudio-query-10k scenario registration", () => {
   });
 });
 
+describe("Query Studio backend A/B registration (TSQ2-12)", () => {
+  const sts2 = getScenario("querystudio-query-10k-sts2");
+  const tsNative = getScenario("querystudio-query-10k-tsnative");
+
+  function fixtureOf(entry: NonNullable<typeof sts2>): string | undefined {
+    return (
+      entry.spec.setup?.find((step) => step.type === "openDocument") as
+        | { type: "openDocument"; path: string }
+        | undefined
+    )?.path;
+  }
+
+  function normalizeBackendIdentity(entry: NonNullable<typeof sts2>): unknown {
+    const spec = structuredClone(entry.spec);
+    spec.scenarioId = "<scenario>";
+    spec.displayName = "<display>";
+    return JSON.parse(
+      JSON.stringify(spec)
+        .replaceAll("sts2-local", "<backend>")
+        .replaceAll("sts2-jsonrpc", "<backend>")
+        .replaceAll("ts-native", "<backend>"),
+    );
+  }
+
+  it("registers an exploratory pair whose only behavioral delta is backend identity", () => {
+    expect(sts2).toBeDefined();
+    expect(tsNative).toBeDefined();
+    expect(sts2!.implemented).toBe(true);
+    expect(tsNative!.implemented).toBe(true);
+    expect(scenarioMaturity(sts2!)).toBe("exploratory");
+    expect(scenarioMaturity(tsNative!)).toBe("exploratory");
+    expect(normalizeBackendIdentity(sts2!)).toEqual(normalizeBackendIdentity(tsNative!));
+  });
+
+  it("uses a provider-neutral decimal projection without changing the shared data set", () => {
+    expect(fixtureOf(sts2!)).toBe("queries/select-10000-backend-ab.sql");
+    expect(fixtureOf(tsNative!)).toBe(fixtureOf(sts2!));
+    expect(sts2!.spec.sql).toEqual(tsNative!.spec.sql);
+  });
+
+  it.each([
+    ["sts2-local", "sts2-jsonrpc", sts2],
+    ["ts-native", "ts-native", tsNative],
+  ] as const)("selects %s and proves provider=%s through Results paint", (setting, backend, entry) => {
+    expect(entry!.spec.userSettings?.["mssql.sqlDataPlane.backend"]).toBe(setting);
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.connect.ready",
+      attrs: { backend },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.query.submit",
+      attrs: { backend },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.query.firstPage",
+      attrs: { backend },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.query.complete",
+      attrs: { rows: 10000, errors: 0, status: "succeeded", backend },
+    });
+    expect(entry!.spec.measure.end).toEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 10000, resultSets: 1, activeTab: "results" },
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 10000, resultSets: 1, activeTab: "results" },
+    });
+  });
+
+  it("derives a registered submit-to-first-accepted-page metric", () => {
+    for (const entry of [sts2!, tsNative!]) {
+      expect(entry.spec.metrics).toContainEqual({
+        name: "mssql.queryStudio.query.toFirstPage",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.queryStudio.query.submit",
+        endMarker: "mssql.queryStudio.query.firstPage",
+        component: "queryStudio",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      });
+    }
+  });
+});
+
 /**
  * EVERY querystudio-* scenario (including the QO-9a result-shape family and
  * any QO-9b spread expansion) obeys the same conformance rules: registered

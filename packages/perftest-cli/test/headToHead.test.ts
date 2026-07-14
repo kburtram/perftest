@@ -200,6 +200,75 @@ describe("headToHead", () => {
     }
   });
 
+  it("auto-maps Query Studio backend pairs and compares provider-fair resources", () => {
+    const { store, dir, logger } = tempStore();
+    try {
+      const diagnostics = [
+        {
+          name: "mssql.queryStudio.query.toFirstPage",
+          values: [20, 21, 22],
+          timePlane: "monotonic",
+        },
+        {
+          name: "mssql.queryStudio.query.toComplete",
+          values: [100, 110, 120],
+          timePlane: "monotonic",
+        },
+        {
+          name: "mssql.queryStudio.query.toRender",
+          values: [130, 140, 150],
+          timePlane: "epoch",
+        },
+        { name: "process.dataPlane.cpuTime", values: [2.5, 2.6, 2.7] },
+        { name: "process.dataPlane.peakWorkingSet", values: [520, 525, 530] },
+      ];
+      seedRun(store, {
+        runId: "backend-pair",
+        createdAtUnixNs: T1,
+        scenarioId: "querystudio-query-10k-sts2",
+        wallclock: [200, 210, 220],
+        diagnostics,
+      });
+      seedRun(store, {
+        runId: "backend-pair",
+        createdAtUnixNs: T1,
+        scenarioId: "querystudio-query-10k-tsnative",
+        wallclock: [190, 200, 210],
+        diagnostics: diagnostics.map((metric) => ({
+          ...metric,
+          values: metric.values.map((value) => value * 0.8),
+        })),
+      });
+
+      const report = headToHead(store, logger, {
+        baselineScenario: "querystudio-query-10k-sts2",
+        candidateScenario: "querystudio-query-10k-tsnative",
+      });
+      expect(report.phases.map((phase) => phase.phase)).toEqual([
+        "submit → first accepted page",
+        "submit → complete",
+        "submit → render",
+      ]);
+      for (const phase of report.phases) {
+        expect(phase.baselineMetric).toContain("mssql.queryStudio.query.");
+        expect(phase.candidateMetric).toBe(phase.baselineMetric);
+        expect(phase.deltaPct).toBeCloseTo(-20);
+      }
+      expect(
+        report.diagnostics.find((metric) => metric.metric === "process.dataPlane.cpuTime")
+          ?.deltaPct,
+      ).toBeCloseTo(-20);
+      expect(
+        report.diagnostics.find(
+          (metric) => metric.metric === "process.dataPlane.peakWorkingSet",
+        )?.deltaPct,
+      ).toBeCloseTo(-20);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a one-sided phase and records the missing side honestly", () => {
     const { store, dir, logger } = tempStore();
     try {
@@ -348,6 +417,7 @@ describe("headToHead", () => {
       expect(html).toContain("non-gating");
       expect(html).toContain("Official metrics");
       expect(html).toContain("Phase breakdown");
+      expect(html).toContain("Resource &amp; provider diagnostics");
       // Shared design system (benchmark.html tokens via htmlShell).
       expect(html).toContain("--panel");
       expect(html).toContain('class="kpis"');

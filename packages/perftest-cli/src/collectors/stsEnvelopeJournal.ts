@@ -129,6 +129,7 @@ const MULTIPLEXER_TRANSPORT_STAT_FIELDS = [
 ] as const;
 
 const RPC_TRANSPORT_STAT_FIELDS = [
+  "directPipeEndpoint",
   "messages",
   "bytes",
   "maxMessageBytes",

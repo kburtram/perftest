@@ -14,12 +14,12 @@ each collector and enforced by the pipeline.
 
 | Collector | Pass | What it produces | Requires |
 |---|---|---|---|
-| `processSampler` | measurement + diagnostic | `process-samples.jsonl`; `process.peakWorkingSet` / `process.cpuTime` per role (vscodeMain, extensionHost, sts) | nothing (PowerShell CIM / ps) |
+| `processSampler` | measurement + diagnostic | `process-samples.jsonl`; `process.peakWorkingSet` / `process.cpuTime` per process, plus provider-fair `process.dataPlane.peakWorkingSet` / `process.dataPlane.cpuTime` totals across extensionHost + sts | nothing (PowerShell CIM / ps) |
 | `stsEnvelopeJournal` | diagnostic | sts2 journal copies under `artifacts/sts2/`; `sts.rpc.<method>.duration` medians; `sts2.query.pipeline.*` stage, byte, and allocation aggregates | local STS build + `STS_ENABLE_STS2=1` (see STS_INSTRUMENTATION.md) |
 | `cdpExtHostProfile` | diagnostic | `artifacts/exthost.cpuprofile` (V8 sampling profile of the scenario window; open in VS Code/speedscope) | none — adds `--inspect-extensions=<port>` and drives the Node inspector protocol |
 | `cdpRendererTrace` | diagnostic | `artifacts/renderer.trace.json`; workbench renderer paint/layout/script totals | none — adds/reuses `--remote-debugging-port=<port>` and uses the workbench target's Chromium Tracing domain |
 | `cdpRendererProfile` | diagnostic | `artifacts/query-studio-webview.cpuprofile`; Query Studio webview sampled CPU/duration | none — reuses the debugging port, probes only MSSQL-owned iframe targets for the product DOM sentinel, and drives the V8 Profiler domain |
-| `dotnetTrace` | diagnostic | `artifacts/sts.nettrace` (EventPipe cpu-sampling of STS; finalizes when STS exits at teardown) | `dotnet tool install -g dotnet-trace` |
+| `dotnetTrace` | diagnostic | `artifacts/sts.nettrace` (bounded STS EventPipe trace; CPU, `gc-verbose`, or `gc-collect`) | `dotnet tool install -g dotnet-trace` |
 | `wprEtw` | diagnostic | `artifacts/trace.etl` (system ETW, GeneralProfile, scenario window) | Windows Performance Toolkit + elevated session; warns + skips otherwise, and `wpr -cancel` on teardown guarantees no session leaks |
 
 Planned next (§14.3): `otelMinimal` (OTLP receiver) and the remaining collector
@@ -31,6 +31,14 @@ are fully armed before `scenario.start` is timestamped, keeping attach cost out
 of the measured interval, and they flush at `scenario.end` before success
 checks or editor cleanup can remove the webview target. A 60-second bounded
 driver wait fails the scenario instead of silently accepting a partial capture.
+
+`dotnetTraceProfile` selects the EventPipe profile and
+`dotnetTraceDurationSeconds` bounds collection from STS discovery (15 seconds
+by default). The scenario-end barrier keeps STS alive until the duration
+expires, allowing `dotnet-trace` to collect managed runtime rundown and produce
+symbolized allocation stacks. This is intentionally diagnostic-only: the
+bounded wait is outside the measured scenario interval but can lengthen a rep.
+The tool is launched directly with an argument vector (`shell: false`).
 
 ## Calibration entries (§12.3)
 

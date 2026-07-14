@@ -406,7 +406,12 @@ function createCollectors(
     collectors.push(new CdpRendererTraceCollector());
   }
   if (config.diagnostics.dotnetTrace === true) {
-    collectors.push(new DotnetTraceCollector());
+    collectors.push(
+      new DotnetTraceCollector(
+        config.diagnostics.dotnetTraceProfile,
+        config.diagnostics.dotnetTraceDurationSeconds,
+      ),
+    );
   }
   if (config.diagnostics.wprEtw === true) {
     collectors.push(new WprEtwCollector());

@@ -64,6 +64,7 @@ export interface CdpDiagnostics {
 }
 
 export type DiagnosticRecipe = "light" | "ui-rendering" | "service" | "sql" | "memory" | "full";
+export type DotnetTraceProfile = "cpu" | "gc-verbose" | "gc-collect";
 
 export interface DiagnosticsConfig {
   /**
@@ -81,6 +82,10 @@ export interface DiagnosticsConfig {
   cdp?: CdpDiagnostics;
   dotnetCounters?: boolean;
   dotnetTrace?: boolean;
+  /** EventPipe profile; gc-verbose records sampled allocation types/stacks. */
+  dotnetTraceProfile?: DotnetTraceProfile;
+  /** Bounded trace window beginning when the STS process is discovered. */
+  dotnetTraceDurationSeconds?: number;
   wprEtw?: boolean;
   vscodeDiag?: { logs?: boolean; status?: boolean };
   [key: string]: unknown;
