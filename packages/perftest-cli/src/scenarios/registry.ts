@@ -1880,6 +1880,38 @@ registerQueryStudioInteractionScenario({
 });
 
 registerQueryStudioInteractionScenario({
+  scenarioId: "querystudio-interaction-copyall-10k-messages",
+  displayName: "Query Studio interaction: copy all 10000 messages",
+  tags: ["messages", "clipboard", "copy", "large-results"],
+  queryPath: "queries/many-messages.sql",
+  ready: { name: "mssql.queryStudio.messagesRendered", attrs: { messages: 10003 } },
+  actions: [
+    { type: "queryStudioInteract", action: { kind: "activateTab", tab: "messages" } },
+    { type: "queryStudioInteract", action: { kind: "copyMessages" }, timeoutMs: 300000 },
+  ],
+  success: [
+    {
+      type: "markerSeen",
+      name: "mssql.queryStudio.messages.copy.end",
+      attrs: { outcome: "copied", messages: 10003, copyRoute: "hostDirect" },
+    },
+  ],
+  additionalMetrics: [
+    {
+      name: "mssql.queryStudio.messages.copy",
+      source: "marker",
+      official: false,
+      lowerIsBetter: true,
+      beginMarker: "mssql.queryStudio.messages.copy.begin",
+      endMarker: "mssql.queryStudio.messages.copy.end",
+      component: "queryStudio",
+      processRole: "webview",
+      withinMeasuredWindow: true,
+    },
+  ],
+});
+
+registerQueryStudioInteractionScenario({
   scenarioId: "querystudio-interaction-copyall-100k",
   displayName: "Query Studio interaction: copy all 100k rows",
   tags: ["results-grid", "large-results", "clipboard", "copy"],

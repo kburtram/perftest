@@ -295,6 +295,10 @@ export type QueryStudioInteractionAction =
       resultSetIndex: number;
       selection: "all";
       includeHeaders: boolean;
+    }
+  | {
+      /** Bounded host-direct Copy All for the virtualized Messages pane. */
+      kind: "copyMessages";
     };
 
 // ---------------------------------------------------------------------------

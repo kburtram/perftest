@@ -120,6 +120,8 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.plan.parse` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | plans:structuralMetadata, cacheHit:structuralMetadata, ms:structuralMetadata … |
 | `mssql.queryStudio.messagesPrepared` | webviewMark | instant | — | queryStudio | webview | epochAligned | no | messages:structuralMetadata, visibleRows:structuralMetadata, durationMs:structuralMetadata … |
 | `mssql.queryStudio.messages.window` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | startIndex:structuralMetadata, nextIndex:structuralMetadata, returned:structuralMetadata, total:structuralMetadata, textCharacters:structuralMetadata, hasMore:structuralMetadata, durationMs:structuralMetadata |
+| `mssql.queryStudio.messages.copy.begin` | webviewMark | begin | `mssql.queryStudio.messages.copy.end` | queryStudio | webview | epochAligned | yes | visibleMessages:structuralMetadata |
+| `mssql.queryStudio.messages.copy.end` | webviewMark | end | `mssql.queryStudio.messages.copy.begin` | queryStudio | webview | epochAligned | yes | outcome:safeEnum, messages:structuralMetadata, characters:structuralMetadata, buildMs:structuralMetadata, clipboardMs:structuralMetadata, copyRoute:safeEnum, reason:safeEnum, durationMs:structuralMetadata |
 | `mssql.queryStudio.messagesRendered` | webviewMark | instant | — | queryStudio | webview | epochAligned | no | messages:structuralMetadata … |
 | `mssql.queryStudio.cancel` | marker | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | msToAck:structuralMetadata, msToTerminal:structuralMetadata … |
 | `queryStudio.sync.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
@@ -218,6 +220,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryStudio.query.toFirstPage` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.query.firstPage` |
 | `mssql.queryStudio.query.toRender` | queryStudio | `mssql.queryStudio.query.submit` → `mssql.queryStudio.resultsRendered` |
 | `mssql.queryStudio.grid.copy` | queryStudio | `mssql.queryStudio.grid.copy.begin` → `mssql.queryStudio.grid.copy.end` |
+| `mssql.queryStudio.messages.copy` | queryStudio | `mssql.queryStudio.messages.copy.begin` → `mssql.queryStudio.messages.copy.end` |
 | `sqlDataPlane.tsNative.query.duration` | sqlDataPlane | `sqlDataPlane.tsNative.query.terminal` |
 | `sqlDataPlane.tsNative.query.firstMetadata` | sqlDataPlane | `sqlDataPlane.tsNative.query.terminal` |
 | `sqlDataPlane.tsNative.query.firstPageProduced` | sqlDataPlane | `sqlDataPlane.tsNative.query.terminal` |

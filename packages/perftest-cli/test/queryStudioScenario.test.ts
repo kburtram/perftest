@@ -760,6 +760,21 @@ describe("querystudio large-cell grid interaction", () => {
     });
   });
 
+  it("copies a message flood host-direct without returning raw text to the webview", () => {
+    const entry = getScenario("querystudio-interaction-copyall-10k-messages");
+    expect(entry).toBeDefined();
+    expect(entry!.spec.measure.action).toContainEqual({
+      type: "queryStudioInteract",
+      action: { kind: "copyMessages" },
+      timeoutMs: 300000,
+    });
+    expect(entry!.spec.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.messages.copy.end",
+      attrs: { outcome: "copied", messages: 10003, copyRoute: "hostDirect" },
+    });
+  });
+
   it("forces eviction and proves exact copy after spill re-materialization", () => {
     expect(forcedSpill).toBeDefined();
     expect(forcedSpill!.spec.userSettings?.["mssql.queryStudio.tuning.overrides"]).toEqual({
