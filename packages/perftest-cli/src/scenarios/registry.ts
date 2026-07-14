@@ -2594,12 +2594,17 @@ register({
           timeoutMs: 180000,
         },
         { type: "waitForMarker", name: "mssql.schemaDesigner.init.end", timeoutMs: 180000 },
+        // SV-R10 (§14.2): the window now extends to the webview's first
+        // meaningful paint so the rendered phase is measurable — the
+        // host/model metric below is unaffected (same marker pair).
+        { type: "waitForMarker", name: "mssql.schemaDesigner.ready", timeoutMs: 180000 },
       ],
       end: { type: "afterLastAction" },
       timeoutMs: 300000,
     },
     success: [
       { type: "markerSeen", name: "mssql.schemaDesigner.init.end" },
+      { type: "markerSeen", name: "mssql.schemaDesigner.ready" },
       { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
     ],
     cleanup: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
@@ -2613,6 +2618,100 @@ register({
         beginMarker: "mssql.schemaDesigner.init.begin",
         endMarker: "mssql.schemaDesigner.init.end",
         component: "schemaDesigner",
+      },
+      {
+        // Rendered phase (§14.2): crosses into the webview mark plane —
+        // calibrated/boundary semantics, unofficial until baselines accrue.
+        name: "mssql.schemaDesigner.init.toReady",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.schemaDesigner.init.begin",
+        endMarker: "mssql.schemaDesigner.ready",
+        component: "schemaDesigner",
+        processRole: "boundary",
+        withinMeasuredWindow: true,
+      },
+    ],
+  },
+});
+
+// ---------------------------------------------------------------------------
+// SV-R10: Schema Visualizer (metadata-substrate designer read path). The
+// candidate side of the §14.2 designer A/B: `perftest head-to-head
+// --baseline-scenario schema-designer-open --candidate-scenario
+// schema-visualizer-open` (the designer phase map pairs host/model and
+// rendered semantics). Scope equality: same PerfHarness database, full
+// catalog (below the search-first threshold), warm profile. Exploratory —
+// metrics unofficial until baseline history exists (§14.5).
+// ---------------------------------------------------------------------------
+
+register({
+  implemented: true, // SV-R4: PERF_MODE probe mssql.perf.schemaVisualizerOpen
+  plannedMilestone: "SV-R10",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "schema-visualizer-open",
+    displayName: "Schema Visualizer: open (metadata substrate)",
+    tags: ["designer", "schemaVisualizer", "metadata", "webview"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.schemaVisualizer.enabled": true,
+      // Diagnostic aid while the scenario matures (metrics here are
+      // unofficial anyway): the session-diag journal in the captured
+      // profile carries metadata.hydrate failure classes.
+      "mssql.sessionDiag.enabled": true,
+    },
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: [
+      ...ACTIVATE_STEPS,
+      // The open probe resolves the FIRST saved profile — provision it
+      // (the OE v2 browse scenario pattern).
+      { type: "provisionConnectionProfile", profile: "default", timeoutMs: 30000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "command", command: "mssql.perf.schemaVisualizerOpen", timeoutMs: 120000 },
+        { type: "waitForMarker", name: "mssql.schemaVisualizer.ready", timeoutMs: 120000 },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 300000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.schemaVisualizer.open.end" },
+      { type: "markerSeen", name: "mssql.schemaVisualizer.ready" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+    ],
+    cleanup: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
+    metrics: [
+      // wallclock official like the backend-A/B twins (run selection needs
+      // it); the PHASE metrics below stay unofficial until baselines (§14.5).
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        // Host/model phase: metadata acquire + canonical model + projection.
+        name: "mssql.schemaVisualizer.open",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.schemaVisualizer.open.begin",
+        endMarker: "mssql.schemaVisualizer.open.end",
+        component: "schemaVisualizer",
+        processRole: "extensionHost",
+        withinMeasuredWindow: true,
+      },
+      {
+        // Rendered phase: first meaningful graph paint (§11.5 semantics).
+        name: "mssql.schemaVisualizer.open.toReady",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.schemaVisualizer.open.begin",
+        endMarker: "mssql.schemaVisualizer.ready",
+        component: "schemaVisualizer",
+        processRole: "boundary",
+        withinMeasuredWindow: true,
       },
     ],
   },

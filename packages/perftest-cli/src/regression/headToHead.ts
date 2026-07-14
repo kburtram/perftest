@@ -37,6 +37,40 @@ export const DEFAULT_PHASE_MAP: PhaseMapping[] = [
   },
 ];
 
+/**
+ * Schema Designer (DacFx/STS v1) vs Schema Visualizer (MetadataStore/data
+ * plane) — schema-visualizer addendum §14.2: the HOST/MODEL phase compares
+ * DacFx session+model load against metadata acquire+adaptation; the
+ * RENDERED phase compares to each surface's first-meaningful-paint mark.
+ * Auto-selected when the designer pair is compared.
+ */
+export const DESIGNER_PHASE_MAP: PhaseMapping[] = [
+  {
+    phase: "host/model ready",
+    baselineMetric: "mssql.schemaDesigner.init",
+    candidateMetric: "mssql.schemaVisualizer.open",
+  },
+  {
+    phase: "open → rendered",
+    baselineMetric: "mssql.schemaDesigner.init.toReady",
+    candidateMetric: "mssql.schemaVisualizer.open.toReady",
+  },
+];
+
+/** Pick the phase map that matches a known scenario pairing. */
+export function phaseMapForScenarios(
+  baselineScenario: string,
+  candidateScenario: string,
+): PhaseMapping[] {
+  if (
+    baselineScenario === "schema-designer-open" &&
+    candidateScenario === "schema-visualizer-open"
+  ) {
+    return DESIGNER_PHASE_MAP;
+  }
+  return DEFAULT_PHASE_MAP;
+}
+
 export interface MetricSamples {
   name: string;
   unit: string;
@@ -265,7 +299,7 @@ export function headToHead(
   const baselineAll = new Map(baseline.metrics.map((m) => [m.name, m]));
   const candidateAll = new Map(candidate.metrics.map((m) => [m.name, m]));
   const phases: PhaseComparison[] = [];
-  for (const mapping of options.phases ?? DEFAULT_PHASE_MAP) {
+  for (const mapping of options.phases ?? phaseMapForScenarios(baselineScenario, candidateScenario)) {
     const b = baselineAll.get(mapping.baselineMetric);
     const c = candidateAll.get(mapping.candidateMetric);
     if (!b && !c) {
