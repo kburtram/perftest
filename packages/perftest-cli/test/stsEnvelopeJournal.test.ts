@@ -129,7 +129,7 @@ describe("stsEnvelopeJournal query pipeline normalization", () => {
     const first =
       '2026-07-14T00:00:00Z [rpcTransportStats] {"schema":"sts2.rpc.transport.stats/1","messages":1,"bytes":100,"maxMessageBytes":100,"serializeMsTotal":2,"framingCopyMsTotal":3,"flushMsTotal":4,"rowMessages":1,"rowBytes":100}';
     const latest =
-      '2026-07-14T00:00:01Z [rpcTransportStats] {"schema":"sts2.rpc.transport.stats/1","messages":2,"bytes":250,"maxMessageBytes":150,"bufferRequests":7,"maxBufferSizeHint":4096,"serializeMsTotal":3.25,"serializeAllocatedBytes":800,"framingCopyMsTotal":4.5,"framingCopyAllocatedBytes":1200,"flushMsTotal":5.75,"rowMessages":1,"rowBytes":150}';
+      '2026-07-14T00:00:01Z [rpcTransportStats] {"schema":"sts2.rpc.transport.stats/1","directPipeEndpoint":1,"messages":2,"bytes":250,"maxMessageBytes":150,"bufferRequests":7,"maxBufferSizeHint":4096,"serializeMsTotal":3.25,"serializeAllocatedBytes":800,"framingCopyMsTotal":4.5,"framingCopyAllocatedBytes":1200,"flushMsTotal":5.75,"rowMessages":1,"rowBytes":150}';
     const snapshots = parseRpcTransportStatsLog(
       [first, "ignored private-canary", latest, "[rpcTransportStats] {truncated"].join("\n"),
     );
@@ -137,6 +137,7 @@ describe("stsEnvelopeJournal query pipeline normalization", () => {
 
     const metrics = normalizeRpcTransportStats(snapshots);
     const byName = new Map(metrics.map((metric) => [metric.name, metric]));
+    expect(byName.get("sts2.rpcTransport.directPipeEndpoint")?.value).toBe(1);
     expect(byName.get("sts2.rpcTransport.messages")?.value).toBe(2);
     expect(byName.get("sts2.rpcTransport.bytes")?.value).toBe(250);
     expect(byName.get("sts2.rpcTransport.maxMessageBytes")?.value).toBe(150);
