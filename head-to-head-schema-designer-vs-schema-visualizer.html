@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Head-to-head: schema-designer-open vs schema-visualizer-open</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f8fb; --panel: #ffffff; --panel-alt: #f2f5f9;
+  --line: #d9e0ea; --grid: #e2e8f0; --text: #172033; --muted: #64748b;
+  --ok: #087f5b; --warn: #b45309; --fail: #b42318; --info: #2563eb;
+  --shadow: 0 4px 14px rgba(15, 23, 42, .05);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+header.top-bar { padding: 14px 22px 12px; background: linear-gradient(180deg,#fff 0%,#f8fafc 100%);
+  border-bottom: 1px solid var(--line); display: flex; justify-content: space-between;
+  align-items: baseline; gap: 12px; flex-wrap: wrap; }
+header.top-bar h1 { margin: 0; font-size: 22px; }
+header.top-bar .sub { margin-top: 4px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+main { padding: 14px 22px 40px; max-width: 1400px; margin: 0 auto; }
+h2 { margin: 0; font-size: 15px; }
+h3 { margin: 0 0 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+a { color: var(--info); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.spacer { height: 10px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 11px; box-shadow: var(--shadow); min-width: 0; }
+details.panel.section { padding: 0; overflow: hidden; margin-bottom: 10px; }
+details.panel.section > summary { padding: 11px 13px; cursor: pointer; list-style: none;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 600; }
+details.panel.section > summary::-webkit-details-marker { display: none; }
+details.panel.section > summary::before { content: "\25B8"; font-size: 11px; color: var(--muted);
+  transition: transform .12s; }
+details.panel.section[open] > summary::before { transform: rotate(90deg); }
+details.panel.section > summary .section-title { font-size: 15px; }
+details.panel.section > summary .section-subtitle { color: var(--muted); font-weight: 400; font-size: 12px; }
+.section-body { padding: 0 13px 13px; }
+.pill { display: inline-flex; min-height: 18px; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap; align-items: center; border: 1px solid; }
+.pill.ok { background: #ecfdf5; color: var(--ok); border-color: rgba(8,127,91,.25); }
+.pill.warn { background: #fffbeb; color: var(--warn); border-color: rgba(180,83,9,.25); }
+.pill.fail { background: #fff1f2; color: var(--fail); border-color: rgba(180,35,24,.25); }
+.pill.info { background: #eff6ff; color: var(--info); border-color: rgba(37,99,235,.25); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; box-shadow: var(--shadow); }
+.kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.kpi .value { font-size: 20px; font-weight: 650; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.kpi .value .unit { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 3px; }
+.kpi.ok .value { color: var(--ok); } .kpi.warn .value { color: var(--warn); }
+.kpi.fail .value { color: var(--fail); }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 10px; }
+.chart { background: var(--panel-alt); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.chart-title { font-weight: 600; font-size: 12px; margin-bottom: 6px; }
+.chart-caption { color: var(--muted); font-size: 11px; margin-top: 6px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.data th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .03em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.data td { padding: 5px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.data tr:hover td { background: var(--panel-alt); }
+.scroll-x { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header class="top-bar">
+  <div>
+    <h1>Head-to-head: schema-designer-open vs schema-visualizer-open</h1>
+    <div class="sub">2026-07-14T15-50-31Z_07d9ae37 vs 2026-07-14T15-50-31Z_07d9ae37</div>
+  </div>
+  <span class="pill info" style="font-size:13px;padding:5px 12px;">investigation · non-gating</span>
+</header>
+<main>
+<div class="kpis"><div class="kpi "><div class="label">schema-designer-open median</div><div class="value">4432.8<span class="unit">ms</span></div></div><div class="kpi "><div class="label">schema-visualizer-open median</div><div class="value">998.3<span class="unit">ms</span></div></div><div class="kpi ok"><div class="label">delta (cand − base)</div><div class="value">-3434.5<span class="unit">ms</span></div></div><div class="kpi "><div class="label">reps (base / cand)</div><div class="value">3 / 3</div></div></div>
+<div class="spacer"></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px;margin-bottom:10px;"><div class="panel"><h3>Baseline</h3><div style="font-weight:650;font-size:14px;">schema-designer-open</div><div class="mono muted" style="margin-top:4px;">run 2026-07-14T15-50-31Z_07d9ae37</div><div class="muted" style="margin-top:2px;">2026-07-14T15:50:32.871Z · run status passed</div><div class="mono muted" style="margin-top:2px;">env sha256:4ac47bbcd3b4621c074…</div></div><div class="panel"><h3>Candidate</h3><div style="font-weight:650;font-size:14px;">schema-visualizer-open</div><div class="mono muted" style="margin-top:4px;">run 2026-07-14T15-50-31Z_07d9ae37</div><div class="muted" style="margin-top:2px;">2026-07-14T15:50:32.871Z · run status passed</div><div class="mono muted" style="margin-top:2px;">env sha256:4ac47bbcd3b4621c074…</div></div></div>
+<div class="spacer"></div>
+<details class="panel section" open><summary><span class="section-title">Official metrics</span><span class="pill info">non-gating</span><span class="section-subtitle">medians / p95 / rep counts per side</span></summary><div class="section-body"><div class="scroll-x"><table class="data"><thead><tr><th>Official metric</th><th>Baseline median</th><th>Baseline p95</th><th>Candidate median</th><th>Candidate p95</th><th>Delta (cand − base)</th><th>Reps B / C</th></tr></thead><tbody><tr><td><span class="mono">mssql.schemaDesigner.init</span></td><td class="num">2026.4&thinsp;ms</td><td class="num">2110.3&thinsp;ms</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">3 / 0</td></tr><tr><td><span class="mono">scenario.wallclock</span></td><td class="num">4432.8&thinsp;ms</td><td class="num">4493.9&thinsp;ms</td><td class="num">998.3&thinsp;ms</td><td class="num">1257.2&thinsp;ms</td><td class="num">-3434.5&thinsp;ms (-77.5%)</td><td class="num">3 / 3</td></tr></tbody></table></div></div></details>
+<div class="spacer"></div>
+<details class="panel section" open><summary><span class="section-title">Deltas</span><span class="section-subtitle">candidate − baseline medians</span></summary><div class="section-body"><div class="chart"><div class="chart-title">Median deltas (candidate − baseline; right = candidate slower)</div><svg class="chart-svg" viewBox="0 0 640 100" width="100%" font-family="Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif" font-size="11" role="img" aria-label="median delta"><line x1="400" y1="8" x2="400" y2="74" stroke="#d9e0ea"/><text x="222" y="21" text-anchor="end" fill="#172033" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10">scenario.wallclock</text><rect x="230" y="11" width="170" height="12" fill="#087f5b" opacity="0.8" rx="2"><title>4432.8 → 998.3 ms: -3434.5 ms</title></rect><text x="226" y="21" text-anchor="end" fill="#64748b" font-size="10">-3434.5</text><text x="222" y="41" text-anchor="end" fill="#172033" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10">host/model ready</text><rect x="323.8831973096129" y="31" width="76.1168026903871" height="12" fill="#087f5b" opacity="0.8" rx="2"><title>2026.4 → 488.6 ms: -1537.8 ms</title></rect><text x="319.8831973096129" y="41" text-anchor="end" fill="#64748b" font-size="10">-1537.8</text><text x="222" y="61" text-anchor="end" fill="#172033" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10">open → rendered</text><rect x="311.05126002707857" y="51" width="88.94873997292143" height="12" fill="#087f5b" opacity="0.8" rx="2"><title>2370.0 → 573.0 ms: -1797.0 ms</title></rect><text x="307.05126002707857" y="61" text-anchor="end" fill="#64748b" font-size="10">-1797.0</text><text x="570" y="92" text-anchor="end" fill="#64748b">ms</text></svg><div class="chart-caption">Signed medians over passed non-warmup reps of each side's selected run.</div></div></div></details>
+<div class="spacer"></div>
+<details class="panel section" open><summary><span class="section-title">Phase breakdown</span><span class="section-subtitle">marker pairs with shared semantics across the two code paths</span></summary><div class="section-body"><div class="scroll-x"><table class="data"><thead><tr><th>Phase</th><th>Baseline metric</th><th>Candidate metric</th><th>Baseline median</th><th>Candidate median</th><th>Delta</th><th>Time plane(s)</th></tr></thead><tbody><tr><td>host/model ready</td><td><span class="mono">mssql.schemaDesigner.init</span></td><td><span class="mono">mssql.schemaVisualizer.open</span></td><td class="num">2026.4&thinsp;ms</td><td class="num">488.6&thinsp;ms</td><td class="num"><span class="pill ok">-1537.8 ms / -75.9%</span></td><td>monotonic</td></tr><tr><td>open → rendered</td><td><span class="mono">mssql.schemaDesigner.init.toReady</span></td><td><span class="mono">mssql.schemaVisualizer.open.toReady</span></td><td class="num">2370.0&thinsp;ms</td><td class="num">573.0&thinsp;ms</td><td class="num"><span class="pill ok">-1797.0 ms / -75.8%</span></td><td>epoch</td></tr></tbody></table></div></div></details>
+<div class="spacer"></div>
+<details class="panel section" open><summary><span class="section-title">Notes</span><span class="section-subtitle">honesty first</span></summary><div class="section-body"><ul style="margin:0;padding-left:18px;"><li>Head-to-head is an investigation view, not a regression gate: the sides are different code paths compared across separately-selected runs.</li><li>Both scenarios come from the same run — same session, same machine state.</li><li>Official metric 'mssql.schemaDesigner.init' exists only on schema-designer-open.</li></ul></div></details>
+</main>
+</body>
+</html>
