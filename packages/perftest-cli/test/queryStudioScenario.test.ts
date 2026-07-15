@@ -371,6 +371,7 @@ describe("querystudio scenario family conformance", () => {
       "querystudio-query-large-cells",
       "querystudio-query-10k-messages",
       "querystudio-query-100-resultsets",
+      "querystudio-soak-forced-spill-lifecycle",
     ]) {
       expect(ids, `missing scenario: ${expected}`).toContain(expected);
     }
@@ -404,7 +405,13 @@ describe("querystudio scenario family conformance", () => {
     "%s waits/asserts only registered markers and derives registered metric pairs",
     (_id, scenario) => {
       const names: string[] = [];
-      for (const step of [...(scenario.spec.setup ?? []), ...scenario.spec.measure.action]) {
+      for (const step of [
+        ...(scenario.spec.setup ?? []),
+        ...(scenario.spec.loop?.steps ?? []),
+        ...(scenario.spec.loop?.settleSteps ?? []),
+        ...scenario.spec.measure.action,
+        ...(scenario.spec.cleanup ?? []),
+      ]) {
         if (step.type === "waitForMarker") names.push(step.name);
       }
       if (scenario.spec.measure.end.type === "waitForMarker") {
@@ -413,6 +420,11 @@ describe("querystudio scenario family conformance", () => {
       for (const criterion of scenario.spec.success ?? []) {
         // Negative proofs are still contract-bound: a markerAbsent on an
         // unregistered name would pass vacuously forever.
+        if (criterion.type === "markerSeen" || criterion.type === "markerAbsent") {
+          names.push(criterion.name);
+        }
+      }
+      for (const criterion of scenario.spec.loop?.success ?? []) {
         if (criterion.type === "markerSeen" || criterion.type === "markerAbsent") {
           names.push(criterion.name);
         }
@@ -450,6 +462,30 @@ describe("querystudio scenario family conformance", () => {
       }
     },
   );
+
+  it("soaks exact forced-spill copy and cleanup inside one process", () => {
+    const soak = getScenario("querystudio-soak-forced-spill-lifecycle")!;
+    expect(soak.spec.loop).toMatchObject({
+      iterations: 100,
+      warmupIterations: 5,
+      onFailure: "continue",
+    });
+    expect(soak.spec.loop?.steps[0]).toEqual({
+      type: "openDocument",
+      path: "queries/large-cells-1mb.sql",
+    });
+    expect(soak.spec.loop?.steps).toContainEqual({
+      type: "waitForMarker",
+      name: "mssql.queryStudio.rows.dispose.end",
+      attrs: { outcome: "ok", spillFileRemoved: true },
+      timeoutMs: 60000,
+    });
+    expect(soak.spec.loop?.success).toContainEqual({
+      type: "markerSeen",
+      name: "mssql.queryStudio.rows.spill.read",
+      attrs: { encoding: "v8-v1" },
+    });
+  });
 });
 
 /**
@@ -851,17 +887,17 @@ describe("querystudio-spatial scenarios (SPA-9)", () => {
     expect(points10k!.spec.measure.end).toEqual({
       type: "waitForMarker",
       name: "mssql.queryResults.spatial.render.settled",
-      attrs: { tier: "canvas" },
+      attrs: { tier: "clusters" },
     });
     expect(points100k!.spec.measure.end).toEqual({
       type: "waitForMarker",
       name: "mssql.queryResults.spatial.render.settled",
-      attrs: { tier: "gpuPoints" },
+      attrs: { tier: "clusters" },
     });
     expect(points100k!.spec.success).toContainEqual({
       type: "markerSeen",
       name: "mssql.queryResults.spatial.render.settled",
-      attrs: { tier: "gpuPoints" },
+      attrs: { tier: "clusters", partial: "true" },
     });
   });
 

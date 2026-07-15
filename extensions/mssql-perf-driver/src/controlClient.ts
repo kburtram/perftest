@@ -176,9 +176,14 @@ export class ControlClient implements vscode.Disposable {
         this.emitMarker("exthost.memory.external", "counter", {
           value: usage.external,
         });
-        this.emitMarker("exthost.memory.arrayBuffers", "counter", {
-          value: usage.arrayBuffers ?? 0,
-        });
+        // Electron builds do not all expose process.memoryUsage().arrayBuffers.
+        // Absence is not a measured zero: omitting the series keeps reports
+        // honest and lets consumers distinguish unsupported from empty.
+        if (typeof usage.arrayBuffers === "number") {
+          this.emitMarker("exthost.memory.arrayBuffers", "counter", {
+            value: usage.arrayBuffers,
+          });
+        }
       } catch {
         // never let telemetry break a scenario
       }
