@@ -1514,11 +1514,12 @@ export const OBS_CONTRACT: Registry = {
                 "windowCacheOversizeSkips": "structuralMetadata",
                 "windowCacheMaxBytes": "structuralMetadata",
                 "gridPreview": "structuralMetadata",
+                "gridPreviewTransformMs": "structuralMetadata",
                 "sourceValueCharacters": "structuralMetadata",
                 "returnedValueCharacters": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "Window materialization plus page/window-cache state at completion. Grid previews report aggregate source/returned character counts; cache admission is terminal-only and bounded by entries plus retained bytes. Per-cell null/non-empty count attrs emit only at verbose diagnostics."
+            "notes": "Window materialization plus page/window-cache state at completion. Grid previews report aggregate source/returned character counts and bounded display/language transform time; cache admission is terminal-only and bounded by entries plus retained bytes. Per-cell null/non-empty count attrs emit only at verbose diagnostics."
         },
         {
             "name": "mssql.queryStudio.state.push",
@@ -1533,6 +1534,7 @@ export const OBS_CONTRACT: Registry = {
             "attrs": {
                 "executionKind": "safeEnum",
                 "intervalMs": "structuralMetadata",
+                "urgent": "structuralMetadata",
                 "buildMs": "structuralMetadata",
                 "resultSets": "structuralMetadata",
                 "columns": "structuralMetadata",
@@ -1541,7 +1543,7 @@ export const OBS_CONTRACT: Registry = {
                 "payloadChars": "structuralMetadata"
             },
             "attrsComplete": false,
-            "notes": "Coarse Query Studio state was rebuilt and queued for the webview. payloadChars is computed only in PERF_MODE to avoid a second serialization in normal sessions."
+            "notes": "Coarse Query Studio state was rebuilt and queued for the webview through the base controller's single canonical state notification. urgent identifies the first-result summary push that bypasses normal pacing. payloadChars is computed only in PERF_MODE to avoid a second serialization in normal sessions."
         },
         {
             "name": "mssql.queryStudio.rows.maxRowsPerResultSet",
@@ -1580,6 +1582,47 @@ export const OBS_CONTRACT: Registry = {
             },
             "attrsComplete": false,
             "notes": "Per-page store append (QO-2). Emitted only at verbose diagnostics — aggregates ride query.complete."
+        },
+        {
+            "name": "mssql.queryStudio.rows.dispose.begin",
+            "kind": "marker",
+            "phase": "begin",
+            "pairsWith": "mssql.queryStudio.rows.dispose.end",
+            "feature": "queryStudio",
+            "processRoles": [
+                "extensionHost"
+            ],
+            "timingClass": "sameProcessMonotonic",
+            "measurementEligible": true,
+            "attrs": {
+                "resultSets": "diagnosticMetric",
+                "residentPageBytes": "diagnosticMetric",
+                "spillBytes": "diagnosticMetric",
+                "spillWrites": "diagnosticMetric",
+                "spillReads": "diagnosticMetric",
+                "windowCacheBytes": "diagnosticMetric"
+            },
+            "attrsComplete": true,
+            "notes": "QO lifecycle: RowStore disposal requested after capturing aggregate resident/spill/cache ownership. No result identifiers or values."
+        },
+        {
+            "name": "mssql.queryStudio.rows.dispose.end",
+            "kind": "marker",
+            "phase": "end",
+            "pairsWith": "mssql.queryStudio.rows.dispose.begin",
+            "feature": "queryStudio",
+            "processRoles": [
+                "extensionHost"
+            ],
+            "timingClass": "sameProcessMonotonic",
+            "measurementEligible": true,
+            "attrs": {
+                "outcome": "safeEnum",
+                "spillFileRemoved": "structuralMetadata",
+                "ms": "diagnosticMetric"
+            },
+            "attrsComplete": true,
+            "notes": "QO lifecycle: queued spill writes settled and best-effort close/delete completed."
         },
         {
             "name": "mssql.queryStudio.rows.spill.write",
@@ -1785,6 +1828,68 @@ export const OBS_CONTRACT: Registry = {
             },
             "attrsComplete": false,
             "notes": "A distinct Query Studio run generation was observed by the renderer. This exposes fast runs whose debounced coarse state skips the transient executing phase; the generation value itself is intentionally excluded."
+        },
+        {
+            "name": "mssql.queryStudio.results.summary.received",
+            "kind": "webviewMark",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "webview"
+            ],
+            "timingClass": "epochAligned",
+            "measurementEligible": false,
+            "attrs": {
+                "executionKind": "safeEnum",
+                "terminal": "structuralMetadata",
+                "streaming": "structuralMetadata",
+                "resultSets": "structuralMetadata",
+                "columns": "structuralMetadata",
+                "rows": "structuralMetadata"
+            },
+            "attrsComplete": true,
+            "notes": "The first non-empty result-set summary for a run reached the renderer. This isolates host state delivery from grid chunk loading and first-row paint."
+        },
+        {
+            "name": "mssql.queryStudio.results.paneMounted",
+            "kind": "webviewMark",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "webview"
+            ],
+            "timingClass": "epochAligned",
+            "measurementEligible": false,
+            "attrs": {
+                "activeTab": "safeEnum",
+                "resultSets": "structuralMetadata",
+                "rows": "structuralMetadata",
+                "rafThrottled": "structuralMetadata"
+            },
+            "attrsComplete": true,
+            "notes": "The first results-region commit for a run completed its following paint. This milestone includes the tab strip/pane shell and can precede the lazy grid's first real rows."
+        },
+        {
+            "name": "mssql.queryStudio.tabs.eligibility",
+            "kind": "webviewMark",
+            "phase": "instant",
+            "feature": "queryStudio",
+            "processRoles": [
+                "webview"
+            ],
+            "timingClass": "epochAligned",
+            "measurementEligible": false,
+            "attrs": {
+                "durationMs": "structuralMetadata",
+                "resultSets": "structuralMetadata",
+                "columns": "structuralMetadata",
+                "dataResultSets": "structuralMetadata",
+                "planResultSets": "structuralMetadata",
+                "vectorColumns": "structuralMetadata",
+                "spatialColumns": "structuralMetadata"
+            },
+            "attrsComplete": true,
+            "notes": "Static result-tab eligibility and column metadata classification for one host state snapshot. Local row, cursor, resize, and tab renders reuse the classified result."
         },
         {
             "name": "mssql.queryStudio.tab.activation.begin",
@@ -2139,6 +2244,7 @@ export const OBS_CONTRACT: Registry = {
             "timingClass": "sameProcessMonotonic",
             "measurementEligible": false,
             "attrs": {
+                "status": "safeEnum",
                 "msToAck": "structuralMetadata",
                 "msToTerminal": "structuralMetadata"
             },
@@ -3197,6 +3303,7 @@ export const OBS_CONTRACT: Registry = {
                 "nullCells": "diagnosticMetric",
                 "transportUnavailableCells": "diagnosticMetric",
                 "payloadBytes": "diagnosticMetric",
+                "responseBytes": "diagnosticMetric",
                 "partial": "safeEnum",
                 "partialReason": "safeEnum",
                 "ms": "diagnosticMetric"
@@ -3313,7 +3420,7 @@ export const OBS_CONTRACT: Registry = {
                 "offline": "safeEnum"
             },
             "attrsComplete": true,
-            "notes": "SPA-6: map/list render began after at least one decoded batch was accepted. tier: canvas | gpuPoints | listOnly."
+            "notes": "SPA-6: map/list render began after at least one decoded batch was accepted. tier: canvas | clusters | gpuPoints | listOnly."
         },
         {
             "name": "mssql.queryResults.spatial.render.firstPaint",
@@ -3565,6 +3672,14 @@ export const OBS_CONTRACT: Registry = {
             "derivedFrom": [
                 "mssql.queryStudio.grid.copy.begin",
                 "mssql.queryStudio.grid.copy.end"
+            ]
+        },
+        {
+            "name": "mssql.queryStudio.rows.dispose",
+            "feature": "queryStudio",
+            "derivedFrom": [
+                "mssql.queryStudio.rows.dispose.begin",
+                "mssql.queryStudio.rows.dispose.end"
             ]
         },
         {

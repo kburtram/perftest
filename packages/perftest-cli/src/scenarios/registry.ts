@@ -1341,6 +1341,8 @@ interface QueryStudioShapeSpec {
   /** Require the connect readiness SELECT 1 to paint Results, not Messages. */
   assertPreflightResultsFocus?: boolean;
   tuningOverrides?: Record<string, unknown>;
+  userSettings?: Record<string, unknown>;
+  database?: string;
   scenarioIdSuffix?: string;
   /** Optional activation-time provider selector plus truthful bound identity. */
   backend?: QueryStudioBackend;
@@ -1389,12 +1391,13 @@ function registerQueryStudioShape(shape: QueryStudioShapeSpec): void {
         "mssql.sqlDataPlane.enabled": true,
         "mssql.queryStudio.enabled": true,
         ...(shape.backend ? { "mssql.sqlDataPlane.backend": shape.backend.setting } : {}),
+        ...(shape.userSettings ?? {}),
         ...(shape.tuningOverrides
           ? { "mssql.queryStudio.tuning.overrides": shape.tuningOverrides }
           : {}),
       },
       sql: {
-        database: "PerfHarness",
+        database: shape.database ?? "PerfHarness",
         cacheMode: "warm",
         connectionProfile: "default",
       },
@@ -1710,6 +1713,355 @@ registerQueryStudioBackendShapePair({
   timeoutMs: 300000,
 });
 
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-blob-xml",
+  displayName: "Query Studio: VARBINARY/XML/NVARCHAR(MAX) provider matrix",
+  tags: ["querystudio", "query", "blob", "xml", "content", "webview"],
+  queryPath: "queries/blob-xml.sql",
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 20, resultSets: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  timeoutMs: 300000,
+});
+
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-spatial-10k",
+  displayName: "Query Studio: 10k typed spatial points provider matrix",
+  tags: ["querystudio", "query", "spatial", "typed-cell", "webview"],
+  queryPath: "queries/spatial-points-10k.sql",
+  userSettings: { "mssql.queryStudio.spatial.enabled": true },
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 10000, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 10000, resultSets: 1 } },
+    { name: "mssql.queryStudio.tabs.eligibility", attrs: { spatialColumns: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 10000, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  timeoutMs: 300000,
+});
+
+registerQueryStudioBackendShapePair({
+  scenarioId: "querystudio-query-vector-5k",
+  displayName: "Query Studio: 5k typed 64-D vectors provider matrix",
+  tags: ["querystudio", "query", "vector", "typed-cell", "webview"],
+  queryPath: "queries/vectorlab-chunks.sql",
+  database: "VectorLab",
+  userSettings: { "mssql.queryStudio.vectorWorkbench.enabled": true },
+  end: {
+    name: "mssql.queryStudio.resultsRendered",
+    attrs: { rows: 5000, resultSets: 1, activeTab: "results" },
+  },
+  success: [
+    { name: "mssql.queryStudio.query.complete", attrs: { rows: 5000, resultSets: 1 } },
+    { name: "mssql.queryStudio.tabs.eligibility", attrs: { vectorColumns: 1 } },
+    {
+      name: "mssql.queryStudio.resultsRendered",
+      attrs: { rows: 5000, resultSets: 1, activeTab: "results" },
+    },
+  ],
+  timeoutMs: 300000,
+});
+
+for (const backend of QUERY_STUDIO_BACKEND_VARIANTS) {
+  register({
+    implemented: true,
+    plannedMilestone: "TSQ2-12",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: `querystudio-cancel-long-query-${backend.suffix}`,
+      displayName: `Query Studio: cancel long query [backend=${backend.setting}]`,
+      tags: ["querystudio", "query", "cancel", "reliability", "backend-ab"],
+      profileMode: "warmed",
+      userSettings: {
+        "mssql.sqlDataPlane.enabled": true,
+        "mssql.queryStudio.enabled": true,
+        "mssql.sqlDataPlane.backend": backend.setting,
+      },
+      sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+      setup: [
+        ...ACTIVATE_STEPS,
+        { type: "openDocument", path: "queries/long-query.sql" },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: [
+          { type: "queryStudioExecute", timeoutMs: 30000 },
+          {
+            type: "waitForMarker",
+            name: "mssql.queryStudio.query.submit",
+            attrs: { backend: backend.provenance },
+            timeoutMs: 30000,
+          },
+          { type: "command", command: "mssql.perf.queryStudioCancel", timeoutMs: 30000 },
+        ],
+        end: {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.cancel",
+          attrs: { status: "canceled" },
+        },
+        timeoutMs: 60000,
+      },
+      success: [
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.complete",
+          attrs: { backend: backend.provenance, status: "canceled", canceled: true },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.cancel",
+          attrs: { status: "canceled" },
+        },
+        { type: "noErrors", sources: ["automation"] },
+      ],
+      cleanup: [
+        { type: "command", command: "workbench.action.closeActiveEditor" },
+        ...CLEANUP_EXPLORER,
+      ],
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      ],
+    },
+  });
+}
+
+for (const backend of QUERY_STUDIO_BACKEND_VARIANTS) {
+  register({
+    implemented: true,
+    plannedMilestone: "QO-lifecycle",
+    maturity: "exploratory",
+    spec: {
+      scenarioId: `querystudio-dispose-forced-spill-${backend.suffix}`,
+      displayName: `Query Studio: close and reclaim forced spill [backend=${backend.setting}]`,
+      tags: ["querystudio", "query", "spill", "dispose", "reclamation", "backend-ab"],
+      profileMode: "warmed",
+      userSettings: {
+        "mssql.sqlDataPlane.enabled": true,
+        "mssql.queryStudio.enabled": true,
+        "mssql.sqlDataPlane.backend": backend.setting,
+        "mssql.queryStudio.tuning.overrides": {
+          storeMemoryBytes: 1048576,
+          maxPendingSpillBytes: 1048576,
+          diagnosticsLevel: "verbose",
+        },
+      },
+      sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+      setup: [
+        ...ACTIVATE_STEPS,
+        { type: "openDocument", path: "queries/large-cells-1mb.sql" },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        { type: "queryStudioExecute", timeoutMs: 300000 },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+          timeoutMs: 300000,
+        },
+      ],
+      measure: {
+        start: { type: "beforeFirstAction" },
+        action: [{ type: "command", command: "workbench.action.closeActiveEditor" }],
+        end: {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.rows.dispose.end",
+          attrs: { outcome: "ok", spillFileRemoved: true },
+        },
+        timeoutMs: 60000,
+      },
+      success: [
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.complete",
+          attrs: { backend: backend.provenance, status: "succeeded", rows: 20 },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.rows.spill.write",
+          attrs: { encoding: "v8-v1" },
+        },
+        { type: "markerSeen", name: "mssql.queryStudio.rows.dispose.begin" },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.rows.dispose.end",
+          attrs: { outcome: "ok", spillFileRemoved: true },
+        },
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+      cleanup: CLEANUP_EXPLORER,
+      metrics: [
+        { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+        {
+          name: "mssql.queryStudio.rows.dispose",
+          source: "marker",
+          official: false,
+          lowerIsBetter: true,
+          beginMarker: "mssql.queryStudio.rows.dispose.begin",
+          endMarker: "mssql.queryStudio.rows.dispose.end",
+          component: "queryStudio",
+          processRole: "extensionHost",
+          withinMeasuredWindow: true,
+        },
+      ],
+    },
+  });
+}
+
+// Long-running lifecycle proof for the host RowStore rather than only the
+// query provider. Every iteration creates a fresh Query Studio editor and
+// result store, forces complete MAX values through spill, drives both grid
+// viewport directions, performs an exact host-side copy, and closes the
+// editor. The loop freshness boundary makes every spill read and cleanup an
+// iteration-local correctness oracle; the process sampler supplies the
+// diagnostic RSS plateau/slope without turning a new workload into a gate.
+register({
+  implemented: true,
+  plannedMilestone: "QO-lifecycle",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "querystudio-soak-forced-spill-lifecycle",
+    displayName: "Query Studio soak: reopen, scroll, exact-copy, reclaim forced spill",
+    tags: [
+      "querystudio",
+      "query",
+      "soak",
+      "reliability",
+      "memory",
+      "spill",
+      "dispose",
+      "clipboard",
+    ],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.queryStudio.enabled": true,
+      "mssql.sqlDataPlane.backend": "sts2-local",
+      "mssql.queryStudio.tuning.overrides": {
+        storeMemoryBytes: 1048576,
+        maxPendingSpillBytes: 1048576,
+        diagnosticsLevel: "verbose",
+      },
+    },
+    sql: { database: "PerfHarness", cacheMode: "warm", connectionProfile: "default" },
+    setup: [
+      ...ACTIVATE_STEPS,
+      { type: "openDocument", path: "queries/large-cells-1mb.sql" },
+    ],
+    loop: {
+      iterations: 100,
+      warmupIterations: 5,
+      onFailure: "continue",
+      steps: [
+        // Closing the custom editor can close the shared SQL resource rather than
+        // revealing a text editor underneath it. Reopen explicitly so every
+        // iteration starts from the same document/focus state.
+        { type: "openDocument", path: "queries/large-cells-1mb.sql" },
+        { type: "command", command: "mssql.queryStudio.openActive", timeoutMs: 60000 },
+        { type: "waitForMarker", name: "mssql.queryStudio.open.end", timeoutMs: 60000 },
+        { type: "queryStudioConnect", profile: "default", timeoutMs: 90000 },
+        { type: "queryStudioExecute", timeoutMs: 300000 },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.resultsRendered",
+          attrs: { rows: 20, resultSets: 1, activeTab: "results" },
+          timeoutMs: 300000,
+        },
+        { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
+        {
+          type: "queryStudioInteract",
+          action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "end" },
+        },
+        {
+          type: "queryStudioInteract",
+          action: { kind: "scrollGrid", resultSetIndex: 0, axis: "vertical", target: "start" },
+        },
+        {
+          type: "queryStudioInteract",
+          action: {
+            kind: "copyGrid",
+            resultSetIndex: 0,
+            selection: "all",
+            includeHeaders: true,
+          },
+          timeoutMs: 300000,
+        },
+        { type: "command", command: "workbench.action.closeActiveEditor", timeoutMs: 60000 },
+        {
+          type: "waitForMarker",
+          name: "mssql.queryStudio.rows.dispose.end",
+          attrs: { outcome: "ok", spillFileRemoved: true },
+          timeoutMs: 60000,
+        },
+      ],
+      success: [
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.query.complete",
+          attrs: { backend: "sts2-jsonrpc", status: "succeeded", rows: 20 },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.rows.spill.write",
+          attrs: { encoding: "v8-v1" },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.rows.spill.read",
+          attrs: { encoding: "v8-v1" },
+        },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.grid.copy.end",
+          attrs: {
+            outcome: "copied",
+            rows: 20,
+            columns: 3,
+            characters: 2621556,
+            copyRoute: "hostDirect",
+            clipboardMode: "hostDirect",
+            hostRowFetches: 1,
+          },
+        },
+        { type: "markerSeen", name: "mssql.queryStudio.rows.dispose.begin" },
+        {
+          type: "markerSeen",
+          name: "mssql.queryStudio.rows.dispose.end",
+          attrs: { outcome: "ok", spillFileRemoved: true },
+        },
+        { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
+      ],
+    },
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [],
+      end: { type: "afterLastAction" },
+      timeoutMs: 14400000,
+    },
+    success: [{ type: "noErrors", sources: ["automation"] }],
+    cleanup: CLEANUP_EXPLORER,
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
 interface QueryStudioInteractionSpec {
   scenarioId: string;
   displayName: string;
@@ -1944,6 +2296,9 @@ registerQueryStudioInteractionScenario({
   displayName: "Query Studio interaction: 300-column horizontal sweep",
   tags: ["results-grid", "wide", "horizontal-scroll"],
   queryPath: "queries/wide-columns-1000.sql",
+  // Start the sweep only after the terminal row count has reached the grid.
+  // First-visible-row paint is intentionally an earlier latency diagnostic,
+  // but it can occur while the streaming data source is still being refreshed.
   ready: { name: "mssql.queryStudio.resultsRendered", attrs: { rows: 1000 } },
   actions: [
     { type: "queryStudioInteract", action: { kind: "activateTab", tab: "results" } },
@@ -3377,7 +3732,8 @@ function registerSpatialActivation(args: {
   displayName: string;
   queryPath: string;
   rows: number;
-  settleOnGpu?: boolean;
+  settledTier: "canvas" | "clusters" | "gpuPoints";
+  partial?: boolean;
 }): void {
   register({
     implemented: true,
@@ -3416,7 +3772,7 @@ function registerSpatialActivation(args: {
           // first paint races the chunk pump and turns the required
           // prepare.end marker into a cancellation during cleanup.
           name: "mssql.queryResults.spatial.render.settled",
-          attrs: { tier: args.settleOnGpu ? "gpuPoints" : "canvas" },
+          attrs: { tier: args.settledTier },
         },
         timeoutMs: 180000,
       },
@@ -3426,13 +3782,13 @@ function registerSpatialActivation(args: {
         {
           type: "markerSeen",
           name: "mssql.queryResults.spatial.prepare.end",
-          attrs: { outcome: "ok" },
+          attrs: { outcome: "ok", partial: args.partial ? "true" : "false" },
         },
         { type: "markerSeen", name: "mssql.queryResults.spatial.render.firstPaint" },
         {
           type: "markerSeen",
           name: "mssql.queryResults.spatial.render.settled",
-          attrs: { tier: args.settleOnGpu ? "gpuPoints" : "canvas" },
+          attrs: { tier: args.settledTier, partial: args.partial ? "true" : "false" },
         },
         { type: "markerAbsent", name: "mssql.queryResults.spatial.prepare.cancel" },
         { type: "noErrors", sources: ["automation", "vscode-mssql", "sts"] },
@@ -3514,6 +3870,7 @@ registerSpatialActivation({
   displayName: "Query Studio: Spatial activation and first paint (10k points, offline)",
   queryPath: "queries/spatial-points-10k.sql",
   rows: 10000,
+  settledTier: "clusters",
 });
 
 registerSpatialActivation({
@@ -3521,7 +3878,8 @@ registerSpatialActivation({
   displayName: "Query Studio: Spatial activation and first paint (100k points)",
   queryPath: "queries/spatial-points-100k.sql",
   rows: 100000,
-  settleOnGpu: true,
+  settledTier: "clusters",
+  partial: true,
 });
 
 // Pin then rerun: the measured window is the RERUN with a pinned snapshot
