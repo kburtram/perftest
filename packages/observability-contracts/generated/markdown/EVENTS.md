@@ -191,12 +191,17 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.spatial.decode.begin` | webviewMark | begin | `mssql.queryResults.spatial.decode.end` | queryResults | webview | epochAligned | yes | mode:safeEnum |
 | `mssql.queryResults.spatial.decode.end` | webviewMark | end | `mssql.queryResults.spatial.decode.begin` | queryResults | webview | epochAligned | yes | outcome:safeEnum, features:diagnosticMetric, vertices:diagnosticMetric, skipped:diagnosticMetric, derivedBytes:diagnosticMetric, ms:diagnosticMetric |
 | `mssql.queryResults.spatial.decode.cancel` | webviewMark | instant | — | queryResults | webview | epochAligned | no | reason:safeEnum |
-| `mssql.queryResults.spatial.render.begin` | webviewMark | begin | `mssql.queryResults.spatial.render.firstPaint` | queryResults | webview | epochAligned | yes | tier:safeEnum, offline:safeEnum |
-| `mssql.queryResults.spatial.render.firstPaint` | webviewMark | end | `mssql.queryResults.spatial.render.begin` | queryResults | webview | epochAligned | yes | tier:safeEnum, features:diagnosticMetric, vertices:diagnosticMetric, partial:safeEnum, rafThrottled:structuralMetadata |
-| `mssql.queryResults.spatial.render.settled` | webviewMark | instant | — | queryResults | webview | epochAligned | no | tier:safeEnum, features:diagnosticMetric, vertices:diagnosticMetric, skipped:diagnosticMetric, partial:safeEnum, longTasks:diagnosticMetric, derivedBytes:diagnosticMetric, ms:diagnosticMetric |
+| `mssql.queryResults.spatial.render.begin` | webviewMark | begin | `mssql.queryResults.spatial.render.firstPaint` | queryResults | webview | epochAligned | yes | tier:safeEnum, offline:safeEnum, layer:safeEnum |
+| `mssql.queryResults.spatial.render.firstPaint` | webviewMark | end | `mssql.queryResults.spatial.render.begin` | queryResults | webview | epochAligned | yes | tier:safeEnum, features:diagnosticMetric, vertices:diagnosticMetric, partial:safeEnum, rafThrottled:structuralMetadata, layer:safeEnum |
+| `mssql.queryResults.spatial.render.settled` | webviewMark | instant | — | queryResults | webview | epochAligned | no | tier:safeEnum, features:diagnosticMetric, vertices:diagnosticMetric, skipped:diagnosticMetric, partial:safeEnum, longTasks:diagnosticMetric, derivedBytes:diagnosticMetric, ms:diagnosticMetric, layer:safeEnum |
 | `mssql.queryResults.spatial.render.cancel` | webviewMark | instant | — | queryResults | webview | epochAligned | no | reason:safeEnum |
 | `mssql.queryResults.spatial.interaction.end` | webviewMark | instant | — | queryResults | webview | epochAligned | no | action:safeEnum, tier:safeEnum, frames:diagnosticMetric, p95FrameMs:diagnosticMetric, inputDelayMs:diagnosticMetric |
 | `mssql.queryResults.spatial.resources.released` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, leases:diagnosticMetric, sessions:diagnosticMetric |
+| `mssql.queryResults.spatial.basemap.open` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | outcome:safeEnum, layerClass:safeEnum |
+| `mssql.queryResults.spatial.basemap.tile.end` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | cache:safeEnum, outcome:safeEnum, ms:diagnosticMetric, bytes:diagnosticMetric |
+| `mssql.queryResults.spatial.basemap.close` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, tiles:diagnosticMetric |
+| `mssql.queryResults.spatial.basemap.layer.begin` | webviewMark | begin | `mssql.queryResults.spatial.basemap.layer.ready` | queryResults | webview | epochAligned | yes | layer:safeEnum |
+| `mssql.queryResults.spatial.basemap.layer.ready` | webviewMark | end | `mssql.queryResults.spatial.basemap.layer.begin` | queryResults | webview | epochAligned | yes | layer:safeEnum, outcome:safeEnum |
 
 ## Derived metric names
 
@@ -247,6 +252,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.spatial.prepare` | queryResults | `mssql.queryResults.spatial.prepare.begin` → `mssql.queryResults.spatial.prepare.end` |
 | `mssql.queryResults.spatial.decode` | queryResults | `mssql.queryResults.spatial.decode.begin` → `mssql.queryResults.spatial.decode.end` |
 | `mssql.queryResults.spatial.render.firstPaint` | queryResults | `mssql.queryResults.spatial.render.begin` → `mssql.queryResults.spatial.render.firstPaint` |
+| `mssql.queryResults.spatial.basemap.layerReady` | queryResults | `mssql.queryResults.spatial.basemap.layer.begin` → `mssql.queryResults.spatial.basemap.layer.ready` |
 
 ## Field classifications
 
