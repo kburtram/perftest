@@ -365,6 +365,10 @@ describe("normalizeRep", () => {
               pages: 12,
               driverEvents: 10_100,
               yields: 3,
+              processHeapUsedPeakBytes: 120_000_000,
+              processExternalPeakBytes: 80_000_000,
+              processRssPeakBytes: 400_000_000,
+              processArrayBuffersAvailable: false,
             },
           }),
           marker("mssql.queryStudio.query.complete", {
@@ -387,6 +391,13 @@ describe("normalizeRep", () => {
     expect(byName.get("sqlDataPlane.tsNative.query.encode")?.value).toBe(20.05);
     expect(byName.get("sqlDataPlane.tsNative.query.logicalEncodedBytes")?.value).toBe(2_901_127);
     expect(byName.get("sqlDataPlane.tsNative.query.pages")?.value).toBe(12);
+    expect(byName.get("sqlDataPlane.tsNative.query.processHeapUsedPeakBytes")?.value).toBe(
+      120_000_000,
+    );
+    expect(byName.get("sqlDataPlane.tsNative.query.processExternalPeakBytes")?.value).toBe(
+      80_000_000,
+    );
+    expect(byName.has("sqlDataPlane.tsNative.query.processArrayBuffersPeakBytes")).toBe(false);
     expect(byName.get("sqlDataPlane.tsNative.query.duration")?.official).toBe(false);
     expect(byName.get("sqlDataPlane.tsNative.query.duration")?.eligibility?.diagnosticOnly).toBe(
       true,

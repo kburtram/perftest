@@ -2183,6 +2183,20 @@
                 "firstPageAcceptedMs": "structuralMetadata",
                 "outcomeCertainty": "safeEnum",
                 "errorCode": "safeEnum",
+                "processMemorySamples": "diagnosticMetric",
+                "processHeapUsedStartBytes": "diagnosticMetric",
+                "processHeapUsedPeakBytes": "diagnosticMetric",
+                "processHeapUsedFinalBytes": "diagnosticMetric",
+                "processExternalStartBytes": "diagnosticMetric",
+                "processExternalPeakBytes": "diagnosticMetric",
+                "processExternalFinalBytes": "diagnosticMetric",
+                "processRssStartBytes": "diagnosticMetric",
+                "processRssPeakBytes": "diagnosticMetric",
+                "processRssFinalBytes": "diagnosticMetric",
+                "processArrayBuffersAvailable": "safeEnum",
+                "processArrayBuffersStartBytes": "diagnosticMetric",
+                "processArrayBuffersPeakBytes": "diagnosticMetric",
+                "processArrayBuffersFinalBytes": "diagnosticMetric",
                 "diag": "structuralMetadata",
                 "durationMs": "structuralMetadata"
             },
@@ -3633,6 +3647,34 @@
         },
         {
             "name": "sqlDataPlane.tsNative.query.yields",
+            "feature": "sqlDataPlane",
+            "derivedFrom": [
+                "sqlDataPlane.tsNative.query.terminal"
+            ]
+        },
+        {
+            "name": "sqlDataPlane.tsNative.query.processHeapUsedPeakBytes",
+            "feature": "sqlDataPlane",
+            "derivedFrom": [
+                "sqlDataPlane.tsNative.query.terminal"
+            ]
+        },
+        {
+            "name": "sqlDataPlane.tsNative.query.processExternalPeakBytes",
+            "feature": "sqlDataPlane",
+            "derivedFrom": [
+                "sqlDataPlane.tsNative.query.terminal"
+            ]
+        },
+        {
+            "name": "sqlDataPlane.tsNative.query.processRssPeakBytes",
+            "feature": "sqlDataPlane",
+            "derivedFrom": [
+                "sqlDataPlane.tsNative.query.terminal"
+            ]
+        },
+        {
+            "name": "sqlDataPlane.tsNative.query.processArrayBuffersPeakBytes",
             "feature": "sqlDataPlane",
             "derivedFrom": [
                 "sqlDataPlane.tsNative.query.terminal"

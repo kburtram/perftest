@@ -566,6 +566,30 @@ export function normalizeRep(inputs: NormalizeInputs): PerfResult {
         digits: 0,
       },
       { attr: "yields", name: "sqlDataPlane.tsNative.query.yields", unit: "count", digits: 0 },
+      {
+        attr: "processHeapUsedPeakBytes",
+        name: "sqlDataPlane.tsNative.query.processHeapUsedPeakBytes",
+        unit: "bytes",
+        digits: 0,
+      },
+      {
+        attr: "processExternalPeakBytes",
+        name: "sqlDataPlane.tsNative.query.processExternalPeakBytes",
+        unit: "bytes",
+        digits: 0,
+      },
+      {
+        attr: "processRssPeakBytes",
+        name: "sqlDataPlane.tsNative.query.processRssPeakBytes",
+        unit: "bytes",
+        digits: 0,
+      },
+      {
+        attr: "processArrayBuffersPeakBytes",
+        name: "sqlDataPlane.tsNative.query.processArrayBuffersPeakBytes",
+        unit: "bytes",
+        digits: 0,
+      },
     ];
     for (const field of nativeFields) {
       const raw = nativeTerminal.attrs?.[field.attr];
