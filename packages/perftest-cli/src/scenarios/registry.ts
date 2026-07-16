@@ -2745,6 +2745,96 @@ register({
   },
 });
 
+// OE v2 container deploy (DOCK-4, exploratory): the wizard-core path
+// headless — create the SQL container, wait for readiness, save the profile
+// and connect through the OE v2 data plane (the DOCK-1 terminal step).
+// REQUIRES docker + a locally cached SQL Server image (the seam never
+// pulls); every honesty failure throws. Cleans up container + profile.
+register({
+  implemented: true, // DOCK-4: mssql.perf.oeV2ContainerDeploy seam
+  plannedMilestone: "DOCK-4",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "oev2-container-deploy",
+    displayName: "OE v2 containers: deploy → ready → data-plane connect",
+    tags: ["objectexplorer", "oev2", "docker", "deployment"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.objectExplorer.viewMode": "v2Preview",
+    },
+    setup: [...ACTIVATE_STEPS],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.oeV2ContainerDeploy",
+          timeoutMs: 600000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 660000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql"] }],
+    cleanup: [
+      { type: "command", command: "mssql.perf.oeV2ContainerCleanup", timeoutMs: 120000 },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
+// OE v2 container reconnect (DOCK-4, exploratory): a STOPPED container
+// profile connects through the DOCK-3 pre-flight (docker start → readiness
+// → data-plane open) — exactly the expand-a-stopped-container wait a user
+// sees. Setup provisions container + profile OUTSIDE the measured window.
+register({
+  implemented: true, // DOCK-4: mssql.perf.oeV2ContainerReconnect seam
+  plannedMilestone: "DOCK-4",
+  maturity: "exploratory",
+  spec: {
+    scenarioId: "oev2-container-reconnect",
+    displayName: "OE v2 containers: stopped container → pre-flight → connected",
+    tags: ["objectexplorer", "oev2", "docker", "deployment"],
+    profileMode: "warmed",
+    userSettings: {
+      "mssql.sqlDataPlane.enabled": true,
+      "mssql.objectExplorer.viewMode": "v2Preview",
+    },
+    setup: [
+      ...ACTIVATE_STEPS,
+      {
+        type: "command",
+        command: "mssql.perf.oeV2ContainerReconnectSetup",
+        timeoutMs: 600000,
+      },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.oeV2ContainerReconnect",
+          timeoutMs: 600000,
+        },
+      ],
+      end: { type: "afterLastAction" },
+      timeoutMs: 660000,
+    },
+    success: [{ type: "noErrors", sources: ["automation", "vscode-mssql"] }],
+    cleanup: [
+      { type: "command", command: "mssql.perf.oeV2ContainerCleanup", timeoutMs: 120000 },
+      ...CLEANUP_EXPLORER,
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: false, lowerIsBetter: true },
+    ],
+  },
+});
+
 // QS bootstrap (BOOT-4, Karl P0): open a Query Studio window WITH initial
 // SQL + autoRun and measure to rendered results — the full bootstrap
 // (webview HTML → chunks → Monaco → editor interactive → grid chunk →
