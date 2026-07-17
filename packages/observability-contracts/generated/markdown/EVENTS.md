@@ -207,6 +207,46 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.spatial.basemap.close` | marker | instant | — | queryResults | extensionHost | sameProcessMonotonic | no | reason:safeEnum, tiles:diagnosticMetric |
 | `mssql.queryResults.spatial.basemap.layer.begin` | webviewMark | begin | `mssql.queryResults.spatial.basemap.layer.ready` | queryResults | webview | epochAligned | yes | layer:safeEnum |
 | `mssql.queryResults.spatial.basemap.layer.ready` | webviewMark | end | `mssql.queryResults.spatial.basemap.layer.begin` | queryResults | webview | epochAligned | yes | layer:safeEnum, outcome:safeEnum |
+| `mssql.runbookStudio.open.begin` | marker | begin | `mssql.runbookStudio.open.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.open.end` | marker | end | `mssql.runbookStudio.open.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | documentKind:safeEnum, runbookRevision:structuralMetadata … |
+| `mssql.runbookStudio.webview.ready` | webviewMark | instant | — | runbookStudio | webview | epochAligned | yes |  … |
+| `mssql.runbookStudio.compile.begin` | marker | begin | `mssql.runbookStudio.compile.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.compile.end` | marker | end | `mssql.runbookStudio.compile.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, nodeCount:structuralMetadata, modelRole:safeEnum, tokensIn:structuralMetadata, tokensOut:structuralMetadata, toolCalls:structuralMetadata … |
+| `mssql.runbookStudio.bind.begin` | marker | begin | `mssql.runbookStudio.bind.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.bind.end` | marker | end | `mssql.runbookStudio.bind.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | parameterCount:structuralMetadata, inferredCount:structuralMetadata, explicitCount:structuralMetadata, defaultCount:structuralMetadata, validationErrors:structuralMetadata, targetClass:safeEnum … |
+| `mssql.runbookStudio.estimate.begin` | marker | begin | `mssql.runbookStudio.estimate.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.estimate.end` | marker | end | `mssql.runbookStudio.estimate.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, nodeCount:structuralMetadata … |
+| `mssql.runbookStudio.runtime.launch.begin` | marker | begin | `mssql.runbookStudio.runtime.launch.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.runtime.launch.end` | marker | end | `mssql.runbookStudio.runtime.launch.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, runtimeVersion:structuralMetadata, coldStart:structuralMetadata … |
+| `mssql.runbookStudio.runtime.initialize.begin` | marker | begin | `mssql.runbookStudio.runtime.initialize.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.runtime.initialize.end` | marker | end | `mssql.runbookStudio.runtime.initialize.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, protocolVersion:structuralMetadata, capabilityCount:structuralMetadata … |
+| `mssql.runbookStudio.runtime.request.begin` | marker | begin | `mssql.runbookStudio.runtime.request.end` | runbookStudio | extensionHost | sameProcessMonotonic | no | method:safeEnum … |
+| `mssql.runbookStudio.runtime.request.end` | marker | end | `mssql.runbookStudio.runtime.request.begin` | runbookStudio | extensionHost | sameProcessMonotonic | no | method:safeEnum, outcome:safeEnum … |
+| `mssql.runbookStudio.run.begin` | marker | begin | `mssql.runbookStudio.run.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.run.end` | marker | end | `mssql.runbookStudio.run.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | outcome:safeEnum, nodeCount:structuralMetadata, activityCount:structuralMetadata, gateCount:structuralMetadata, cancelled:structuralMetadata … |
+| `mssql.runbookStudio.run.state` | marker | instant | — | runbookStudio | extensionHost | sameProcessMonotonic | no | state:safeEnum … |
+| `mssql.runbookStudio.run.cancel.requested` | marker | instant | — | runbookStudio | extensionHost | sameProcessMonotonic | no |  … |
+| `mssql.runbookStudio.run.cancel.settled` | marker | instant | — | runbookStudio | extensionHost | sameProcessMonotonic | no | outcome:safeEnum … |
+| `mssql.runbookStudio.run.recover.begin` | marker | begin | `mssql.runbookStudio.run.recover.end` | runbookStudio | extensionHost | sameProcessMonotonic | no |  … |
+| `mssql.runbookStudio.run.recover.end` | marker | end | `mssql.runbookStudio.run.recover.begin` | runbookStudio | extensionHost | sameProcessMonotonic | no | outcome:safeEnum … |
+| `mssql.runbookStudio.activity.begin` | marker | begin | `mssql.runbookStudio.activity.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes | activityKind:safeEnum, activityVersion:structuralMetadata, attempt:structuralMetadata … |
+| `mssql.runbookStudio.activity.end` | marker | end | `mssql.runbookStudio.activity.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | activityKind:safeEnum, outcome:safeEnum, attempt:structuralMetadata, rows:structuralMetadata, bytes:structuralMetadata, handleCount:structuralMetadata … |
+| `mssql.runbookStudio.activity.progress` | marker | instant | — | runbookStudio | extensionHost | sameProcessMonotonic | no | dropped:structuralMetadata … |
+| `mssql.runbookStudio.gate.requested` | marker | instant | — | runbookStudio | extensionHost | sameProcessMonotonic | no | gateKind:safeEnum … |
+| `mssql.runbookStudio.gate.responded` | marker | instant | — | runbookStudio | extensionHost | sameProcessMonotonic | no | outcome:safeEnum … |
+| `mssql.runbookStudio.model.request.begin` | marker | begin | `mssql.runbookStudio.model.request.end` | runbookStudio | extensionHost | sameProcessMonotonic | no | modelRole:safeEnum … |
+| `mssql.runbookStudio.model.request.end` | marker | end | `mssql.runbookStudio.model.request.begin` | runbookStudio | extensionHost | sameProcessMonotonic | no | modelRole:safeEnum, outcome:safeEnum, modelVendor:structuralMetadata, modelFamily:structuralMetadata, modelId:structuralMetadata, tokensIn:structuralMetadata, tokensOut:structuralMetadata, toolCalls:structuralMetadata … |
+| `mssql.runbookStudio.output.fetch.begin` | marker | begin | `mssql.runbookStudio.output.fetch.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.output.fetch.end` | marker | end | `mssql.runbookStudio.output.fetch.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | rows:structuralMetadata, bytes:structuralMetadata, page:structuralMetadata, cacheHit:structuralMetadata … |
+| `mssql.runbookStudio.presentation.resolve.begin` | marker | begin | `mssql.runbookStudio.presentation.resolve.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes |  … |
+| `mssql.runbookStudio.presentation.resolve.end` | marker | end | `mssql.runbookStudio.presentation.resolve.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | widgetCount:structuralMetadata, sectionCount:structuralMetadata, nodeCount:structuralMetadata, fallbackCount:structuralMetadata … |
+| `mssql.runbookStudio.presentation.patch.begin` | marker | begin | `mssql.runbookStudio.presentation.patch.end` | runbookStudio | extensionHost | sameProcessMonotonic | yes | patchKind:safeEnum … |
+| `mssql.runbookStudio.presentation.patch.end` | marker | end | `mssql.runbookStudio.presentation.patch.begin` | runbookStudio | extensionHost | sameProcessMonotonic | yes | patchKind:safeEnum, outcome:safeEnum … |
+| `mssql.runbookStudio.plan.renderComplete` | webviewMark | instant | — | runbookStudio | webview | epochAligned | yes | nodeCount:structuralMetadata … |
+| `mssql.runbookStudio.results.firstUsefulRender` | webviewMark | instant | — | runbookStudio | webview | epochAligned | yes | widgetCount:structuralMetadata … |
+| `mssql.runbookStudio.results.updateApplied` | webviewMark | instant | — | runbookStudio | webview | epochAligned | no | updateKind:safeEnum … |
+| `mssql.runbookStudio.evidence.export.begin` | marker | begin | `mssql.runbookStudio.evidence.export.end` | runbookStudio | extensionHost | sameProcessMonotonic | no |  … |
+| `mssql.runbookStudio.evidence.export.end` | marker | end | `mssql.runbookStudio.evidence.export.begin` | runbookStudio | extensionHost | sameProcessMonotonic | no | eventCount:structuralMetadata, artifactCount:structuralMetadata … |
 
 ## Derived metric names
 
@@ -263,6 +303,11 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `mssql.queryResults.spatial.decode` | queryResults | `mssql.queryResults.spatial.decode.begin` → `mssql.queryResults.spatial.decode.end` |
 | `mssql.queryResults.spatial.render.firstPaint` | queryResults | `mssql.queryResults.spatial.render.begin` → `mssql.queryResults.spatial.render.firstPaint` |
 | `mssql.queryResults.spatial.basemap.layerReady` | queryResults | `mssql.queryResults.spatial.basemap.layer.begin` → `mssql.queryResults.spatial.basemap.layer.ready` |
+| `runbookStudio.openMs` | runbookStudio | `mssql.runbookStudio.open.begin` → `mssql.runbookStudio.open.end` |
+| `runbookStudio.bindMs` | runbookStudio | `mssql.runbookStudio.bind.begin` → `mssql.runbookStudio.bind.end` |
+| `runbookStudio.runMs` | runbookStudio | `mssql.runbookStudio.run.begin` → `mssql.runbookStudio.run.end` |
+| `runbookStudio.activityMs` | runbookStudio | `mssql.runbookStudio.activity.begin` → `mssql.runbookStudio.activity.end` |
+| `runbookStudio.presentationResolveMs` | runbookStudio | `mssql.runbookStudio.presentation.resolve.begin` → `mssql.runbookStudio.presentation.resolve.end` |
 
 ## Field classifications
 
