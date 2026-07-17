@@ -137,7 +137,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `sqlDataPlane.auth.token.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no | authKind:safeEnum, hasAccountId:structuralMetadata, hasTenantId:structuralMetadata, hasAccountLabel:structuralMetadata, result:safeEnum, expiryBucket:safeEnum, errorClass:safeEnum, diag:structuralMetadata, durationMs:structuralMetadata |
 | `rpc.v2.*` | spanFamily | — | — | sqlDataPlane | extensionHost | sameProcessMonotonic | no |  … |
 | `metadata.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
-| `completions.*` | spanFamily | — | — | completions | extensionHost | sameProcessMonotonic | no |  … |
+| `completions.*` | spanFamily | — | — | completions | extensionHost | sameProcessMonotonic | no | captureFeatureId:structuralMetadata, captureSessionId:structuralMetadata, captureEventId:structuralMetadata … |
 | `queryStudio.inlineCompletion.*` | spanFamily | — | — | queryStudio | extensionHost | sameProcessMonotonic | no |  … |
 | `replay.*` | spanFamily | — | — | replay | extensionHost | sameProcessMonotonic | no |  … |
 | `sqlLanguage.*` | spanFamily | — | — | sqlLanguage | extensionHost | sameProcessMonotonic | no |  … |
@@ -146,7 +146,7 @@ _Generated from registry obs-contract/1. Do not edit by hand._
 | `settings.snapshot` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `settings.changed` | event | instant | — | diagnostics | extensionHost | sameProcessMonotonic | no | settingsFeature:safeEnum, keyCount:structuralMetadata … |
 | `queryStudio.saveAs.adopted` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | extension:safeEnum, reopened:structuralMetadata, orphansClosed:structuralMetadata, transplantPending:structuralMetadata … |
-| `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata … |
+| `queryStudio.runRecord.captured` | event | instant | — | queryStudio | extensionHost | sameProcessMonotonic | no | batches:structuralMetadata, resultSets:structuralMetadata, elevated:structuralMetadata, replay:structuralMetadata, captureFeatureId:structuralMetadata, captureSessionId:structuralMetadata, captureEventId:structuralMetadata … |
 | `metadataStore.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
 | `metadataCache.*` | spanFamily | — | — | metadata | extensionHost | sameProcessMonotonic | no |  … |
 | `mssql.metadata.cache.warmAcquire.begin` | marker | begin | `mssql.metadata.cache.warmAcquire.end` | metadata | extensionHost | sameProcessMonotonic | yes |  … |
