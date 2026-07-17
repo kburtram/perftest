@@ -4040,6 +4040,117 @@ registerQueryResultsShape({
   ],
 });
 
+// ---------------------------------------------------------------------------
+// Runbook Studio (RBS2-10 first slice): the deterministic fake-runtime lane —
+// no model, no network, no SQL — over the normal product path (document
+// model -> coordinator -> ledger -> fake adapter). Vocabulary registered in
+// the observability contract (feature=runbookStudio).
+// ---------------------------------------------------------------------------
+
+const RUNBOOK_STUDIO_SETTINGS = {
+  "mssql.runbookStudio.enabled": true,
+  "mssql.runbookStudio.runtime": "fake",
+};
+
+register({
+  implemented: true,
+  plannedMilestone: "RBS2",
+  spec: {
+    scenarioId: "runbook-document-open-warm",
+    displayName: "Runbook Studio: open fixture document (warmed profile)",
+    tags: ["runbookStudio", "webview"],
+    profileMode: "warmed",
+    userSettings: RUNBOOK_STUDIO_SETTINGS,
+    setup: [],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        { type: "command", command: "mssql.perf.runbookStudio.openFixture", timeoutMs: 60000 },
+      ],
+      end: { type: "waitForMarker", name: "mssql.runbookStudio.open.end" },
+      timeoutMs: 120000,
+    },
+    success: [
+      { type: "markerSeen", name: "mssql.runbookStudio.open.begin" },
+      { type: "markerSeen", name: "mssql.runbookStudio.open.end" },
+      { type: "noErrors", sources: ["automation", "vscode-mssql"] },
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "runbookStudio.openMs",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.runbookStudio.open.begin",
+        endMarker: "mssql.runbookStudio.open.end",
+        component: "runbookStudio",
+        processRole: "extensionHost",
+      },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "RBS2",
+  spec: {
+    scenarioId: "runbook-readonly-run-fixture",
+    displayName: "Runbook Studio: precompiled fixture run (fake runtime, no model)",
+    tags: ["runbookStudio", "deterministic"],
+    profileMode: "warmed",
+    userSettings: RUNBOOK_STUDIO_SETTINGS,
+    setup: [
+      { type: "command", command: "mssql.perf.runbookStudio.openFixture", timeoutMs: 60000 },
+      { type: "waitForMarker", name: "mssql.runbookStudio.open.end", timeoutMs: 60000 },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.runbookStudio.startRun",
+          args: [{ parameterValues: { target: "fixture-conn", maxCount: 100 } }],
+          timeoutMs: 60000,
+        },
+      ],
+      end: { type: "waitForMarker", name: "mssql.runbookStudio.run.end" },
+      timeoutMs: 120000,
+    },
+    success: [
+      // Semantic proof: the run reached exactly the succeeded terminal
+      // (attrs-matched), the bind pair completed, and nothing errored.
+      { type: "markerSeen", name: "mssql.runbookStudio.bind.end" },
+      { type: "markerSeen", name: "mssql.runbookStudio.run.end", attrs: { outcome: "succeeded" } },
+      { type: "markerAbsent", name: "mssql.runbookStudio.run.end", attrs: { outcome: "failed" } },
+      { type: "noErrors", sources: ["automation", "vscode-mssql"] },
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
+      {
+        name: "runbookStudio.runMs",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.runbookStudio.run.begin",
+        endMarker: "mssql.runbookStudio.run.end",
+        component: "runbookStudio",
+        processRole: "extensionHost",
+      },
+      {
+        name: "runbookStudio.bindMs",
+        source: "marker",
+        official: false,
+        lowerIsBetter: true,
+        beginMarker: "mssql.runbookStudio.bind.begin",
+        endMarker: "mssql.runbookStudio.bind.end",
+        component: "runbookStudio",
+        processRole: "extensionHost",
+      },
+    ],
+  },
+});
+
 export function listScenarios(): RegisteredScenario[] {
   return [...registry.values()];
 }
