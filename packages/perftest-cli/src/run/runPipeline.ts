@@ -39,6 +39,10 @@ import type { LoadedConfig } from "../config/loadConfig";
 import { ControlServer } from "../control/controlServer";
 import { MarkerSink } from "../markers/markerSink";
 import { resolveVscode, type ResolvedVscode } from "../launch/resolveVscode";
+import {
+  installVsixExtensions,
+  type ResolvedVsixExtension,
+} from "../launch/installVsix";
 import { spawnVscode } from "../launch/spawnVscode";
 import {
   captureEnvironment,
@@ -117,6 +121,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
   // --- Resolve VS Code + driver extension -----------------------------------
   const vscodeBuild = await resolveVscode(config.vscode.version, logger.child("launch"));
   const devPaths: string[] = [];
+  const vsixExtensions: ResolvedVsixExtension[] = [];
   const extensionVersions: Record<string, string> = {};
   for (const ext of config.vscode.extensions) {
     if (ext.source === "developmentPath") {
@@ -140,9 +145,25 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
       }
       devPaths.push(extPath);
       extensionVersions[ext.id] = pkg.version;
+    } else if (ext.source === "vsix") {
+      const vsixPath = resolve(ext.path);
+      if (!existsSync(vsixPath) || !statSync(vsixPath).isFile()) {
+        throw new RunConfigError(`Extension VSIX does not exist: ${vsixPath}`);
+      }
+      if (!vsixPath.toLowerCase().endsWith(".vsix")) {
+        throw new RunConfigError(`Extension VSIX path must end in .vsix: ${vsixPath}`);
+      }
+      const version = ext.version?.trim();
+      if (!version) {
+        throw new RunConfigError(
+          `Extension '${ext.id}' must declare version when source is 'vsix'`,
+        );
+      }
+      vsixExtensions.push({ id: ext.id, path: vsixPath, version });
+      extensionVersions[ext.id] = version;
     } else {
       throw new RunConfigError(
-        `Extension source '${ext.source}' is not supported yet (developmentPath only in M1)`,
+        `Extension source '${ext.source}' is not supported yet (use developmentPath or vsix)`,
       );
     }
   }
@@ -273,6 +294,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
         runDir,
         vscodeBuild,
         devPaths,
+        vsixExtensions,
         environment,
         git,
         config,
@@ -294,10 +316,8 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
   }
 
   // --- Summarize ----------------------------------------------------------------
-  const passed = allResults.filter((r) => r.status === "passed").length;
-  const failed = allResults.filter((r) => r.status === "failed").length;
-  const runStatus: "passed" | "failed" | "invalid" =
-    passed > 0 && failed === 0 ? "passed" : failed > 0 ? "failed" : "invalid";
+  const measuredSummary = summarizeMeasuredStatuses(allResults, config.warmupRepetitions);
+  const { passed, failed, invalid, status: runStatus } = measuredSummary;
   store?.updateRunStatus(runId, runStatus);
   store?.close();
 
@@ -354,11 +374,19 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     ? ExitCode.infrastructureFailure
     : failed > 0
       ? ExitCode.scenarioFailed
-      : passed === 0
+      : invalid > 0 || passed === 0
         ? ExitCode.insufficientSamples
         : ExitCode.ok;
 
-  runSpan.end({ status: runStatus, passed, failed, total: allResults.length, exitCode });
+  runSpan.end({
+    status: runStatus,
+    passed,
+    failed,
+    invalid,
+    total: measuredSummary.total,
+    warmups: allResults.length - measuredSummary.total,
+    exitCode,
+  });
   return { runId, exitCode, results: allResults, runDir };
 }
 
@@ -379,6 +407,32 @@ export function validateScenarioWarmups(
       );
     }
   }
+}
+
+/** Run status and exit eligibility come only from measured repetitions.
+ * Warmups are retained in artifacts/reports, but can neither rescue a broken
+ * measured rep nor poison an otherwise valid measurement set. */
+export function summarizeMeasuredStatuses(
+  results: readonly Pick<PerfResult, "repId" | "status">[],
+  warmupRepetitions: number,
+): {
+  passed: number;
+  failed: number;
+  invalid: number;
+  total: number;
+  status: "passed" | "failed" | "invalid";
+} {
+  const measured = results.filter((result) => result.repId >= warmupRepetitions);
+  const passed = measured.filter((result) => result.status === "passed").length;
+  const failed = measured.filter((result) => result.status === "failed").length;
+  const invalid = measured.length - passed - failed;
+  return {
+    passed,
+    failed,
+    invalid,
+    total: measured.length,
+    status: failed > 0 ? "failed" : invalid > 0 || passed === 0 ? "invalid" : "passed",
+  };
 }
 
 /** Minimal §15 process registry: self-reports beat tree heuristics. */
@@ -477,6 +531,7 @@ interface RepExecutionInputs {
   runDir: string;
   vscodeBuild: ResolvedVscode;
   devPaths: string[];
+  vsixExtensions: ResolvedVsixExtension[];
   environment: ReturnType<typeof captureEnvironment>;
   git: GitRepoInfo[];
   config: LoadedConfig["config"];
@@ -512,6 +567,15 @@ async function executeRep(
     : repDir;
   const userDataDir = join(profileRoot, "vscode-user-data");
   const extensionsDir = join(profileRoot, "vscode-extensions");
+
+  await installVsixExtensions({
+    executablePath: inputs.vscodeBuild.executablePath,
+    cliPath: inputs.vscodeBuild.cliPath,
+    userDataDir,
+    extensionsDir,
+    extensions: inputs.vsixExtensions,
+    logger: logger.child("vsix"),
+  });
 
   const sink = new MarkerSink(join(repDir, "markers.jsonl"), logger.child("markerSink"));
   const server = await ControlServer.start({

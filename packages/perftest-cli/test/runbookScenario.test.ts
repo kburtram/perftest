@@ -1,7 +1,11 @@
 import type { ScenarioSpec } from "@mssqlperf/contracts";
 import { describe, expect, it } from "vitest";
 
-import { RunConfigError, validateScenarioWarmups } from "../src/run/runPipeline";
+import {
+  RunConfigError,
+  summarizeMeasuredStatuses,
+  validateScenarioWarmups,
+} from "../src/run/runPipeline";
 import { getScenario } from "../src/scenarios/registry";
 
 describe("Runbook Studio restart recovery scenario", () => {
@@ -45,5 +49,29 @@ describe("Runbook Studio restart recovery scenario", () => {
       },
     };
     expect(() => validateScenarioWarmups([ordinary], 0)).not.toThrow();
+  });
+
+  it("does not let a passing warmup hide an invalid measured restart", () => {
+    expect(
+      summarizeMeasuredStatuses(
+        [
+          { repId: 0, status: "passed" },
+          { repId: 1, status: "invalid" },
+        ],
+        1,
+      ),
+    ).toEqual({ passed: 0, failed: 0, invalid: 1, total: 1, status: "invalid" });
+  });
+
+  it("ignores a failed warmup when measured repetitions are valid", () => {
+    expect(
+      summarizeMeasuredStatuses(
+        [
+          { repId: 0, status: "failed" },
+          { repId: 1, status: "passed" },
+        ],
+        1,
+      ).status,
+    ).toBe("passed");
   });
 });

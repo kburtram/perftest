@@ -11,6 +11,8 @@ import type { HarnessLogger } from "../telemetry/logger";
 
 export interface ResolvedVscode {
   executablePath: string;
+  /** Product CLI entrypoint used with ELECTRON_RUN_AS_NODE for extension install. */
+  cliPath?: string;
   /** Actual product version (e.g. 1.102.1), from the build's product.json. */
   version: string;
   quality: string;
@@ -25,8 +27,10 @@ export async function resolveVscode(
   try {
     const executablePath = await downloadAndUnzipVSCode(requestedVersion);
     const product = readProductJson(executablePath);
+    const cliPath = findVscodeCliPath(executablePath);
     const resolved: ResolvedVscode = {
       executablePath,
+      ...(cliPath ? { cliPath } : {}),
       version: product?.version ?? requestedVersion,
       quality: product?.quality ?? "stable",
       ...(product?.commit !== undefined ? { commit: product.commit } : {}),
@@ -37,6 +41,21 @@ export async function resolveVscode(
     span.fail(error);
     throw error;
   }
+}
+
+export function findVscodeCliPath(executablePath: string): string | undefined {
+  const root = dirname(executablePath);
+  const candidates = [join(root, "resources", "app", "out", "cli.js")];
+  try {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        candidates.push(join(root, entry.name, "resources", "app", "out", "cli.js"));
+      }
+    }
+  } catch {
+    // Static candidate still applies.
+  }
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 interface ProductJson {

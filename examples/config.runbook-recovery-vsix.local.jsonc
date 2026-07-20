@@ -1,0 +1,50 @@
+// Packaged Runbook Studio restart/rehydration proof. Build the online VSIX
+// first, then run this config from the perftest repo root:
+//   cd ../vscode-mssql
+//   npm run package -- --target mssql --online
+//   cd ../perftest
+//   node packages/perftest-cli/dist/cli.js run --config examples/config.runbook-recovery-vsix.local.jsonc
+{
+  "schemaVersion": 2,
+  "runId": "auto",
+  "passType": "measurement",
+  "repetitions": 1,
+  "warmupRepetitions": 1,
+  "scenarios": ["runbook-restart-recovery-fixture"],
+  "vscode": {
+    "version": "stable",
+    "quality": "stable",
+    "launchMode": "directSpawn",
+    "profileMode": "scenarioDefault",
+    "extensions": [
+      {
+        "id": "ms-mssql.mssql",
+        "source": "vsix",
+        "path": "../vscode-mssql/extensions/mssql/mssql-1.45.0.vsix",
+        "version": "1.45.0"
+      },
+      {
+        "id": "perftest.mssql-perf-driver",
+        "source": "developmentPath",
+        "path": "./extensions/mssql-perf-driver"
+      }
+    ],
+    "extraArgs": [],
+    "env": {}
+  },
+  "sql": {
+    "provider": "external",
+    "snapshot": "none",
+    "cacheMode": "unknown",
+    "connectionProfile": "none"
+  },
+  "environment": { "requireIdle": false },
+  "diagnostics": {
+    "markers": true,
+    "processSampler": false,
+    "otel": "off"
+  },
+  "store": { "type": "sqlite", "path": "./perf.db" },
+  "regression": { "baseline": "none", "failOnRegression": false },
+  "output": { "dir": "./perf-runs", "keepArtifacts": "always" }
+}

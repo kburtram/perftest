@@ -43,7 +43,9 @@ this loop without changing its shape.
   the orchestrator then **spawns the executable directly** so it owns PID,
   stdio (captured to files), env, and shutdown. Fresh `--user-data-dir` and
   `--extensions-dir` per rep (profile modes per §13.2). Extensions load via
-  `--extensionDevelopmentPath` (config source `developmentPath`).
+  `--extensionDevelopmentPath` (config source `developmentPath`) or are
+  installed from an explicit local VSIX into that rep's isolated extension
+  directory before launch (config source `vsix`).
 - **mssql-perf-driver** (`extensions/mssql-perf-driver`) — dependency-free
   extension using the extension host's global WebSocket. With `PERF_MODE`
   unset, `activate()` returns immediately — the whole non-perf path is one
