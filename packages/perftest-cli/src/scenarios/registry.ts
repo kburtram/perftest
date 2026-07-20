@@ -53,7 +53,9 @@ register({
     displayName: "No-op scenario (harness loop only)",
     tags: ["harness", "smoke"],
     profileMode: "fresh",
-    setup: [],
+    setup: [
+      { type: "activateExtension", extensionId: "ms-mssql.mssql", timeoutMs: 120000 },
+    ],
     measure: {
       start: { type: "beforeFirstAction" },
       action: [{ type: "noop" }],
@@ -4101,6 +4103,7 @@ register({
     profileMode: "warmed",
     userSettings: RUNBOOK_STUDIO_SETTINGS,
     setup: [
+      { type: "activateExtension", extensionId: "ms-mssql.mssql", timeoutMs: 120000 },
       { type: "command", command: "mssql.perf.runbookStudio.openFixture", timeoutMs: 60000 },
       { type: "waitForMarker", name: "mssql.runbookStudio.open.end", timeoutMs: 60000 },
     ],
@@ -4147,6 +4150,53 @@ register({
         component: "runbookStudio",
         processRole: "extensionHost",
       },
+    ],
+  },
+});
+
+register({
+  implemented: true,
+  plannedMilestone: "RBS2",
+  spec: {
+    scenarioId: "runbook-restart-recovery-fixture",
+    displayName: "Runbook Studio: recover a completed run after extension-host restart",
+    tags: ["runbookStudio", "deterministic", "restart", "persistence"],
+    profileMode: "warmed",
+    minimumWarmupRepetitions: 1,
+    userSettings: RUNBOOK_STUDIO_SETTINGS,
+    setup: [
+      {
+        type: "activateExtension",
+        extensionId: "ms-mssql.mssql",
+        timeoutMs: 120000,
+      },
+    ],
+    measure: {
+      start: { type: "beforeFirstAction" },
+      action: [
+        {
+          type: "command",
+          command: "mssql.perf.runbookStudio.restartRecoveryFixture",
+          timeoutMs: 120000,
+        },
+      ],
+      end: {
+        type: "waitForMarker",
+        name: "mssql.runbookStudio.run.recover.end",
+        attrs: { outcome: "rehydrated" },
+      },
+      timeoutMs: 120000,
+    },
+    success: [
+      {
+        type: "markerSeen",
+        name: "mssql.runbookStudio.run.recover.end",
+        attrs: { outcome: "rehydrated" },
+      },
+      { type: "noErrors", sources: ["automation", "vscode-mssql"] },
+    ],
+    metrics: [
+      { name: "scenario.wallclock", source: "marker", official: true, lowerIsBetter: true },
     ],
   },
 });

@@ -1,0 +1,48 @@
+// Runbook Studio restart/rehydration proof. Rep 0 seeds a completed fake
+// runtime run; rep 1 starts a new VS Code + extension-host process against
+// the same warmed profile and must recover its history and output handles.
+// Run from the perftest repo root after building vscode-mssql and perftest:
+//   node packages/perftest-cli/dist/cli.js run --config examples/config.runbook-recovery.local.jsonc
+{
+  "schemaVersion": 2,
+  "runId": "auto",
+  "passType": "measurement",
+  "repetitions": 1,
+  "warmupRepetitions": 1,
+  "scenarios": ["runbook-restart-recovery-fixture"],
+  "vscode": {
+    "version": "stable",
+    "quality": "stable",
+    "launchMode": "directSpawn",
+    "profileMode": "scenarioDefault",
+    "extensions": [
+      {
+        "id": "ms-mssql.mssql",
+        "source": "developmentPath",
+        "path": "../vscode-mssql/extensions/mssql"
+      },
+      {
+        "id": "perftest.mssql-perf-driver",
+        "source": "developmentPath",
+        "path": "./extensions/mssql-perf-driver"
+      }
+    ],
+    "extraArgs": [],
+    "env": {}
+  },
+  "sql": {
+    "provider": "external",
+    "snapshot": "none",
+    "cacheMode": "unknown",
+    "connectionProfile": "none"
+  },
+  "environment": { "requireIdle": false },
+  "diagnostics": {
+    "markers": true,
+    "processSampler": false,
+    "otel": "off"
+  },
+  "store": { "type": "sqlite", "path": "./perf.db" },
+  "regression": { "baseline": "none", "failOnRegression": false },
+  "output": { "dir": "./perf-runs", "keepArtifacts": "always" }
+}

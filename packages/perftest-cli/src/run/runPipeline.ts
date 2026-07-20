@@ -107,6 +107,7 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
     }
     specs.push(registered.spec);
   }
+  validateScenarioWarmups(specs, config.warmupRepetitions);
 
   // --- Run directory + config snapshot --------------------------------------
   const runDir = resolve(config.output.dir, runId);
@@ -362,6 +363,23 @@ export async function executeRun(options: RunOptions): Promise<RunSummary> {
 }
 
 export class RunConfigError extends Error {}
+
+/** Reject configurations that would turn a cross-process scenario into a
+ * same-process seed-only pass. Kept exported so the invariant has a fast,
+ * process-free contract test. */
+export function validateScenarioWarmups(
+  specs: readonly ScenarioSpec[],
+  configuredWarmups: number,
+): void {
+  for (const spec of specs) {
+    const minimum = spec.minimumWarmupRepetitions ?? 0;
+    if (configuredWarmups < minimum) {
+      throw new RunConfigError(
+        `Scenario '${spec.scenarioId}' requires at least ${minimum} warmup repetition(s); configured ${configuredWarmups}`,
+      );
+    }
+  }
+}
 
 /** Minimal §15 process registry: self-reports beat tree heuristics. */
 class SimpleProcessRegistry implements ProcessRegistry {

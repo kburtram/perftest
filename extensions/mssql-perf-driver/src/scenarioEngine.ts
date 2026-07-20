@@ -12,6 +12,7 @@ import type { MarkerBus } from "./markerBus";
 // so the shapes are duplicated here; the wire format is identical JSON).
 export interface ScenarioStep {
   type: string;
+  extensionId?: string;
   command?: string;
   args?: unknown[];
   path?: string;
@@ -377,6 +378,8 @@ function classifyIterationError(step: ScenarioStep, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/timed out/i.test(message)) return "timeout";
   switch (step.type) {
+    case "activateExtension":
+      return `activateExtension(${step.extensionId ?? "?"})`;
     case "mssqlConnect":
       return "connect";
     case "mssqlDisconnect":
@@ -425,6 +428,21 @@ async function executeStep(
         setTimeout(resolveDelay, (step as unknown as { ms: number }).ms),
       );
       return;
+    case "activateExtension": {
+      if (!step.extensionId) {
+        throw new Error("activateExtension step missing extension id");
+      }
+      const extension = vscode.extensions.getExtension(step.extensionId);
+      if (!extension) {
+        throw new Error(`extension '${step.extensionId}' is not installed`);
+      }
+      await withTimeout(
+        Promise.resolve(extension.activate()),
+        timeoutMs,
+        `activateExtension ${step.extensionId}`,
+      );
+      return;
+    }
     case "command":
     case "waitForCommandCompletion": {
       if (!step.command) {

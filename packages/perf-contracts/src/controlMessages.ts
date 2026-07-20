@@ -306,6 +306,7 @@ export type QueryStudioInteractionAction =
 // ---------------------------------------------------------------------------
 
 export type ScenarioStep =
+  | { type: "activateExtension"; extensionId: string; timeoutMs?: number }
   | { type: "command"; command: string; args?: unknown[]; timeoutMs?: number }
   | { type: "openDocument"; path: string; timeoutMs?: number }
   | {
@@ -456,6 +457,12 @@ export interface ScenarioSpec {
   displayName: string;
   tags?: string[];
   profileMode?: "fresh" | "warmed" | "reuse";
+  /**
+   * Minimum whole-process warmup repetitions required before a measured
+   * repetition is meaningful. Use this for restart/rehydration scenarios
+   * whose setup state must come from an earlier VS Code process.
+   */
+  minimumWarmupRepetitions?: number;
   workspace?: string;
   /**
    * Settings merged into the profile's User/settings.json BEFORE VS Code
